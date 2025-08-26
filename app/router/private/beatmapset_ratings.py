@@ -11,7 +11,7 @@ from app.fetcher import Fetcher
 
 from .router import router
 
-from fastapi import Security
+from fastapi import Body, HTTPException, Security
 from sqlmodel import select
 
 
@@ -49,3 +49,39 @@ async def can_rate_beatmapset(
         if all_beatmap_scores is not None or len(all_beatmap_scores) <= 0:  # 没有passed成绩
             return False
     return True
+
+
+@router.post("/beatmapsets/{beatmapset_id}", tags=["beatmapsets", "ratings"], response_model=None)
+async def rate_beatmaps(
+    beatmapset_id: int,
+    session: Database,
+    rating: float = Body(...),
+    current_user: User = Security(get_current_user),
+):
+    """为谱面集评分
+
+    为指定的谱面集添加用户评分，并更新谱面集的评分统计信息
+
+    参数:
+    - beatmapset_id: 谱面集ID
+    - session: 数据库会话
+    - rating: 评分
+
+    错误情况:
+    - 404: 找不到指定谱面集
+
+    返回:
+    - 成功: None
+    """
+    user_id = current_user.id
+    new_rating: BeatmapRating = BeatmapRating(beatmapset_id=beatmapset_id, user_id=user_id, rating=rating)
+    session.add(new_rating)
+    current_beatmapset = (await session.exec(select(Beatmapset).where(Beatmapset.id == beatmapset_id))).first()
+    if current_beatmapset is None:
+        raise HTTPException(404, "Beatmapset Not Found")
+    if current_beatmapset.ratings is None:  # tmd 怎么还有这sb判断，还有天理吗！！！！！
+        current_beatmapset.ratings = [0] * 11
+    current_beatmapset.ratings[int(rating)] += 1
+    await session.commit()
+    await session.refresh(current_beatmapset)
+    return None
