@@ -92,6 +92,20 @@ async def send_message(
     channel_name = db_channel.name
     user_id = current_user.id
 
+    # 对于多人游戏房间，在发送消息前进行Redis键检查
+    if channel_type == ChannelType.MULTIPLAYER:
+        try:
+            from app.dependencies.database import get_redis
+
+            redis = get_redis()
+            key = f"channel:{channel_id}:messages"
+            key_type = await redis.type(key)
+            if key_type not in ["none", "zset"]:
+                logger.warning(f"Fixing Redis key {key} with wrong type: {key_type}")
+                await redis.delete(key)
+        except Exception as e:
+            logger.warning(f"Failed to check/fix Redis key for channel {channel_id}: {e}")
+
     # 使用 Redis 消息系统发送消息 - 立即返回
     resp = await redis_message_system.send_message(
         channel_id=channel_id,
@@ -136,18 +150,18 @@ async def send_message(
     "/chat/channels/{channel}/messages",
     response_model=list[ChatMessageResp],
     name="获取消息",
-    description="获取指定频道的消息列表。",
+    description="获取指定频道的消息列表（统一按时间正序返回）。",
     tags=["聊天"],
 )
 async def get_message(
     session: Database,
     channel: str,
     limit: int = Query(50, ge=1, le=50, description="获取消息的数量"),
-    since: int = Query(default=0, ge=0, description="获取自此消息 ID 之后的消息记录"),
-    until: int | None = Query(None, description="获取自此消息 ID 之前的消息记录"),
+    since: int = Query(0, ge=0, description="获取自此消息 ID 之后的消息（向前加载新消息）"),
+    until: int | None = Query(None, description="获取自此消息 ID 之前的消息（向后翻历史）"),
     current_user: User = Security(get_current_user, scopes=["chat.read"]),
 ):
-    # 使用明确的查询获取 channel，避免延迟加载
+    # 1) 查频道
     if channel.isdigit():
         db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.channel_id == int(channel)))).first()
     else:
@@ -156,28 +170,44 @@ async def get_message(
     if db_channel is None:
         raise HTTPException(status_code=404, detail="Channel not found")
 
-    # 提取必要的属性避免惰性加载
     channel_id = db_channel.channel_id
 
-    # 使用 Redis 消息系统获取消息
     try:
         messages = await redis_message_system.get_messages(channel_id, limit, since)
+        if len(messages) >= 2 and messages[0].message_id > messages[-1].message_id:
+            messages.reverse()
         return messages
     except Exception as e:
         logger.warning(f"Failed to get messages from Redis system: {e}")
-        # 回退到传统数据库查询
-        pass
 
-    # 回退到数据库查询
-    query = select(ChatMessage).where(ChatMessage.channel_id == channel_id)
-    if since > 0:
-        query = query.where(col(ChatMessage.message_id) > since)
+    base = select(ChatMessage).where(ChatMessage.channel_id == channel_id)
+
+    if since > 0 and until is None:
+        # 向前加载新消息 → 直接 ASC
+        query = base.where(col(ChatMessage.message_id) > since).order_by(col(ChatMessage.message_id).asc()).limit(limit)
+        rows = (await session.exec(query)).all()
+        resp = [await ChatMessageResp.from_db(m, session) for m in rows]
+        # 已经 ASC，无需反转
+        return resp
+
+    # until 分支（向后翻历史）
     if until is not None:
-        query = query.where(col(ChatMessage.message_id) < until)
+        # 用 DESC 取最近的更早消息，再反转为 ASC
+        query = (
+            base.where(col(ChatMessage.message_id) < until).order_by(col(ChatMessage.message_id).desc()).limit(limit)
+        )
+        rows = (await session.exec(query)).all()
+        rows = list(rows)
+        rows.reverse()  # 反转为 ASC
+        resp = [await ChatMessageResp.from_db(m, session) for m in rows]
+        return resp
 
-    query = query.order_by(col(ChatMessage.message_id).desc()).limit(limit)
-    messages = (await session.exec(query)).all()
-    resp = [await ChatMessageResp.from_db(msg, session) for msg in messages]
+    query = base.order_by(col(ChatMessage.message_id).desc()).limit(limit)
+    rows = (await session.exec(query)).all()
+    rows = list(rows)
+    rows.reverse()  # 反转为 ASC
+    resp = [await ChatMessageResp.from_db(m, session) for m in rows]
+    return resp
     return resp
 
 

@@ -6,11 +6,17 @@
   "workspaceFolder": "/workspaces/osu_lazer_api",
   "containerEnv": {
     "MYSQL_DATABASE": "osu_api",
-    "MYSQL_USER": "osu_user",
-    "MYSQL_PASSWORD": "osu_password",
+    "MYSQL_USER": "osu_api",
+    "MYSQL_PASSWORD": "password",
     "MYSQL_HOST": "mysql",
     "MYSQL_PORT": "3306"
   },
+  "runArgs": [
+    "--name",
+    "g0v0-devcontainer",
+    "--label",
+    "jetbrains-attach=true"
+  ],
   "customizations": {
     "vscode": {
       "extensions": [
@@ -21,7 +27,12 @@
         "ms-vscode.vscode-json",
         "redhat.vscode-yaml",
         "ms-vscode.docker",
-        "rust-lang.rust-analyzer"
+        "rust-lang.rust-analyzer",
+        "ms-dotnettools.csdevkit",
+        "ms-dotnettools.csharp",
+        "ms-dotnettools.vscode-dotnet-runtime",
+        "ms-dotnettools.blazorwasm-companion",
+        "editorconfig.editorconfig"
       ],
       "settings": {
         "python.defaultInterpreterPath": "/usr/local/bin/python",
@@ -57,7 +68,24 @@
         "[rust]": {
           "editor.defaultFormatter": "rust-lang.rust-analyzer",
           "editor.formatOnSave": true
-        }
+        },
+        "dotnet.defaultSolution": "/workspaces/osu_lazer_api/spectator-server/osu.Server.Spectator.sln",
+        "[csharp]": {
+          "editor.formatOnSave": true,
+          "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+          }
+        },
+        "dotnet.completion.showCompletionItemsFromUnimportedNamespaces": true,
+        "dotnet.inlayHints.enableInlayHintsForParameters": true,
+        "dotnet.inlayHints.enableInlayHintsForLiteralParameters": true,
+        "dotnet.inlayHints.enableInlayHintsForIndexerParameters": true,
+        "dotnet.inlayHints.enableInlayHintsForObjectCreationParameters": true,
+        "dotnet.inlayHints.enableInlayHintsForOtherParameters": true,
+        "dotnet.inlayHints.enableInlayHintsForTypes": true,
+        "dotnet.inlayHints.enableInlayHintsForImplicitVariableTypes": true,
+        "dotnet.inlayHints.enableInlayHintsForLambdaParameterTypes": true,
+        "dotnet.inlayHints.enableInlayHintsForImplicitObjectCreation": true
       }
     }
   },
@@ -66,13 +94,19 @@
     "ghcr.io/devcontainers/features/rust:1": {
       "version": "latest",
       "profile": "default"
+    },
+    "ghcr.io/devcontainers/features/dotnet:2": {
+      "version": "8.0"
     }
   },
   "forwardPorts": [
     8000,
     3306,
-    6379
+    6379,
+    8086,
+    80,
+    8080
   ],
-  "postCreateCommand": "uv sync --dev && uv pip install rosu-pp-py && uv run alembic upgrade head && uv run pre-commit install && cd packages/msgpack_lazer_api && cargo check",
+  "postCreateCommand": "uv sync --dev && uv pip install rosu-pp-py && uv run alembic upgrade head && uv run pre-commit install && cd packages/msgpack_lazer_api && cargo check && cd ../../spectator-server && dotnet restore",
   "remoteUser": "vscode"
 }

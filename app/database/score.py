@@ -48,9 +48,9 @@ from .score_token import ScoreToken
 
 from pydantic import field_serializer, field_validator
 from redis.asyncio import Redis
-from sqlalchemy import Boolean, Column, ColumnExpressionArgument, DateTime, TextClause
+from sqlalchemy import Boolean, Column, DateTime, TextClause
 from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlalchemy.orm import Mapped, aliased
+from sqlalchemy.orm import Mapped
 from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import (
     JSON,
@@ -66,7 +66,6 @@ from sqlmodel import (
     true,
 )
 from sqlmodel.ext.asyncio.session import AsyncSession
-from sqlmodel.sql._expression_select_cls import SelectOfScalar
 
 if TYPE_CHECKING:
     from app.fetcher import Fetcher
@@ -94,6 +93,7 @@ class ScoreBase(AsyncAttrs, SQLModel, UTCBaseModel):
     type: str
     beatmap_id: int = Field(index=True, foreign_key="beatmaps.id")
     maximum_statistics: ScoreStatistics = Field(sa_column=Column(JSON), default_factory=dict)
+    processed: bool = False  # solo_score
 
     @field_validator("maximum_statistics", mode="before")
     @classmethod
@@ -193,17 +193,6 @@ class Score(ScoreBase, table=True):
     def is_perfect_combo(self) -> bool:
         return self.max_combo == self.beatmap.max_combo
 
-    @staticmethod
-    def select_clause_unique(
-        *where_clauses: ColumnExpressionArgument[bool] | bool,
-    ) -> SelectOfScalar["Score"]:
-        rownum = (
-            func.row_number().over(partition_by=col(Score.user_id), order_by=col(Score.total_score).desc()).label("rn")
-        )
-        subq = select(Score, rownum).where(*where_clauses).subquery()
-        best = aliased(Score, subq, adapt_on_names=True)
-        return select(best).where(subq.c.rn == 1)
-
 
 class ScoreResp(ScoreBase):
     id: int
@@ -211,7 +200,6 @@ class ScoreResp(ScoreBase):
     is_perfect_combo: bool = False
     legacy_perfect: bool = False
     legacy_total_score: int = 0  # FIXME
-    processed: bool = True  # solo_score
     weight: float = 0.0
     best_id: int | None = None
     ruleset_id: int | None = None
@@ -355,9 +343,11 @@ class ScoreAround(SQLModel):
     lower: MultiplayerScores | None = None
 
 
-async def get_best_id(session: AsyncSession, score_id: int) -> None:
+async def get_best_id(session: AsyncSession, score_id: int) -> int | None:
     rownum = (
-        func.row_number().over(partition_by=col(PPBestScore.user_id), order_by=col(PPBestScore.pp).desc()).label("rn")
+        func.row_number()
+        .over(partition_by=(col(PPBestScore.user_id), col(PPBestScore.gamemode)), order_by=col(PPBestScore.pp).desc())
+        .label("rn")
     )
     subq = select(PPBestScore, rownum).subquery()
     stmt = select(subq.c.rn).where(subq.c.score_id == score_id)
@@ -865,6 +855,7 @@ async def process_score(
         playlist_item_id=item_id,
         room_id=room_id,
         maximum_statistics=info.maximum_statistics,
+        processed=True,
     )
     if can_get_pp:
         from app.calculator import pre_fetch_and_calculate_pp
@@ -892,5 +883,5 @@ async def process_score(
             await session.refresh(score)
     await session.refresh(score_token)
     await session.refresh(user)
-    await redis.publish("score:processed", str(score.id or 0))
+    await redis.publish("osu-channel:score:processed", f'{{"ScoreId": {score.id}}}')
     return score

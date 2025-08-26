@@ -9,6 +9,7 @@ import uuid
 from app.database import User as DBUser
 from app.dependencies import get_current_user
 from app.dependencies.database import DBFactory, get_db_factory
+from app.log import logger
 from app.models.signalr import NegotiateResponse, Transport
 
 from .hub import Hubs
@@ -18,6 +19,10 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, WebSocket
 from fastapi.security import SecurityScopes
 
 router = APIRouter(prefix="/signalr", include_in_schema=False)
+logger.warning(
+    "The Python version of SignalR server is deprecated. "
+    "Maybe it will be removed or be fixed to continuously use in the future"
+)
 
 
 @router.post("/{hub}/negotiate", response_model=NegotiateResponse)

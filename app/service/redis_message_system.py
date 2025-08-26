@@ -244,23 +244,54 @@ class RedisMessageSystem:
             # 清理可能存在的错误类型键，然后添加到频道消息列表（按时间排序）
             channel_messages_key = f"channel:{channel_id}:messages"
 
-            # 检查键的类型，如果不是 zset 类型则删除
+            # 更健壮的键类型检查和清理
             try:
                 key_type = await self._redis_exec(self.redis.type, channel_messages_key)
-                if key_type and key_type != "zset":
+                if key_type == "none":
+                    # 键不存在，这是正常的
+                    pass
+                elif key_type != "zset":
+                    # 键类型错误，需要清理
                     logger.warning(f"Deleting Redis key {channel_messages_key} with wrong type: {key_type}")
                     await self._redis_exec(self.redis.delete, channel_messages_key)
+
+                    # 验证删除是否成功
+                    verify_type = await self._redis_exec(self.redis.type, channel_messages_key)
+                    if verify_type != "none":
+                        logger.error(
+                            f"Failed to delete problematic key {channel_messages_key}, type is still {verify_type}"
+                        )
+                        # 强制删除
+                        await self._redis_exec(self.redis.unlink, channel_messages_key)
+
             except Exception as type_check_error:
                 logger.warning(f"Failed to check key type for {channel_messages_key}: {type_check_error}")
-                # 如果检查失败，直接删除键以确保清理
-                await self._redis_exec(self.redis.delete, channel_messages_key)
+                # 如果检查失败，尝试强制删除键以确保清理
+                try:
+                    await self._redis_exec(self.redis.delete, channel_messages_key)
+                except Exception:
+                    # 最后的努力：使用unlink
+                    try:
+                        await self._redis_exec(self.redis.unlink, channel_messages_key)
+                    except Exception as final_error:
+                        logger.error(f"Critical: Unable to clear problematic key {channel_messages_key}: {final_error}")
 
             # 添加到频道消息列表（sorted set）
-            await self._redis_exec(
-                self.redis.zadd,
-                channel_messages_key,
-                {f"msg:{channel_id}:{message_id}": message_id},
-            )
+            try:
+                await self._redis_exec(
+                    self.redis.zadd,
+                    channel_messages_key,
+                    {f"msg:{channel_id}:{message_id}": message_id},
+                )
+            except Exception as zadd_error:
+                logger.error(f"Failed to add message to sorted set {channel_messages_key}: {zadd_error}")
+                # 如果添加失败，再次尝试清理并重试
+                await self._redis_exec(self.redis.delete, channel_messages_key)
+                await self._redis_exec(
+                    self.redis.zadd,
+                    channel_messages_key,
+                    {f"msg:{channel_id}:{message_id}": message_id},
+                )
 
             # 保持频道消息列表大小（最多1000条）
             await self._redis_exec(self.redis.zremrangebyrank, channel_messages_key, 0, -1001)
@@ -516,6 +547,8 @@ class RedisMessageSystem:
             self._batch_timer = asyncio.create_task(self._batch_persist_to_database())
             # 启动时初始化消息ID计数器
             bg_tasks.add_task(self._initialize_message_counter)
+            # 启动定期清理任务
+            bg_tasks.add_task(self._periodic_cleanup)
             logger.info("Redis message system started")
 
     async def _initialize_message_counter(self):
@@ -553,24 +586,66 @@ class RedisMessageSystem:
             keys_pattern = "channel:*:messages"
             keys = await self._redis_exec(self.redis.keys, keys_pattern)
 
+            fixed_count = 0
             for key in keys:
                 if isinstance(key, bytes):
                     key = key.decode("utf-8")
 
                 try:
                     key_type = await self._redis_exec(self.redis.type, key)
-                    if key_type and key_type != "zset":
+                    if key_type == "none":
+                        # 键不存在，正常情况
+                        continue
+                    elif key_type != "zset":
                         logger.warning(f"Cleaning up Redis key {key} with wrong type: {key_type}")
                         await self._redis_exec(self.redis.delete, key)
+
+                        # 验证删除是否成功
+                        verify_type = await self._redis_exec(self.redis.type, key)
+                        if verify_type != "none":
+                            logger.error(f"Failed to delete problematic key {key}, trying unlink...")
+                            await self._redis_exec(self.redis.unlink, key)
+
+                        fixed_count += 1
                 except Exception as cleanup_error:
                     logger.warning(f"Failed to cleanup key {key}: {cleanup_error}")
                     # 强制删除问题键
-                    await self._redis_exec(self.redis.delete, key)
+                    try:
+                        await self._redis_exec(self.redis.delete, key)
+                        fixed_count += 1
+                    except Exception:
+                        try:
+                            await self._redis_exec(self.redis.unlink, key)
+                            fixed_count += 1
+                        except Exception as final_error:
+                            logger.error(f"Critical: Unable to clear problematic key {key}: {final_error}")
 
-            logger.info("Redis keys cleanup completed")
+            if fixed_count > 0:
+                logger.info(f"Redis keys cleanup completed, fixed {fixed_count} keys")
+            else:
+                logger.debug("Redis keys cleanup completed, no issues found")
 
         except Exception as e:
             logger.error(f"Failed to cleanup Redis keys: {e}")
+
+    async def _periodic_cleanup(self):
+        """定期清理任务"""
+        while self._running:
+            try:
+                # 每5分钟执行一次清理
+                await asyncio.sleep(300)
+                if not self._running:
+                    break
+
+                logger.debug("Running periodic Redis keys cleanup...")
+                await self._cleanup_redis_keys()
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Periodic cleanup error: {e}")
+                # 出错后等待1分钟再重试
+                await asyncio.sleep(60)
 
     def stop(self):
         """停止系统"""

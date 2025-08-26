@@ -117,10 +117,17 @@ class ChannelMessageBase(NotificationDetail):
         receiver: list[int],
         channel_type: "ChannelType",
     ) -> Self:
+        try:
+            avatar_url = (
+                getattr(user, "avatar_url", "https://lazer-data.g0v0.top/default.jpg")
+                or "https://lazer-data.g0v0.top/default.jpg"
+            )
+        except Exception:
+            avatar_url = "https://lazer-data.g0v0.top/default.jpg"
         instance = cls(
             title=truncate(message.content, CONTENT_TRUNCATE),
             type=channel_type.value.lower(),
-            cover_url=user.avatar_url,
+            cover_url=avatar_url,
         )
         instance._message = message
         instance._user = user
@@ -219,6 +226,7 @@ class TeamApplicationBase(NotificationDetail):
     _team_request: "TeamRequest" = PrivateAttr()
 
     @classmethod
+    # TODO: 可能隐藏 MissingGreenlet 问题
     def init(cls, team_request: "TeamRequest") -> Self:
         instance = cls(
             title=team_request.team.name,

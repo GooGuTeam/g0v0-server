@@ -331,7 +331,7 @@ async def get_user_scores(
 
     # 先尝试从缓存获取（对于recent类型使用较短的缓存时间）
     cache_expire = 30 if type == "recent" else settings.user_scores_cache_expire_seconds
-    cached_scores = await cache_service.get_user_scores_from_cache(user_id, type, mode, limit, offset)
+    cached_scores = await cache_service.get_user_scores_from_cache(user_id, type, include_fails, mode, limit, offset)
     if cached_scores is not None:
         return cached_scores
 
@@ -373,7 +373,15 @@ async def get_user_scores(
 
     # 异步缓存结果
     background_task.add_task(
-        cache_service.cache_user_scores, user_id, type, score_responses, mode, limit, offset, cache_expire
+        cache_service.cache_user_scores,
+        user_id,
+        type,
+        score_responses,
+        include_fails,
+        mode,
+        limit,
+        offset,
+        cache_expire,
     )
 
     return score_responses

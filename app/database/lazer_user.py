@@ -290,12 +290,8 @@ class UserResp(UserBase):
             )
         ).one()
         redis = get_redis()
-        u.is_online = await redis.exists(f"metadata:online:{obj.id}")
-        u.cover_url = (
-            obj.cover.get("url", "")
-            if obj.cover
-            else ""
-        )
+        u.is_online = bool(await redis.exists(f"metadata:online:{obj.id}"))
+        u.cover_url = obj.cover.get("url", "") if obj.cover else ""
 
         if "friends" in include:
             u.friends = [

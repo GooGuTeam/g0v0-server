@@ -7,12 +7,13 @@ from math import ceil
 import random
 import shlex
 
+from app.calculator import calculate_weighted_pp
 from app.const import BANCHOBOT_ID
 from app.database import ChatMessageResp
 from app.database.beatmap import Beatmap
 from app.database.chat import ChannelType, ChatChannel, ChatMessage, MessageType
 from app.database.lazer_user import User
-from app.database.score import Score
+from app.database.score import Score, get_best_id
 from app.database.statistics import UserStatistics, get_rank
 from app.dependencies.fetcher import get_fetcher
 from app.exception import InvokeException
@@ -210,8 +211,8 @@ async def _stats(user: User, args: list[str], session: AsyncSession, channel: Ch
     return f"""Stats for {target_user.username} ({gamemode.name.lower()}):
 Score: {statistics.total_score} (#{await get_rank(session, statistics)})
 Plays: {statistics.play_count} (lv{ceil(statistics.level_current)})
-Accuracy: {statistics.hit_accuracy}
-PP: {statistics.pp}
+Accuracy: {statistics.hit_accuracy:.2%}
+PP: {statistics.pp:.2f}
 """
 
 
@@ -576,10 +577,14 @@ async def _score(
     score = (await session.exec(q)).first()
     if score is None:
         return "You have no scores."
+    best_id = await get_best_id(session, score.id)
+    bp_pp = ""
+    if best_id:
+        bp_pp = f"(b{best_id} -> {calculate_weighted_pp(score.pp, best_id - 1):.2f}pp)"
 
     result = f"""{score.beatmap.beatmapset.title} [{score.beatmap.version}] ({score.gamemode.name.lower()})
 Played at {score.started_at}
-{score.pp:.2f}pp {score.accuracy:.2%} {",".join(mod_to_save(score.mods))} {score.rank.name.upper()}
+{score.pp:.2f}pp {bp_pp} {score.accuracy:.2%} {",".join(mod_to_save(score.mods))} {score.rank.name.upper()}
 Great: {score.n300}, Good: {score.n100}, Meh: {score.n50}, Miss: {score.nmiss}"""
     if score.gamemode == GameMode.MANIA:
         keys = next((mod["acronym"] for mod in score.mods if mod["acronym"].endswith("K")), None)

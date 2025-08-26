@@ -62,6 +62,7 @@ class Room(AsyncAttrs, RoomBase, table=True):
     __tablename__: str = "rooms"
     id: int = Field(default=None, primary_key=True, index=True)
     host_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
+    password: str | None = Field(default=None)
 
     host: User = Relationship()
     playlist: list[Playlist] = Relationship(
@@ -95,6 +96,7 @@ class RoomResp(RoomBase):
     ) -> "RoomResp":
         d = room.model_dump()
         d["channel_id"] = d.get("channel_id", 0) or 0
+        d["has_password"] = bool(room.password)
         resp = cls.model_validate(d)
 
         stats = RoomPlaylistItemStats(count_active=0, count_total=0)

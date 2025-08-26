@@ -11,7 +11,7 @@ from app.utils import utcnow
 from .router import router
 
 from fastapi import Body, HTTPException, Security
-from sqlmodel import select
+from sqlmodel import exists, select
 
 
 @router.post(
@@ -34,7 +34,7 @@ async def user_rename(
     返回:
     - 成功: None
     """
-    samename_user = (await session.exec(select(User).where(User.username == new_name))).first()
+    samename_user = (await session.exec(select(exists()).where(User.username == new_name))).first()
     if samename_user:
         raise HTTPException(409, "Username Exisits")
     errors = validate_username(new_name)

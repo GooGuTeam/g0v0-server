@@ -14,8 +14,8 @@ from app.config import settings
 from app.database.statistics import UserStatistics, UserStatisticsResp
 from app.log import logger
 from app.models.score import GameMode
-from app.utils import utcnow
 from app.service.asset_proxy_service import get_asset_proxy_service
+from app.utils import utcnow
 
 from redis.asyncio import Redis
 from sqlmodel import col, select
@@ -75,6 +75,14 @@ class RankingCacheService:
     def _get_country_stats_cache_key(self, ruleset: GameMode) -> str:
         """生成地区排行榜统计信息缓存键"""
         return f"country_ranking:stats:{ruleset}"
+
+    def _get_team_cache_key(self, ruleset: GameMode, page: int = 1) -> str:
+        """生成战队排行榜缓存键"""
+        return f"team_ranking:{ruleset}:page:{page}"
+
+    def _get_team_stats_cache_key(self, ruleset: GameMode) -> str:
+        """生成战队排行榜统计信息缓存键"""
+        return f"team_ranking:stats:{ruleset}"
 
     async def get_cached_ranking(
         self,
@@ -186,6 +194,69 @@ class RankingCacheService:
         except Exception as e:
             logger.error(f"Error caching country ranking: {e}")
 
+    async def get_cached_team_ranking(
+        self,
+        ruleset: GameMode,
+        page: int = 1,
+    ) -> list[dict] | None:
+        """获取缓存的战队排行榜数据"""
+        try:
+            cache_key = self._get_team_cache_key(ruleset, page)
+            cached_data = await self.redis.get(cache_key)
+
+            if cached_data:
+                return json.loads(cached_data)
+            return None
+        except Exception as e:
+            logger.error(f"Error getting cached team ranking: {e}")
+            return None
+
+    async def cache_team_ranking(
+        self,
+        ruleset: GameMode,
+        ranking_data: list[dict],
+        page: int = 1,
+        ttl: int | None = None,
+    ) -> None:
+        """缓存战队排行榜数据"""
+        try:
+            cache_key = self._get_team_cache_key(ruleset, page)
+            if ttl is None:
+                ttl = settings.ranking_cache_expire_minutes * 60
+            await self.redis.set(cache_key, safe_json_dumps(ranking_data), ex=ttl)
+            logger.debug(f"Cached team ranking data for {cache_key}")
+        except Exception as e:
+            logger.error(f"Error caching team ranking: {e}")
+
+    async def get_cached_team_stats(self, ruleset: GameMode) -> dict | None:
+        """获取缓存的战队排行榜统计信息"""
+        try:
+            cache_key = self._get_team_stats_cache_key(ruleset)
+            cached_data = await self.redis.get(cache_key)
+
+            if cached_data:
+                return json.loads(cached_data)
+            return None
+        except Exception as e:
+            logger.error(f"Error getting cached team stats: {e}")
+            return None
+
+    async def cache_team_stats(
+        self,
+        ruleset: GameMode,
+        stats: dict,
+        ttl: int | None = None,
+    ) -> None:
+        """缓存战队排行榜统计信息"""
+        try:
+            cache_key = self._get_team_stats_cache_key(ruleset)
+            if ttl is None:
+                ttl = settings.ranking_cache_expire_minutes * 60 * 6
+            await self.redis.set(cache_key, safe_json_dumps(stats), ex=ttl)
+            logger.debug(f"Cached team stats for {cache_key}")
+        except Exception as e:
+            logger.error(f"Error caching team stats: {e}")
+
     async def get_cached_country_stats(self, ruleset: GameMode) -> dict | None:
         """获取缓存的地区排行榜统计信息"""
         try:
@@ -284,7 +355,7 @@ class RankingCacheService:
                     ranking_data = []
                     for statistics in statistics_data:
                         user_stats_resp = await UserStatisticsResp.from_db(statistics, session, None, include)
-                        
+
                         # 应用资源代理处理
                         if settings.enable_asset_proxy:
                             try:
@@ -292,7 +363,7 @@ class RankingCacheService:
                                 user_stats_resp = await asset_proxy_service.replace_asset_urls(user_stats_resp)
                             except Exception as e:
                                 logger.warning(f"Asset proxy processing failed for ranking cache: {e}")
-                        
+
                         # 将 UserStatisticsResp 转换为字典，处理所有序列化问题
                         user_dict = json.loads(user_stats_resp.model_dump_json())
                         ranking_data.append(user_dict)

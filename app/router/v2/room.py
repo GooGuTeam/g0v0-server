@@ -52,12 +52,18 @@ async def get_all_rooms(
     resp_list: list[RoomResp] = []
     where_clauses: list[ColumnElement[bool]] = [col(Room.category) == category]
     now = utcnow()
+
     if status is not None:
         where_clauses.append(col(Room.status) == status)
     if mode == "open":
-        where_clauses.append((col(Room.ends_at).is_(None)) | (col(Room.ends_at) > now.replace(tzinfo=UTC)))
-        if category == RoomCategory.REALTIME:
-            where_clauses.append(col(Room.id).in_(MultiplayerHubs.rooms.keys()))
+        where_clauses.extend(
+            [
+                col(Room.status).in_([RoomStatus.IDLE, RoomStatus.PLAYING]),
+                col(Room.starts_at).is_not(None),
+                col(Room.ends_at).is_(None) if category == RoomCategory.REALTIME else col(Room.ends_at) > now,
+            ]
+        )
+
     if mode == "participated":
         where_clauses.append(
             exists().where(
@@ -65,8 +71,10 @@ async def get_all_rooms(
                 col(RoomParticipatedUser.user_id) == current_user.id,
             )
         )
+
     if mode == "owned":
         where_clauses.append(col(Room.host_id) == current_user.id)
+
     if mode == "ended":
         where_clauses.append((col(Room.ends_at).is_not(None)) & (col(Room.ends_at) < now.replace(tzinfo=UTC)))
 
@@ -81,13 +89,11 @@ async def get_all_rooms(
         .unique()
         .all()
     )
-
     for room in db_rooms:
         resp = await RoomResp.from_db(room, db)
         if category == RoomCategory.REALTIME:
-            mp_room = MultiplayerHubs.rooms.get(room.id)
-            resp.has_password = bool(mp_room.room.settings.password.strip()) if mp_room is not None else False
             resp.category = RoomCategory.NORMAL
+
         resp_list.append(resp)
 
     return resp_list

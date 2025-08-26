@@ -111,12 +111,14 @@ async def authenticate_user_legacy(db: AsyncSession, name: str, password: str) -
     pw_md5 = hashlib.md5(password.encode()).hexdigest()
 
     # 2. 根据用户名查找用户
-    statement = select(User).where(User.username == name).options()
-    user = (await db.exec(statement)).first()
-    if not user:
+    user = None
+    user = (await db.exec(select(User).where(User.username == name))).first()
+    if user is None:
+        user = (await db.exec(select(User).where(User.email == name))).first()
+    if user is None and name.isdigit():
+        user = (await db.exec(select(User).where(User.id == int(name)))).first()
+    if user is None:
         return None
-
-    await db.refresh(user)
 
     # 3. 验证密码
     if user.pw_bcrypt is None or user.pw_bcrypt == "":
@@ -155,7 +157,13 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     else:
         expire = utcnow() + timedelta(minutes=settings.access_token_expire_minutes)
 
-    to_encode.update({"exp": expire, "random": secrets.token_hex(16)})
+    # 添加标准JWT声明
+    to_encode.update({"exp": expire, "jti": secrets.token_hex(16)})
+    if settings.jwt_audience:
+        to_encode["aud"] = settings.jwt_audience
+    to_encode["iss"] = str(settings.server_url)
+
+    # 编码JWT
     encoded_jwt = jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
     return encoded_jwt
 

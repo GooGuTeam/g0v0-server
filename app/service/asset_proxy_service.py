@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import re
 from typing import Any
+
 from app.config import settings
-from app.log import logger
 
 
 class AssetProxyService:
@@ -26,7 +26,7 @@ class AssetProxyService:
         递归替换数据中的osu!资源URL为自定义域名
         """
         # 处理Pydantic模型
-        if hasattr(data, 'model_dump'):
+        if hasattr(data, "model_dump"):
             # 转换为字典，处理后再转换回模型
             data_dict = data.model_dump()
             processed_dict = await self.replace_asset_urls(data_dict)
@@ -46,35 +46,25 @@ class AssetProxyService:
         elif isinstance(data, str):
             # 替换各种osu!资源域名
             result = data
-            
+
             # 替换 assets.ppy.sh (用户头像、封面、奖章等)
             result = re.sub(
-                r"https://assets\.ppy\.sh/",
-                f"https://{self.asset_proxy_prefix}.{self.custom_asset_domain}/",
-                result
+                r"https://assets\.ppy\.sh/", f"https://{self.asset_proxy_prefix}.{self.custom_asset_domain}/", result
             )
-            
+
             # 替换 b.ppy.sh 预览音频 (保持//前缀)
-            result = re.sub(
-                r"//b\.ppy\.sh/",
-                f"//{self.beatmap_proxy_prefix}.{self.custom_asset_domain}/",
-                result
-            )
-            
+            result = re.sub(r"//b\.ppy\.sh/", f"//{self.beatmap_proxy_prefix}.{self.custom_asset_domain}/", result)
+
             # 替换 https://b.ppy.sh 预览音频 (转换为//前缀)
             result = re.sub(
-                r"https://b\.ppy\.sh/",
-                f"//{self.beatmap_proxy_prefix}.{self.custom_asset_domain}/",
-                result
+                r"https://b\.ppy\.sh/", f"//{self.beatmap_proxy_prefix}.{self.custom_asset_domain}/", result
             )
-            
+
             # 替换 a.ppy.sh 头像
             result = re.sub(
-                r"https://a\.ppy\.sh/",
-                f"https://{self.avatar_proxy_prefix}.{self.custom_asset_domain}/",
-                result
+                r"https://a\.ppy\.sh/", f"https://{self.avatar_proxy_prefix}.{self.custom_asset_domain}/", result
             )
-            
+
             return result
         else:
             return data

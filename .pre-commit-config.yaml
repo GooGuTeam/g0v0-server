@@ -1,6 +1,6 @@
 default_install_hook_types: [pre-commit, prepare-commit-msg]
 ci:
-  autofix_commit_msg: "chore(deps): auto fix by pre-commit hooks"
+  autofix_commit_msg: "chore(linter): auto fix by pre-commit hooks"
   autofix_prs: true
   autoupdate_branch: master
   autoupdate_schedule: monthly

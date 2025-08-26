@@ -51,6 +51,39 @@ services:
     networks:
       - osu-network
 
+  spectator:
+    image:  ghcr.io/googuteam/osu-server-spectator:master
+    pull_policy: never
+    environment:
+      - REPLAY_UPLOAD_THREADS=${REPLAY_UPLOAD_THREADS:-1}
+      - TRACK_BUILD_USER_COUNTS=${TRACK_BUILD_USER_COUNTS:-}
+      - SERVER_PORT=${SERVER_PORT:-80}
+      - REDIS_HOST=redis
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - SHARED_INTEROP_DOMAIN=http://app:8000
+      - SHARED_INTEROP_SECRET=${SHARED_INTEROP_SECRET:-}
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+    env_file:
+      - .env
+    depends_on:
+      - app
+      - mysql
+      - redis
+    restart: unless-stopped
+    networks:
+      - osu-network
+
+  nginx:
+    image: nginx:1.25-alpine
+    ports:
+      - "8000:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    restart: unless-stopped
+    networks:
+      - osu-network
+
   redis:
     image: redis:7-alpine
     container_name: osu_api_redis

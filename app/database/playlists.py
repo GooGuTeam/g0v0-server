@@ -60,6 +60,10 @@ class Playlist(PlaylistBase, table=True):
         }
     )
     room: "Room" = Relationship()
+    created_at: datetime | None = Field(default=None, sa_column_kwargs={"server_default": func.now()})
+    updated_at: datetime | None = Field(
+        default=None, sa_column_kwargs={"server_default": func.now(), "onupdate": func.now()}
+    )
 
     @classmethod
     async def get_next_id_for_room(cls, room_id: int, session: AsyncSession) -> int:

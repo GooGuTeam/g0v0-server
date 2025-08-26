@@ -77,6 +77,8 @@ class Settings(BaseSettings):
     secret_key: str = Field(default="your_jwt_secret_here", alias="jwt_secret_key")
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 1440
+    jwt_audience: str = "5"
+    jwt_issuer: str | None = None
 
     # OAuth 设置
     osu_client_id: int = 5

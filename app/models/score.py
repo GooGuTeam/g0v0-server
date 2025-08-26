@@ -49,6 +49,9 @@ class GameMode(str, Enum):
             GameMode.FRUITSRX: 2,
         }[self]
 
+    def __str__(self) -> str:
+        return self.value
+
     @classmethod
     def from_int(cls, v: int) -> "GameMode":
         return {

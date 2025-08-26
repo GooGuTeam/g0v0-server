@@ -12,12 +12,32 @@ services:
     depends_on:
       - mysql
       - redis
+      - nginx
     environment:
-      DATABASE_URL: mysql+aiomysql://osu_user:osu_password@mysql:3306/osu_api
+      # Python/FastAPI 环境变量
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: osu_api
+      MYSQL_USER: osu_api
+      MYSQL_PASSWORD: password
       REDIS_URL: redis://redis:6379/0
-      SECRET_KEY: dev-secret-key-change-in-production
       OSU_CLIENT_ID: "5"
       OSU_CLIENT_SECRET: "FGc9GAtyHzeQDshWP5Ah7dega8hJACAJpQtw6OXk"
+
+      # Spectator Server 环境变量
+      SAVE_REPLAYS: "0"
+      REPLAY_UPLOAD_THREADS: "1"
+      TRACK_BUILD_USER_COUNTS: "1"
+      SERVER_PORT: "8086"
+      REDIS_HOST: "redis"
+      DD_AGENT_HOST: "localhost"
+      SHARED_INTEROP_DOMAIN: "http://localhost:8000"
+      SHARED_INTEROP_SECRET: "dev-interop-secret"
+      SENTRY_DSN: "https://5840d8cb8d2b4d238369443bedef1d74@glitchtip.g0v0.top/4"
+      USE_LEGACY_RSA_AUTH: "0"
+
+      # .NET 环境变量
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
 
   mysql:
     image: mysql:8.0
@@ -25,8 +45,8 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: password
       MYSQL_DATABASE: osu_api
-      MYSQL_USER: osu_user
-      MYSQL_PASSWORD: osu_password
+      MYSQL_USER: osu_api
+      MYSQL_PASSWORD: password
     ports:
       - "3306:3306"
     volumes:
@@ -46,6 +66,20 @@ services:
     networks:
       - devcontainer-network
     command: redis-server --appendonly yes
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "8080:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - devcontainer-network
+    depends_on:
+      - mysql
+      - redis
 
 networks:
   devcontainer-network:

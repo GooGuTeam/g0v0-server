@@ -142,11 +142,13 @@ async def process_daily_challenge_top():
             return
         scores = (
             await session.exec(
-                select(PlaylistBestScore).where(
+                select(PlaylistBestScore)
+                .where(
                     PlaylistBestScore.room_id == room.id,
                     PlaylistBestScore.playlist_id == 0,
                     col(PlaylistBestScore.score).has(col(Score.passed).is_(True)),
                 )
+                .order_by(col(PlaylistBestScore.total_score).desc())
             )
         ).all()
         total_score_count = len(scores)
@@ -178,3 +180,4 @@ async def process_daily_challenge_top():
             ):
                 stats.weekly_streak_current = 0
             stats.last_update = now
+        await session.commit()

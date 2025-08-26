@@ -107,13 +107,16 @@ class UserCacheService:
         self,
         user_id: int,
         score_type: str,
+        include_fail: bool,
         mode: GameMode | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> str:
         """生成用户成绩缓存键"""
         mode_part = f":{mode}" if mode else ""
-        return f"user:{user_id}:scores:{score_type}{mode_part}:limit:{limit}:offset:{offset}"
+        return (
+            f"user:{user_id}:scores:{score_type}{mode_part}:limit:{limit}:offset:{offset}:include_fail:{include_fail}"
+        )
 
     def _get_user_beatmapsets_cache_key(
         self, user_id: int, beatmapset_type: str, limit: int = 100, offset: int = 0
@@ -159,13 +162,14 @@ class UserCacheService:
         self,
         user_id: int,
         score_type: str,
+        include_fail: bool,
         mode: GameMode | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[ScoreResp] | None:
         """从缓存获取用户成绩"""
         try:
-            cache_key = self._get_user_scores_cache_key(user_id, score_type, mode, limit, offset)
+            cache_key = self._get_user_scores_cache_key(user_id, score_type, include_fail, mode, limit, offset)
             cached_data = await self.redis.get(cache_key)
             if cached_data:
                 logger.debug(f"User scores cache hit for user {user_id}, type {score_type}")
@@ -181,6 +185,7 @@ class UserCacheService:
         user_id: int,
         score_type: str,
         scores: list[ScoreResp],
+        include_fail: bool,
         mode: GameMode | None = None,
         limit: int = 100,
         offset: int = 0,
@@ -190,7 +195,7 @@ class UserCacheService:
         try:
             if expire_seconds is None:
                 expire_seconds = settings.user_scores_cache_expire_seconds
-            cache_key = self._get_user_scores_cache_key(user_id, score_type, mode, limit, offset)
+            cache_key = self._get_user_scores_cache_key(user_id, score_type, include_fail, mode, limit, offset)
             # 使用 model_dump_json() 而不是 model_dump() + json.dumps()
             scores_json_list = [score.model_dump_json() for score in scores]
             cached_data = f"[{','.join(scores_json_list)}]"
@@ -299,7 +304,7 @@ class UserCacheService:
         """缓存单个用户"""
         try:
             user_resp = await UserResp.from_db(user, session, include=SEARCH_INCLUDED)
-            
+
             # 应用资源代理处理
             if settings.enable_asset_proxy:
                 try:
@@ -307,7 +312,7 @@ class UserCacheService:
                     user_resp = await asset_proxy_service.replace_asset_urls(user_resp)
                 except Exception as e:
                     logger.warning(f"Asset proxy processing failed for user cache {user.id}: {e}")
-            
+
             await self.cache_user(user_resp)
         except Exception as e:
             logger.error(f"Error caching single user {user.id}: {e}")

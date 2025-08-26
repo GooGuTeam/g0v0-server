@@ -87,11 +87,6 @@ class MetadataHub(Hub[MetadataClientState]):
     async def _clean_state(self, state: MetadataClientState) -> None:
         user_id = int(state.connection_id)
 
-        # Use centralized offline status management
-        from app.service.online_status_manager import online_status_manager
-
-        await online_status_manager.set_user_offline(user_id)
-
         if state.pushable:
             await asyncio.gather(*self.broadcast_tasks(user_id, None))
 
@@ -111,11 +106,6 @@ class MetadataHub(Hub[MetadataClientState]):
     async def on_client_connect(self, client: Client) -> None:
         user_id = int(client.connection_id)
         store = self.get_or_create_state(client)
-
-        # Use centralized online status management
-        from app.service.online_status_manager import online_status_manager
-
-        await online_status_manager.set_user_online(user_id, "metadata")
 
         # CRITICAL FIX: Set online status IMMEDIATELY upon connection
         # This matches the C# official implementation behavior

@@ -316,8 +316,6 @@ async def get_user_beatmap_score(
     mods: str = Query(None, description="筛选使用的 Mods (暂未实现)"),
     current_user: User = Security(get_current_user, scopes=["public"]),
 ):
-    if legacy_only:
-        raise HTTPException(status_code=404, detail="This server only contains non-legacy scores")
     user_score = (
         await db.exec(
             select(Score)
@@ -325,8 +323,10 @@ async def get_user_beatmap_score(
                 Score.gamemode == mode if mode is not None else True,
                 Score.beatmap_id == beatmap_id,
                 Score.user_id == user_id,
+                col(Score.passed).is_(True),
             )
             .order_by(col(Score.total_score).desc())
+            .limit(1)
         )
     ).first()
 
@@ -358,8 +358,6 @@ async def get_user_all_beatmap_scores(
     ruleset: GameMode | None = Query(None, description="指定 ruleset (可选)"),
     current_user: User = Security(get_current_user, scopes=["public"]),
 ):
-    if legacy_only:
-        raise HTTPException(status_code=404, detail="This server only contains non-legacy scores")
     all_user_scores = (
         await db.exec(
             select(Score)
@@ -367,8 +365,9 @@ async def get_user_all_beatmap_scores(
                 Score.gamemode == ruleset if ruleset is not None else True,
                 Score.beatmap_id == beatmap_id,
                 Score.user_id == user_id,
+                col(Score.passed).is_(True),
             )
-            .order_by(col(Score.classic_total_score).desc())
+            .order_by(col(Score.total_score).desc())
         )
     ).all()
 

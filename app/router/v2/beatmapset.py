@@ -13,8 +13,8 @@ from app.dependencies.geoip import get_client_ip, get_geoip_helper
 from app.dependencies.user import get_client_user, get_current_user
 from app.fetcher import Fetcher
 from app.models.beatmap import SearchQueryModel
-from app.service.beatmap_download_service import BeatmapDownloadService
 from app.service.asset_proxy_helper import process_response_assets
+from app.service.beatmap_download_service import BeatmapDownloadService
 
 from .router import router
 
@@ -97,7 +97,7 @@ async def search_beatmapset(
     try:
         sets = await fetcher.search_beatmapset(query, cursor, redis)
         background_tasks.add_task(_save_to_db, sets)
-        
+
         # 处理资源代理
         processed_sets = await process_response_assets(sets, request)
         return processed_sets
@@ -121,7 +121,7 @@ async def lookup_beatmapset(
 ):
     beatmap = await Beatmap.get_or_fetch(db, fetcher, bid=beatmap_id)
     resp = await BeatmapsetResp.from_db(beatmap.beatmapset, session=db, user=current_user)
-    
+
     # 处理资源代理
     processed_resp = await process_response_assets(resp, request)
     return processed_resp

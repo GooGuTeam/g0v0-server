@@ -15,9 +15,9 @@ from app.router import (
     chat_router,
     fetcher_router,
     file_router,
+    lio_router,
     private_router,
     redirect_api_router,
-    signalr_router,
 )
 from app.router.redirect import redirect_router
 from app.scheduler.cache_scheduler import start_cache_scheduler, stop_cache_scheduler
@@ -33,10 +33,8 @@ from app.service.email_queue import start_email_processor, stop_email_processor
 from app.service.geoip_scheduler import schedule_geoip_updates
 from app.service.init_geoip import init_geoip
 from app.service.load_achievements import load_achievements
-from app.service.online_status_maintenance import schedule_online_status_maintenance
 from app.service.osu_rx_statistics import create_rx_statistics
 from app.service.redis_message_system import redis_message_system
-from app.service.stats_scheduler import start_stats_scheduler, stop_stats_scheduler
 from app.utils import bg_tasks, utcnow
 
 from fastapi import FastAPI, HTTPException, Request
@@ -63,20 +61,17 @@ async def lifespan(app: FastAPI):
     await start_cache_scheduler()  # 启动缓存调度器
     await start_database_cleanup_scheduler()  # 启动数据库清理调度器
     redis_message_system.start()  # 启动 Redis 消息系统
-    start_stats_scheduler()  # 启动统计调度器
-    schedule_online_status_maintenance()  # 启动在线状态维护任务
     load_achievements()
-    
+
     # 显示资源代理状态
     if settings.enable_asset_proxy:
         logger.info(f"Asset Proxy enabled - Domain: {settings.custom_asset_domain}")
-    
+
     # on shutdown
     yield
     bg_tasks.stop()
     stop_scheduler()
     redis_message_system.stop()  # 停止 Redis 消息系统
-    stop_stats_scheduler()  # 停止统计调度器
     await stop_cache_scheduler()  # 停止缓存调度器
     await stop_database_cleanup_scheduler()  # 停止数据库清理调度器
     await download_service.stop_health_check()  # 停止下载服务健康检查
@@ -126,11 +121,14 @@ app.include_router(api_v2_router)
 app.include_router(api_v1_router)
 app.include_router(chat_router)
 app.include_router(redirect_api_router)
-app.include_router(signalr_router)
 app.include_router(fetcher_router)
 app.include_router(file_router)
 app.include_router(auth_router)
 app.include_router(private_router)
+app.include_router(lio_router)
+
+# from app.signalr import signalr_router
+# app.include_router(signalr_router)
 
 # CORS 配置
 origins = []

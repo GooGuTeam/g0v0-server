@@ -5,6 +5,9 @@
 		},
 		{
 			"path": "packages/msgpack_lazer_api"
-		}
+		},
+    {
+      "path": "spectator-server"
+    }
 	]
 }

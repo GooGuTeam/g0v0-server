@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 
 from app.database import PlaylistBestScore, Score
@@ -15,7 +16,7 @@ if TYPE_CHECKING:
     from app.signalr.hub import MetadataHub
 
 
-CHANNEL = "score:processed"
+CHANNEL = "osu-channel:score:processed"
 
 
 class ScoreSubscriber(RedisSubscriber):
@@ -79,6 +80,6 @@ class ScoreSubscriber(RedisSubscriber):
             await self.metadata_hub.notify_room_score_processed(event)
 
     async def _handler(self, channel: str, data: str):
-        score_id = int(data)
+        score_id = json.loads(data)["ScoreId"]
         if self.metadata_hub:
             await self._notify_room_score_processed(score_id)

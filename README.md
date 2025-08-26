@@ -13,6 +13,7 @@
 - **缓存支持**: Redis 缓存令牌和会话信息
 - **多种存储后端**: 支持本地存储、Cloudflare R2、AWS S3
 - **容器化部署**: Docker 和 Docker Compose 支持
+- **资源文件反向代理**: 可以将 osu! 官方的资源链接（头像、谱面封面、音频等）替换为自定义域名。
 
 ## 快速开始
 
@@ -45,14 +46,17 @@ docker-compose -f docker-compose-osurx.yml up -d
 使用[自定义的 osu!lazer 客户端](https://github.com/GooGuTeam/osu)，或者使用 [LazerAuthlibInjection](https://github.com/MingxuanGame/LazerAuthlibInjection)，修改服务器设置为服务器的 IP
 
 
-### 更新数据库
+## 更新数据库
 
 参考[数据库迁移指南](https://github.com/GooGuTeam/g0v0-server/wiki/Migrate-Database)
 
-## 资源文件反向代理
+## 安全
 
-服务器支持资源文件反向代理功能，可以将 osu! 官方的资源链接（头像、谱面封面、音频等）替换为自定义域名。
+使用 `openssl rand -hex 32` 生成 JWT 密钥，以保证服务器安全和旁观服务器的正常运行
 
+使用 `openssl rand -hex 40` 生成前端密钥
+
+**如果是在公网环境下，请屏蔽对 `/_lio` 路径的外部请求**
 
 ## 许可证
 

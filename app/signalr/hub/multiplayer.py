@@ -163,11 +163,6 @@ class MultiplayerHub(Hub[MultiplayerClientState]):
     async def _clean_state(self, state: MultiplayerClientState):
         user_id = int(state.connection_id)
 
-        # Use centralized offline status management
-        from app.service.online_status_manager import online_status_manager
-
-        await online_status_manager.set_user_offline(user_id)
-
         if state.room_id != 0 and state.room_id in self.rooms:
             server_room = self.rooms[state.room_id]
             room = server_room.room
@@ -178,11 +173,6 @@ class MultiplayerHub(Hub[MultiplayerClientState]):
     async def on_client_connect(self, client: Client) -> None:
         """Track online users when connecting to multiplayer hub"""
         logger.info(f"[MultiplayerHub] Client {client.user_id} connected")
-
-        # Use centralized online status management
-        from app.service.online_status_manager import online_status_manager
-
-        await online_status_manager.set_user_online(client.user_id, "multiplayer")
 
     def _ensure_in_room(self, client: Client) -> ServerMultiplayerRoom:
         store = self.get_or_create_state(client)
@@ -1018,6 +1008,18 @@ class MultiplayerHub(Hub[MultiplayerClientState]):
                 played_user,
                 ex=3600,
             )
+
+            # Ensure spectator hub is aware of all active players for the new game.
+            # This helps spectators receive score data for every participant,
+            # especially in subsequent rounds where state may get out of sync.
+            for room_user in room.room.users:
+                if (client := self.get_client_by_id(str(room_user.user_id))) is not None:
+                    try:
+                        await self._sync_with_spectator_hub(client, room)
+                    except Exception as e:
+                        logger.debug(
+                            f"[MultiplayerHub] Failed to resync spectator hub for user {room_user.user_id}: {e}"
+                        )
         else:
             await room.queue.finish_current_item()
 

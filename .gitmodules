@@ -1,0 +1,3 @@
+[submodule "spectator-server"]
+	path = spectator-server
+	url = https://github.com/GooGuTeam/osu-server-spectator.git
