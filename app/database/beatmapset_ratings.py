@@ -3,7 +3,7 @@ from __future__ import annotations
 from app.database.beatmapset import Beatmapset
 from app.database.lazer_user import User
 
-from sqlmodel import BigInteger, Column, Double, Field, ForeignKey, Relationship, SQLModel
+from sqlmodel import BigInteger, Column, Field, ForeignKey, Relationship, SQLModel
 
 
 class BeatmapRating(SQLModel, table=True):
@@ -14,7 +14,7 @@ class BeatmapRating(SQLModel, table=True):
     )
     beatmapset_id: int = Field(foreign_key="beatmapsets.id", index=True)
     user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
-    rating: float = Field(sa_column=Column(Double))
+    rating: int
 
     beatmapset: Beatmapset = Relationship()
     user: User = Relationship()

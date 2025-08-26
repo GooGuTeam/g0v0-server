@@ -6,20 +6,20 @@ from app.database.lazer_user import User
 from app.database.score import Score
 from app.dependencies.database import Database
 from app.dependencies.fetcher import get_fetcher
-from app.dependencies.user import get_current_user
+from app.dependencies.user import get_client_user
 from app.fetcher import Fetcher
 
 from .router import router
 
 from fastapi import Body, HTTPException, Security
-from sqlmodel import select
+from sqlmodel import col, select
 
 
-@router.get("/beatmapsets/{beatmapset_id}/can_rate", tags=["beatmapset", "rate"], response_model=bool)
+@router.get("/beatmapsets/{beatmapset_id}/can_rate", response_model=bool)
 async def can_rate_beatmapset(
     beatmapset_id: int,
     session: Database,
-    current_user: User = Security(get_current_user),
+    current_user: User = Security(get_client_user),
     fetcher: Fetcher = Security(get_fetcher),
 ):
     """检查用户是否可以评价谱面集
@@ -35,28 +35,32 @@ async def can_rate_beatmapset(
     - bool: 用户是否可以评价谱面集
     """
     user_id = current_user.id
-    beatmapset = await Beatmapset.get_or_fetch(session, fetcher, beatmapset_id)
+    beatmapset = await session.get(Beatmapset, beatmapset_id)
     prev_ratings = (await session.exec(select(BeatmapRating).where(BeatmapRating.user_id == user_id))).first()
     if prev_ratings is not None:  # 打过分的不能再打
         return False
-    assert beatmapset is not None
+    if beatmapset is None:
+        raise HTTPException(404, "Beatmapset not found")
     for beatmap in beatmapset.beatmaps:
         all_beatmap_scores = (
             await session.exec(
-                select(Score).where(Score.beatmap_id == beatmap.id).where(Score.user_id == user_id).where(Score.passed)
+                select(Score)
+                .where(Score.beatmap_id == beatmap.id)
+                .where(Score.user_id == user_id)
+                .where(col(Score.passed).is_(True))
             )
         ).all()
-        if all_beatmap_scores is not None or len(all_beatmap_scores) <= 0:  # 没有passed成绩
+        if len(all_beatmap_scores) <= 0:  # 没有passed成绩
             return False
     return True
 
 
-@router.post("/beatmapsets/{beatmapset_id}/ratings", tags=["beatmapsets", "ratings"], response_model=None)
+@router.post("/beatmapsets/{beatmapset_id}/ratings", status_code=201)
 async def rate_beatmaps(
     beatmapset_id: int,
     session: Database,
-    rating: float = Body(...),
-    current_user: User = Security(get_current_user),
+    rating: int = Body(...),
+    current_user: User = Security(get_client_user),
 ):
     """为谱面集评分
 
@@ -64,7 +68,6 @@ async def rate_beatmaps(
 
     参数:
     - beatmapset_id: 谱面集ID
-    - session: 数据库会话
     - rating: 评分
 
     错误情况:
