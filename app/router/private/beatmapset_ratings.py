@@ -51,7 +51,7 @@ async def can_rate_beatmapset(
     return True
 
 
-@router.post("/beatmapsets/{beatmapset_id}", tags=["beatmapsets", "ratings"], response_model=None)
+@router.post("/beatmapsets/{beatmapset_id}/ratings", tags=["beatmapsets", "ratings"], response_model=None)
 async def rate_beatmaps(
     beatmapset_id: int,
     session: Database,
