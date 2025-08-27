@@ -93,7 +93,6 @@ class BeatmapsetBase(SQLModel):
     # TODO: events: Optional[list[BeatmapsetEvent]] = None
 
     pack_tags: list[str] = Field(default=[], sa_column=Column(JSON))
-    ratings: list[int] | None = Field(default=None, sa_column=Column(JSON))
     # TODO: related_users: Optional[list[User]] = None
     # TODO: user: Optional[User] = Field(default=None)
     track_id: int | None = Field(default=None, index=True)  # feature artist?
@@ -259,9 +258,21 @@ class BeatmapsetResp(BeatmapsetBase):
             **beatmapset.model_dump(),
         }
 
-        # 确保 ratings 字段不为 null，避免客户端崩溃
-        if update.get("ratings") is None:
-            update["ratings"] = []
+        if session is not None:
+            # 从数据库读取对应谱面集的评分
+            from .beatmapset_ratings import BeatmapRating
+
+            beatmapset_all_ratings = (
+                await session.exec(select(BeatmapRating).where(BeatmapRating.beatmapset_id == beatmapset.id))
+            ).all()
+            ratings_list = [0] * 11
+            for rating in beatmapset_all_ratings:
+                ratings_list[rating.rating] += 1
+            update["ratings"] = ratings_list
+        else:
+            # 返回非空值避免客户端崩溃
+            if update.get("ratings") is None:
+                update["ratings"] = []
 
         beatmap_status = beatmapset.beatmap_status
         if settings.enable_all_beatmap_leaderboard and not beatmap_status.has_leaderboard():
