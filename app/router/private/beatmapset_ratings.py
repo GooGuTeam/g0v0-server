@@ -82,7 +82,7 @@ async def rate_beatmaps(
     current_beatmapset = (await session.exec(select(Beatmapset).where(Beatmapset.id == beatmapset_id))).first()
     if current_beatmapset is None:
         raise HTTPException(404, "Beatmapset Not Found")
-    if current_beatmapset.ratings is None:  # tmd 怎么还有这sb判断，还有天理吗！！！！！
+    if current_beatmapset.ratings is None:
         current_beatmapset.ratings = [0] * 11
     current_beatmapset.ratings[int(rating)] += 1
     await session.commit()
