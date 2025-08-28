@@ -306,11 +306,11 @@ async def chat_websocket(
                 auth_token = authorization[7:]
             else:
                 auth_token = authorization
-        
+
         if not auth_token:
             await websocket.close(code=1008, reason="Missing authentication token")
             return
-            
+
         if (user := await get_current_user(session, SecurityScopes(scopes=["chat.read"]), token_pw=auth_token)) is None:
             await websocket.close(code=1008, reason="Invalid or expired token")
             return
