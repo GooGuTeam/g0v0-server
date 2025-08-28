@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 import json
 from typing import TYPE_CHECKING, NotRequired, TypedDict
 
+from app.config import settings
 from app.models.model import UTCBaseModel
 from app.models.score import GameMode
 from app.models.user import Country, Page
@@ -223,7 +224,7 @@ class UserResp(UserBase):
     follower_count: int = 0
     friends: list["RelationshipResp"] | None = None
     scores_best_count: int = 0
-    scores_first_count: int = 0  # TODO
+    scores_first_count: int = 0
     scores_recent_count: int = 0
     scores_pinned_count: int = 0
     beatmap_playcounts_count: int = 0
@@ -261,7 +262,7 @@ class UserResp(UserBase):
         from .favourite_beatmapset import FavouriteBeatmapset
         from .pp_best_score import PPBestScore
         from .relationship import Relationship, RelationshipResp, RelationshipType
-        from .score import Score
+        from .score import Score, get_user_first_score_count
 
         ruleset = ruleset or obj.playmode
 
@@ -409,6 +410,7 @@ class UserResp(UserBase):
                 )
             )
         ).one()
+        u.scores_first_count = await get_user_first_score_count(session, obj.id, ruleset)
         u.beatmap_playcounts_count = (
             await session.exec(
                 select(func.count())
@@ -421,7 +423,6 @@ class UserResp(UserBase):
 
         # 检查会话验证状态
         # 如果邮件验证功能被禁用，则始终设置 session_verified 为 true
-        from app.config import settings
 
         if not settings.enable_email_verification:
             u.session_verified = True

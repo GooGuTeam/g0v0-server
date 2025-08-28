@@ -17,7 +17,7 @@ COPY pyproject.toml uv.lock ./
 COPY packages/ ./packages/
 
 RUN uv sync --frozen --no-dev
-RUN uv pip install git+https://github.com/ppy-sb/rosu-pp-py.git
+RUN uv pip install git+https://github.com/GooGuTeam/gu-pp-py.git
 
 COPY . .
 

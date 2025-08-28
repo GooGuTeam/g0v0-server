@@ -17,6 +17,7 @@ from app.database import (
     User,
 )
 from app.database.achievement import process_achievements
+from app.database.best_score import BestScore
 from app.database.counts import ReplayWatchedCount
 from app.database.daily_challenge import process_daily_challenge_score
 from app.database.events import Event, EventType
@@ -34,7 +35,7 @@ from app.database.score import (
     process_score,
     process_user,
 )
-from app.dependencies.database import Database, get_redis
+from app.dependencies.database import Database, get_redis, with_db
 from app.dependencies.fetcher import get_fetcher
 from app.dependencies.storage import get_storage_service
 from app.dependencies.user import get_client_user, get_current_user
@@ -163,7 +164,8 @@ async def submit_score(
         )
         score = (await db.exec(select(Score).options(joinedload(Score.user)).where(Score.id == score_id))).one()
 
-    resp = await ScoreResp.from_db(db, score)
+    resp: ScoreResp = await ScoreResp.from_db(db, score)
+    score_gamemode = score.gamemode
     total_users = (await db.exec(select(func.count()).select_from(User))).one()
     if resp.rank_global is not None and resp.rank_global <= min(math.ceil(float(total_users) * 0.01), 50):
         rank_event = Event(
@@ -175,7 +177,7 @@ async def submit_score(
         rank_event.event_payload = {
             "scorerank": score.rank.value,
             "rank": resp.rank_global,
-            "mode": resp.beatmap.mode.readable(),  # pyright: ignore[reportOptionalMemberAccess]
+            "mode": score.gamemode.readable(),
             "beatmap": {
                 "title": f"{resp.beatmap.beatmapset.artist} - {resp.beatmap.beatmapset.title} [{resp.beatmap.version}]",  # pyright: ignore[reportOptionalMemberAccess]
                 "url": resp.beatmap.url,  # pyright: ignore[reportOptionalMemberAccess]
@@ -186,13 +188,41 @@ async def submit_score(
             },
         }
         db.add(rank_event)
-        await db.commit()
+    if resp.rank_global is not None and resp.rank_global == 1:
+        displaced_score = (
+            await db.exec(
+                select(BestScore)
+                .where(
+                    BestScore.beatmap_id == score.beatmap_id,
+                    BestScore.gamemode == score.gamemode,
+                )
+                .order_by(col(BestScore.total_score).desc())
+                .limit(1)
+                .offset(1)
+            )
+        ).first()
+        if displaced_score and displaced_score.user_id != resp.user_id:
+            username = (await db.exec(select(User.username).where(User.id == displaced_score.user_id))).one()
 
-    # 成绩提交后刷新用户缓存 - 移至后台任务避免阻塞主流程
-    # 确保score对象已刷新，避免在后台任务中触发延迟加载
-    await db.refresh(score)
-    score_gamemode = score.gamemode
+            rank_lost_event = Event(
+                created_at=utcnow(),
+                type=EventType.RANK_LOST,
+                user_id=displaced_score.user_id,
+            )
+            rank_lost_event.event_payload = {
+                "mode": score.gamemode.readable(),
+                "beatmap": {
+                    "title": score.beatmap.version,
+                    "url": score.beatmap.url,
+                },
+                "user": {
+                    "username": username,
+                    "url": settings.web_url + "users/" + str(displaced_score.user.id),
+                },
+            }
+            db.add(rank_lost_event)
 
+    await db.commit()
     if user_id is not None:
         background_task.add_task(_refresh_user_cache_background, redis, user_id, score_gamemode)
     background_task.add_task(process_user_achievement, resp.id)
@@ -202,17 +232,10 @@ async def submit_score(
 async def _refresh_user_cache_background(redis: Redis, user_id: int, mode: GameMode):
     """后台任务：刷新用户缓存"""
     try:
-        from app.dependencies.database import engine
-
-        from sqlmodel.ext.asyncio.session import AsyncSession
-
         user_cache_service = get_user_cache_service(redis)
         # 创建独立的数据库会话
-        session = AsyncSession(engine)
-        try:
+        async with with_db() as session:
             await user_cache_service.refresh_user_cache_on_score_submit(session, user_id, mode)
-        finally:
-            await session.close()
     except Exception as e:
         logger.error(f"Failed to refresh user cache after score submit: {e}")
 

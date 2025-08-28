@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import math
 import os
 import sys
 
@@ -10,16 +9,13 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from app.calculator import (
     calculate_pp,
     calculate_score_to_level,
-    calculate_weighted_acc,
-    calculate_weighted_pp,
-    clamp,
 )
 from app.config import settings
 from app.const import BANCHOBOT_ID
 from app.database import BestScore, UserStatistics
 from app.database.beatmap import Beatmap
 from app.database.pp_best_score import PPBestScore
-from app.database.score import Score, calculate_playtime, get_user_best_pp
+from app.database.score import Score, calculate_playtime, calculate_user_pp
 from app.dependencies.database import engine, get_redis
 from app.dependencies.fetcher import get_fetcher
 from app.fetcher import Fetcher
@@ -122,6 +118,7 @@ async def _recalculate_pp(
                     pp = await calculate_pp(score, beatmap_raw, session)
                     if pp == 0:
                         return
+                    score.pp = pp
                     if score.beatmap_id not in prev or prev[score.beatmap_id].pp < pp:
                         best_score = PPBestScore(
                             user_id=user_id,
@@ -212,18 +209,7 @@ async def _recalculate_best_score(
 
 async def _recalculate_statistics(statistics: UserStatistics, session: AsyncSession):
     async with SEMAPHORE:
-        pp_sum = 0
-        acc_sum = 0
-        bps = await get_user_best_pp(session, statistics.user_id, statistics.mode)
-        for i, s in enumerate(bps):
-            pp_sum += calculate_weighted_pp(s.pp, i)
-            acc_sum += calculate_weighted_acc(s.acc, i)
-        if len(bps):
-            # https://github.com/ppy/osu-queue-score-statistics/blob/c538ae/osu.Server.Queues.ScoreStatisticsProcessor/Helpers/UserTotalPerformanceAggregateHelper.cs#L41-L45
-            acc_sum *= 100 / (20 * (1 - math.pow(0.95, len(bps))))
-        acc_sum = clamp(acc_sum, 0.0, 100.0)
-        statistics.pp = pp_sum
-        statistics.hit_accuracy = acc_sum
+        statistics.pp, statistics.hit_accuracy = await calculate_user_pp(session, statistics.user_id, statistics.mode)
 
         statistics.play_count = 0
         statistics.total_score = 0

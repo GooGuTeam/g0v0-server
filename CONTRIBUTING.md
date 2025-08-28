@@ -1,5 +1,17 @@
 # 贡献指南
 
+## 克隆项目
+
+```bash
+git clone https://github.com/GooGuTeam/g0v0-server.git
+```
+
+此外，您还需要 clone 一个 spectator-server 到 g0v0-server 的文件夹。
+
+```bash
+git clone https://github.com/GooGuTeam/osu-server-spectator.git spectator-server
+```
+
 ## 开发环境
 
 为了确保一致的开发环境，我们强烈建议使用提供的 Dev Container。这将设置一个容器化的环境，预先安装所有必要的工具和依赖项。
@@ -8,9 +20,33 @@
 2.  在 Visual Studio Code 中安装 [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)。
 3.  在 VS Code 中打开项目。当被提示时，点击“在容器中重新打开”以启动开发容器。
 
+## 配置项目
+
+修改 `.env` 配置（参考 [wiki](https://github.com/GooGuTeam/g0v0-server/wiki/Configuration)），生成并填充 JWT 密钥。
+
+如果在 Dev Container 运行，请修改 `MYSQL_HOST` 为 `mysql`，`REDIS_URL` 为 `redis://redis/0`。
+
+## 启动项目
+
+.devcontainer 文件夹提供了一个启动脚本 `start-dev.sh`，这个脚本会从 `.env` 加载环境变量并同时启动 g0v0-server（端口 `8000`）和 spectator-server（端口 `8006`）。
+
+Dev Container 提供了 NGINX 进行转发，对外访问端口是 `8080`。
+
+如果您的服务器没有配置 HTTPS，可以在启动 osu! 的时候指定环境变量 `OSU_INSECURE_REQUESTS=1` 禁用 SSL 检查，或者应用 [osu!lazer wiki](https://github.com/ppy/osu/wiki/Testing-web-server-full-stack-with-osu!#basics) 提供的 diff。
+
+或者使用下方的命令手动启动：
+
+```bash
+# g0v0-server
+uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+# spectator-server
+cd spectator-server
+dotnet run --project osu.Server.Spectator --urls "http://0.0.0.0:8086"
+```
+
 ## 依赖管理
 
-该项目使用 `uv` 进行快速高效的 Python 包管理。
+使用 `uv` 进行快速高效的 Python 包管理。
 
 要安装依赖项，请在终端中运行以下命令：
 
@@ -31,6 +67,8 @@ pre-commit install
 ```
 
 这将安装 pre-commit 钩子，每次提交时会自动运行。如果任何检查失败，提交将被中止。您需要修复报告的问题并暂存更改，然后再尝试提交。
+
+pre-commit 不提供 pyright 的 hook，您需要手动运行 `pyright` 检查类型错误。
 
 ## 提交信息指南
 

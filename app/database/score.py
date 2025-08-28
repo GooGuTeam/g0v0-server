@@ -12,8 +12,6 @@ from app.calculator import (
     calculate_weighted_pp,
     clamp,
 )
-from app.config import settings
-from app.database.events import Event, EventType
 from app.database.team import TeamMember
 from app.dependencies.database import get_redis
 from app.models.model import (
@@ -484,7 +482,10 @@ async def get_score_position_by_user(
     rownum = (
         func.row_number()
         .over(
-            partition_by=col(BestScore.beatmap_id),
+            partition_by=(
+                col(BestScore.beatmap_id),
+                col(BestScore.gamemode),
+            ),
             order_by=col(BestScore.total_score).desc(),
         )
         .label("row_number")
@@ -511,7 +512,10 @@ async def get_score_position_by_id(
     rownum = (
         func.row_number()
         .over(
-            partition_by=col(BestScore.beatmap_id),
+            partition_by=(
+                col(BestScore.beatmap_id),
+                col(BestScore.gamemode),
+            ),
             order_by=col(BestScore.total_score).desc(),
         )
         .label("row_number")
@@ -566,6 +570,64 @@ async def get_user_best_score_with_mod_in_beatmap(
     ).first()
 
 
+async def get_user_first_scores(
+    session: AsyncSession, user_id: int, mode: GameMode, limit: int = 5, offset: int = 0
+) -> list[BestScore]:
+    rownum = (
+        func.row_number()
+        .over(
+            partition_by=(col(BestScore.beatmap_id), col(BestScore.gamemode)),
+            order_by=col(BestScore.total_score).desc(),
+        )
+        .label("rn")
+    )
+
+    # Step 1: Fetch top score_ids in Python
+    subq = (
+        select(
+            col(BestScore.score_id).label("score_id"),
+            col(BestScore.user_id).label("user_id"),
+            rownum,
+        )
+        .where(col(BestScore.gamemode) == mode)
+        .subquery()
+    )
+
+    top_ids_stmt = select(subq.c.score_id).where(subq.c.rn == 1, subq.c.user_id == user_id).limit(limit).offset(offset)
+
+    top_ids = await session.exec(top_ids_stmt)
+    top_ids = list(top_ids)
+
+    stmt = select(BestScore).where(col(BestScore.score_id).in_(top_ids)).order_by(col(BestScore.total_score).desc())
+
+    result = await session.exec(stmt)
+    return list(result.all())
+
+
+async def get_user_first_score_count(session: AsyncSession, user_id: int, mode: GameMode) -> int:
+    rownum = (
+        func.row_number()
+        .over(
+            partition_by=(col(BestScore.beatmap_id), col(BestScore.gamemode)),
+            order_by=col(BestScore.total_score).desc(),
+        )
+        .label("rn")
+    )
+    subq = (
+        select(
+            col(BestScore.score_id).label("score_id"),
+            col(BestScore.user_id).label("user_id"),
+            rownum,
+        )
+        .where(col(BestScore.gamemode) == mode)
+        .subquery()
+    )
+    count_stmt = select(func.count()).where(subq.c.rn == 1, subq.c.user_id == user_id)
+
+    result = await session.exec(count_stmt)
+    return result.one()
+
+
 async def get_user_best_pp_in_beatmap(
     session: AsyncSession,
     beatmap: int,
@@ -581,6 +643,20 @@ async def get_user_best_pp_in_beatmap(
             )
         )
     ).first()
+
+
+async def calculate_user_pp(session: AsyncSession, user_id: int, mode: GameMode) -> tuple[float, float]:
+    pp_sum = 0
+    acc_sum = 0
+    bps = await get_user_best_pp(session, user_id, mode)
+    for i, s in enumerate(bps):
+        pp_sum += calculate_weighted_pp(s.pp, i)
+        acc_sum += calculate_weighted_acc(s.acc, i)
+    if len(bps):
+        # https://github.com/ppy/osu-queue-score-statistics/blob/c538ae/osu.Server.Queues.ScoreStatisticsProcessor/Helpers/UserTotalPerformanceAggregateHelper.cs#L41-L45
+        acc_sum *= 100 / (20 * (1 - math.pow(0.95, len(bps))))
+    acc_sum = clamp(acc_sum, 0.0, 100.0)
+    return pp_sum, acc_sum
 
 
 async def get_user_best_pp(
@@ -696,50 +772,6 @@ async def process_user(
         statistics.ranked_score += difference
         statistics.level_current = calculate_score_to_level(statistics.total_score)
         statistics.maximum_combo = max(statistics.maximum_combo, score.max_combo)
-        new_score_position = await get_score_position_by_user(session, score.beatmap_id, user, score.gamemode)
-        total_users = await session.exec(select(func.count()).select_from(User))
-        score_range = min(50, math.ceil(float(total_users.one()) * 0.01))
-        if new_score_position <= score_range and new_score_position > 0:
-            # Get the scores that might be displaced
-            displaced_scores_query = (
-                select(BestScore)
-                .where(
-                    BestScore.beatmap_id == score.beatmap_id,
-                    BestScore.gamemode == score.gamemode,
-                    BestScore.user_id != user.id,  # Not the current user
-                )
-                .order_by(col(BestScore.total_score).desc())
-                .limit(score_range)
-            )
-            displaced_scores = (await session.exec(displaced_scores_query)).all()
-
-            # Check if any scores were pushed out of the top positions
-            for i, displaced_score in enumerate(displaced_scores):
-                # Get the position of this displaced score
-                displaced_position = await get_score_position_by_id(
-                    session, score.beatmap_id, displaced_score.score_id, score.gamemode
-                )
-
-                # If this score was previously in top positions but now pushed out
-                if i < score_range and displaced_position > score_range and displaced_position is not None:
-                    # Create rank lost event for the displaced user
-                    rank_lost_event = Event(
-                        created_at=utcnow(),
-                        type=EventType.RANK_LOST,
-                        user_id=displaced_score.user_id,
-                    )
-                    rank_lost_event.event_payload = {
-                        "mode": str(score.gamemode),
-                        "beatmap": {
-                            "title": score.beatmap.version,
-                            "url": score.beatmap.url,
-                        },
-                        "user": {
-                            "username": user.username,
-                            "url": settings.web_url + "users/" + str(user.id),
-                        },
-                    }
-                    session.add(rank_lost_event)
     if score.passed and has_leaderboard:
         # 情况1: 没有最佳分数记录，直接添加
         # 情况2: 有最佳分数记录但没有该mod组合的记录，添加新记录
@@ -791,18 +823,9 @@ async def process_user(
 
     if score.passed and ranked:
         with session.no_autoflush:
-            best_pp_scores = await get_user_best_pp(session, user.id, score.gamemode)
-            pp_sum = 0.0
-            acc_sum = 0.0
-            for i, bp in enumerate(best_pp_scores):
-                pp_sum += calculate_weighted_pp(bp.pp, i)
-                acc_sum += calculate_weighted_acc(bp.acc, i)
-            if len(best_pp_scores):
-                # https://github.com/ppy/osu-queue-score-statistics/blob/c538ae/osu.Server.Queues.ScoreStatisticsProcessor/Helpers/UserTotalPerformanceAggregateHelper.cs#L41-L45
-                acc_sum *= 100 / (20 * (1 - math.pow(0.95, len(best_pp_scores))))
-            acc_sum = clamp(acc_sum, 0.0, 100.0)
-            statistics.pp = pp_sum
-            statistics.hit_accuracy = acc_sum
+            statistics.pp, statistics.hit_accuracy = await calculate_user_pp(
+                session, statistics.user_id, score.gamemode
+            )
     if add_to_db:
         session.add(mouthly_playcount)
     with session.no_autoflush:

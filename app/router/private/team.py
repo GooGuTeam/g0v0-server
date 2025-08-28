@@ -102,12 +102,16 @@ async def update_team(
     if team.leader_id != user_id:
         raise HTTPException(status_code=403, detail="You are not the team leader")
 
-    is_existed = (await session.exec(select(exists()).where(Team.name == name))).first()
-    if is_existed:
-        raise HTTPException(status_code=409, detail="Name already exists")
-    is_existed = (await session.exec(select(exists()).where(Team.short_name == short_name))).first()
-    if is_existed:
-        raise HTTPException(status_code=409, detail="Short name already exists")
+    if name is not None:
+        if (await session.exec(select(exists()).where(Team.name == name))).first():
+            raise HTTPException(status_code=409, detail="Name already exists")
+        else:
+            team.name = name
+    if short_name is not None:
+        if (await session.exec(select(exists()).where(Team.short_name == short_name))).first():
+            raise HTTPException(status_code=409, detail="Short name already exists")
+        else:
+            team.short_name = short_name
 
     if flag:
         check_image(flag, 2 * 1024 * 1024, 240, 120)

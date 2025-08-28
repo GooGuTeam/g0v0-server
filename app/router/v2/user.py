@@ -15,7 +15,7 @@ from app.database import (
 from app.database.events import Event
 from app.database.lazer_user import SEARCH_INCLUDED
 from app.database.pp_best_score import PPBestScore
-from app.database.score import Score, ScoreResp
+from app.database.score import Score, ScoreResp, get_user_first_scores
 from app.dependencies.database import Database, get_redis
 from app.dependencies.user import get_current_user
 from app.log import logger
@@ -109,20 +109,26 @@ async def get_users(
         return processed_response
 
 
-@router.get("/users/{user}/recent_activity", tags=["用户"], response_model=list[Event])
+@router.get(
+    "/users/{user_id}/recent_activity",
+    tags=["用户"],
+    response_model=list[Event],
+    name="获取用户最近活动",
+    description="获取用户在最近 30 天内的活动日志。",
+)
 async def get_user_events(
     session: Database,
-    user: int,
-    limit: int | None = Query(None),
-    offset: int | None = Query(None),  # TODO: 搞清楚并且添加这个奇怪的分页偏移
+    user_id: int = Path(description="用户 ID"),
+    limit: int | None = Query(None, description="限制返回的活动数量"),
+    offset: int | None = Query(None, description="活动日志的偏移量"),
 ):
-    db_user = await session.get(User, user)
+    db_user = await session.get(User, user_id)
     if db_user is None or db_user.id == BANCHOBOT_ID:
         raise HTTPException(404, "User Not found")
     events = (
         await session.exec(
             select(Event)
-            .where(Event.user_id == db_user.id)
+            .where(Event.user_id == db_user.id, Event.created_at >= utcnow() - timedelta(days=30))
             .order_by(col(Event.created_at).desc())
             .limit(limit)
             .offset(offset)
@@ -354,14 +360,17 @@ async def get_user_scores(
         where_clause &= Score.ended_at > utcnow() - timedelta(hours=24)
         order_by = col(Score.ended_at).desc()
     elif type == "firsts":
-        # TODO
         where_clause &= false()
 
-    scores = (
-        await session.exec(select(Score).where(where_clause).order_by(order_by).limit(limit).offset(offset))
-    ).all()
-    if not scores:
-        return []
+    if type != "firsts":
+        scores = (
+            await session.exec(select(Score).where(where_clause).order_by(order_by).limit(limit).offset(offset))
+        ).all()
+        if not scores:
+            return []
+    else:
+        best_scores = await get_user_first_scores(session, db_user.id, gamemode, limit)
+        scores = [best_score.score for best_score in best_scores]
 
     score_responses = [
         await ScoreResp.from_db(
