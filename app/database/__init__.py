@@ -9,6 +9,7 @@ from .beatmapset import (
     Beatmapset,
     BeatmapsetResp,
 )
+from .beatmapset_ratings import BeatmapRating
 from .best_score import BestScore
 from .chat import (
     ChannelType,
@@ -71,6 +72,7 @@ __all__ = [
     "Beatmap",
     "BeatmapPlaycounts",
     "BeatmapPlaycountsResp",
+    "BeatmapRating",
     "BeatmapResp",
     "Beatmapset",
     "BeatmapsetResp",

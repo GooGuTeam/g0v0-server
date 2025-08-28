@@ -15,7 +15,7 @@ from fastapi import Body, HTTPException, Security
 from sqlmodel import col, select
 
 
-@router.get("/beatmapsets/{beatmapset_id}/can_rate", response_model=bool)
+@router.get("/beatmapsets/{beatmapset_id}/can_rate", name="判断用户能否为谱面集打分", response_model=bool)
 async def can_rate_beatmapset(
     beatmapset_id: int,
     session: Database,
@@ -55,7 +55,7 @@ async def can_rate_beatmapset(
     return True
 
 
-@router.post("/beatmapsets/{beatmapset_id}/ratings", status_code=201)
+@router.post("/beatmapsets/{beatmapset_id}/ratings", name="上传对谱面集的打分", status_code=201)
 async def rate_beatmaps(
     beatmapset_id: int,
     session: Database,
@@ -77,11 +77,11 @@ async def rate_beatmaps(
     - 成功: None
     """
     user_id = current_user.id
-    new_rating: BeatmapRating = BeatmapRating(beatmapset_id=beatmapset_id, user_id=user_id, rating=rating)
-    session.add(new_rating)
-    current_beatmapset = (await session.exec(select(Beatmapset).where(Beatmapset.id == beatmapset_id))).first()
+    current_beatmapset = await session.get(Beatmapset, beatmapset_id)
     if current_beatmapset is None:
         raise HTTPException(404, "Beatmapset Not Found")
+    new_rating: BeatmapRating = BeatmapRating(beatmapset_id=beatmapset_id, user_id=user_id, rating=rating)
+    session.add(new_rating)
     await session.commit()
     await session.refresh(current_beatmapset)
     return None
