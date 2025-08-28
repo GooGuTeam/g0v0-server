@@ -78,3 +78,8 @@ class LocalStorageService(StorageService):
 
     async def get_file_url(self, file_path: str) -> str:
         return f"{settings.server_url}file/{file_path.lstrip('/')}"
+
+    def get_file_name_by_url(self, url: str) -> str | None:
+        if not url.startswith(str(settings.server_url)):
+            return None
+        return url[len(settings.server_url) + len("file/") :]

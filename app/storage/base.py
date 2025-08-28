@@ -30,5 +30,9 @@ class StorageService(abc.ABC):
     async def get_file_url(self, file_path: str) -> str:
         raise NotImplementedError
 
+    @abc.abstractmethod
+    def get_file_name_by_url(self, url: str) -> str | None:
+        raise NotImplementedError
+
     async def close(self) -> None:
         pass

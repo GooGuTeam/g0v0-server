@@ -40,6 +40,11 @@ async def upload_avatar(
     # check file
     check_image(content, 5 * 1024 * 1024, 256, 256)
 
+    if url := current_user.avatar_url:
+        path = storage.get_file_name_by_url(url)
+        if path:
+            await storage.delete_file(path)
+
     filehash = hashlib.sha256(content).hexdigest()
     storage_path = f"avatars/{current_user.id}_{filehash}.png"
     if not await storage.is_exists(storage_path):

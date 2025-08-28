@@ -115,6 +115,11 @@ async def update_team(
 
     if flag:
         check_image(flag, 2 * 1024 * 1024, 240, 120)
+
+        if old_flag := team.flag_url:
+            path = storage.get_file_name_by_url(old_flag)
+            if path:
+                await storage.delete_file(path)
         filehash = hashlib.sha256(flag).hexdigest()
         storage_path = f"team_flag/{team.id}_{filehash}.png"
         if not await storage.is_exists(storage_path):
@@ -122,6 +127,11 @@ async def update_team(
         team.flag_url = await storage.get_file_url(storage_path)
     if cover:
         check_image(cover, 10 * 1024 * 1024, 3000, 2000)
+
+        if old_cover := team.cover_url:
+            path = storage.get_file_name_by_url(old_cover)
+            if path:
+                await storage.delete_file(path)
         filehash = hashlib.sha256(cover).hexdigest()
         storage_path = f"team_cover/{team.id}_{filehash}.png"
         if not await storage.is_exists(storage_path):

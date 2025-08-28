@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from urllib.parse import urlparse
+
 from .base import StorageService
 
 import aioboto3
@@ -101,3 +103,23 @@ class AWSS3StorageService(StorageService):
                 return url
             except ClientError as e:
                 raise RuntimeError(f"Failed to generate file URL: {e}")
+
+    def get_file_name_by_url(self, url: str) -> str | None:
+        parsed = urlparse(url)
+        path = parsed.path.lstrip("/")
+
+        # 1. 如果是 public_url_base 拼接出来的
+        if self.public_url_base and url.startswith(self.public_url_base.rstrip("/")):
+            return path
+
+        # 2. 如果是 S3 path-style: s3.amazonaws.com/<bucket>/<key>
+        if parsed.netloc == "s3.amazonaws.com":
+            parts = path.split("/", 1)
+            return parts[1] if len(parts) > 1 else None
+
+        # 3. 如果是 virtual-hosted-style: <bucket>.s3.<region>.amazonaws.com/<key>
+        if ".s3." in parsed.netloc or parsed.netloc.endswith(".s3.amazonaws.com"):
+            return path
+
+        # 4. 直接返回 path
+        return path or None

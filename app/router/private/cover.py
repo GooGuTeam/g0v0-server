@@ -40,6 +40,11 @@ async def upload_cover(
     # check file
     check_image(content, 10 * 1024 * 1024, 3000, 2000)
 
+    if url := current_user.cover["url"]:
+        path = storage.get_file_name_by_url(url)
+        if path:
+            await storage.delete_file(path)
+
     filehash = hashlib.sha256(content).hexdigest()
     storage_path = f"cover/{current_user.id}_{filehash}.png"
     if not await storage.is_exists(storage_path):
