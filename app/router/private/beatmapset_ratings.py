@@ -6,9 +6,7 @@ from app.database.beatmapset_ratings import BeatmapRating
 from app.database.lazer_user import User
 from app.database.score import Score
 from app.dependencies.database import Database
-from app.dependencies.fetcher import get_fetcher
 from app.dependencies.user import get_client_user
-from app.fetcher import Fetcher
 
 from .router import router
 
@@ -21,7 +19,6 @@ async def can_rate_beatmapset(
     beatmapset_id: int,
     session: Database,
     current_user: User = Security(get_client_user),
-    fetcher: Fetcher = Security(get_fetcher),
 ):
     """检查用户是否可以评价谱面集
 
@@ -72,6 +69,9 @@ async def rate_beatmaps(
     current_beatmapset = await session.exec(select(exists()).where(Beatmapset.id == beatmapset_id))
     if not current_beatmapset:
         raise HTTPException(404, "Beatmapset Not Found")
+    can_rating = await can_rate_beatmapset(beatmapset_id, session, current_user)
+    if not can_rating:
+        raise HTTPException(403, "User Cannot Rate This Beatmapset")
     new_rating: BeatmapRating = BeatmapRating(beatmapset_id=beatmapset_id, user_id=user_id, rating=rating)
     session.add(new_rating)
     await session.commit()
