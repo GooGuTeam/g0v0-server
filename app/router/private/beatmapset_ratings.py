@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.database.beatmap import Beatmap
 from app.database.beatmapset import Beatmapset
 from app.database.beatmapset_ratings import BeatmapRating
 from app.database.lazer_user import User
@@ -12,7 +13,7 @@ from app.fetcher import Fetcher
 from .router import router
 
 from fastapi import Body, HTTPException, Security
-from sqlmodel import col, select
+from sqlmodel import col, exists, select
 
 
 @router.get("/beatmapsets/{beatmapset_id}/can_rate", name="判断用户能否为谱面集打分", response_model=bool)
@@ -35,24 +36,15 @@ async def can_rate_beatmapset(
     - bool: 用户是否可以评价谱面集
     """
     user_id = current_user.id
-    beatmapset = await session.get(Beatmapset, beatmapset_id)
     prev_ratings = (await session.exec(select(BeatmapRating).where(BeatmapRating.user_id == user_id))).first()
-    if prev_ratings is not None:  # 打过分的不能再打
+    if prev_ratings is not None:
         return False
-    if beatmapset is None:
-        raise HTTPException(404, "Beatmapset not found")
-    for beatmap in beatmapset.beatmaps:
-        all_beatmap_scores = (
-            await session.exec(
-                select(Score)
-                .where(Score.beatmap_id == beatmap.id)
-                .where(Score.user_id == user_id)
-                .where(col(Score.passed).is_(True))
-            )
-        ).all()
-        if len(all_beatmap_scores) <= 0:  # 没有passed成绩
-            return False
-    return True
+    query = select(exists()).where(
+        Score.user_id == user_id,
+        col(Score.beatmap).has(col(Beatmap.beatmapset_id) == beatmapset_id),
+        col(Score.passed).is_(True),
+    )
+    return (await session.exec(query)).first() or False
 
 
 @router.post("/beatmapsets/{beatmapset_id}/ratings", name="上传对谱面集的打分", status_code=201)
@@ -77,11 +69,9 @@ async def rate_beatmaps(
     - 成功: None
     """
     user_id = current_user.id
-    current_beatmapset = await session.get(Beatmapset, beatmapset_id)
-    if current_beatmapset is None:
+    current_beatmapset = await session.exec(select(exists()).where(Beatmapset.id == beatmapset_id))
+    if not current_beatmapset:
         raise HTTPException(404, "Beatmapset Not Found")
     new_rating: BeatmapRating = BeatmapRating(beatmapset_id=beatmapset_id, user_id=user_id, rating=rating)
     session.add(new_rating)
     await session.commit()
-    await session.refresh(current_beatmapset)
-    return None
