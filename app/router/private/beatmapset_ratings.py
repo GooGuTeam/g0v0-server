@@ -48,7 +48,7 @@ async def can_rate_beatmapset(
 async def rate_beatmaps(
     beatmapset_id: int,
     session: Database,
-    rating: int = Body(...),
+    rating: int = Body(..., ge=0, le=10),
     current_user: User = Security(get_client_user),
 ):
     """为谱面集评分
@@ -66,7 +66,7 @@ async def rate_beatmaps(
     - 成功: None
     """
     user_id = current_user.id
-    current_beatmapset = await session.exec(select(exists()).where(Beatmapset.id == beatmapset_id))
+    current_beatmapset = (await session.exec(select(exists()).where(Beatmapset.id == beatmapset_id))).first()
     if not current_beatmapset:
         raise HTTPException(404, "Beatmapset Not Found")
     can_rating = await can_rate_beatmapset(beatmapset_id, session, current_user)
