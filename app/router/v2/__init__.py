@@ -10,6 +10,7 @@ from . import (  # noqa: F401
     room,
     score,
     session_verify,
+    tags,
     user,
 )
 from .router import router as api_v2_router

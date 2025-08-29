@@ -14,6 +14,7 @@ from app.models.score import GameMode
 from .beatmap_playcounts import BeatmapPlaycounts
 from .beatmapset import Beatmapset, BeatmapsetResp
 
+from pydantic import BaseModel
 from redis.asyncio import Redis
 from sqlalchemy import Column, DateTime
 from sqlmodel import VARCHAR, Field, Relationship, SQLModel, col, exists, func, select
@@ -131,6 +132,11 @@ class Beatmap(BeatmapBase, table=True):
         return beatmap
 
 
+class APIBeatmapTag(BaseModel):
+    tag_id: int
+    count: int
+
+
 class BeatmapResp(BeatmapBase):
     id: int
     beatmapset_id: int
@@ -144,6 +150,8 @@ class BeatmapResp(BeatmapBase):
     playcount: int = 0
     passcount: int = 0
     failtimes: FailTimeResp | None = None
+    top_tag_ids: list[APIBeatmapTag]
+    current_user_tag_ids = list[int]
 
     @classmethod
     async def from_db(

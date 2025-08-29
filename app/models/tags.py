@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 
 from app.log import logger
 from app.path import STATIC_DIR
@@ -22,7 +21,7 @@ ALL_TAGS: dict[int, BeatmapTags] = {}
 def load_tags() -> None:
     if len(ALL_TAGS) > 0:
         return
-    if not os.path.exists(STATIC_DIR / "beatmap_tags.json"):
+    if not (STATIC_DIR / "beatmap_tags.json").exists():
         logger.warning("beatmap tags description file does not exist, using no tags")
         return
     tags_list = json.loads((STATIC_DIR / "beatmap_tags.json").read_text())
