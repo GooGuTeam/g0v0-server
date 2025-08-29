@@ -30,10 +30,10 @@ from app.service.calculate_all_user_rank import calculate_user_rank
 from app.service.create_banchobot import create_banchobot
 from app.service.daily_challenge import daily_challenge_job, process_daily_challenge_top
 from app.service.email_queue import start_email_processor, stop_email_processor
+from app.service.extra_statistics import create_extra_statistics
 from app.service.geoip_scheduler import schedule_geoip_updates
 from app.service.init_geoip import init_geoip
 from app.service.load_achievements import load_achievements
-from app.service.osu_rx_statistics import create_rx_statistics
 from app.service.redis_message_system import redis_message_system
 from app.utils import bg_tasks, utcnow
 
@@ -51,7 +51,7 @@ async def lifespan(app: FastAPI):
     await FastAPILimiter.init(get_redis())
     await get_fetcher()  # 初始化 fetcher
     await init_geoip()  # 初始化 GeoIP 数据库
-    await create_rx_statistics()
+    await create_extra_statistics()
     await calculate_user_rank(True)
     start_scheduler()
     schedule_geoip_updates()  # 调度 GeoIP 定时更新任务

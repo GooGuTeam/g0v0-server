@@ -149,6 +149,7 @@ class Settings(BaseSettings):
     enable_all_beatmap_leaderboard: bool = False
     enable_all_beatmap_pp: bool = False
     seasonal_backgrounds: Annotated[list[str], BeforeValidator(_parse_list)] = []
+    enable_custom_rulesets: bool = False
 
     # 谱面缓存设置
     enable_beatmap_preload: bool = True

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from copy import deepcopy
 import json
-from typing import Literal, NotRequired, TypedDict
+from typing import NotRequired, TypedDict
 
 from app.config import settings as app_settings
+from app.log import logger
 from app.path import STATIC_DIR
 
 
@@ -77,15 +77,57 @@ class Mod(TypedDict):
     AlwaysValidForSubmission: bool
 
 
-API_MODS: dict[Literal[0, 1, 2, 3], dict[str, Mod]] = {}
+API_MODS: dict[int, dict[str, Mod]] = {}
+NO_CHECK = "DO_NO_CHECK"
+RANKED_MODS: dict[int, dict[str, dict]] = {}
 
-mods_file = STATIC_DIR / "mods.json"
-raw_mods = json.loads(mods_file.read_text(encoding="utf-8"))
-for ruleset in raw_mods:
-    ruleset_mods = {}
-    for mod in ruleset["Mods"]:
-        ruleset_mods[mod["Acronym"]] = mod
-    API_MODS[ruleset["RulesetID"]] = ruleset_mods
+
+def load_mods() -> None:
+    mods_file = STATIC_DIR / "mods.json"
+    raw_mods = json.loads(mods_file.read_text(encoding="utf-8"))
+    for ruleset in raw_mods:
+        ruleset_mods = {}
+        for mod in ruleset["Mods"]:
+            ruleset_mods[mod["Acronym"]] = mod
+        API_MODS[ruleset["RulesetID"]] = ruleset_mods
+        logger.success(f"Loaded {len(ruleset_mods)} mods for ruleset {ruleset['RulesetID']}")
+
+
+def load_extra_rulesets_mods():
+    mods_dir = STATIC_DIR / "extra_rulesets"
+    for ruleset_file in mods_dir.iterdir():
+        if not ruleset_file.is_file():
+            continue
+        ruleset_mods = {}
+        raw_mods = json.loads(ruleset_file.read_text(encoding="utf-8"))
+        for mod in raw_mods["Mods"]:
+            ruleset_mods[mod["Acronym"]] = mod
+        API_MODS[int(ruleset_file.stem)] = ruleset_mods
+        logger.success(f"Loaded {len(ruleset_mods)} mods for custom ruleset {ruleset_file.stem}")
+
+
+def load_ranked_mods():
+    mods_file = STATIC_DIR / "ranked_mods.json"
+    raw_mods = json.loads(mods_file.read_text(encoding="utf-8"))
+    for ruleset_id, mods in raw_mods.items():
+        RANKED_MODS[int(ruleset_id)] = mods
+        logger.success(f"Loaded {len(mods)} ranked mods for rulesets {ruleset_id}")
+
+
+def load_extra_ranked_mods():
+    mods_dir = STATIC_DIR / "extra_rulesets" / "ranked"
+    for mods_file in mods_dir.iterdir():
+        raw_mods = json.loads(mods_file.read_text(encoding="utf-8"))
+        ruleset_id = mods_file.stem
+        mods = raw_mods[ruleset_id]
+        RANKED_MODS[int(ruleset_id)] = mods
+        logger.success(f"Loaded {len(mods)} ranked mods for custom rulesets {ruleset_id}")
+
+
+load_mods()
+load_extra_rulesets_mods()
+load_ranked_mods()
+load_extra_ranked_mods()
 
 
 def int_to_mods(mods: int) -> list[APIMod]:
@@ -105,52 +147,6 @@ def mods_to_int(mods: list[APIMod]) -> int:
     for mod in mods:
         sum_ |= API_MOD_TO_LEGACY.get(mod["acronym"], 0)
     return sum_
-
-
-NO_CHECK = "DO_NO_CHECK"
-
-# FIXME: 这里为空表示了两种情况：mod 没有配置项；任何时候都可以获得 pp
-# 如果是后者，则 mod 更新的时候可能会误判。
-COMMON_CONFIG: dict[str, dict] = {
-    "EZ": {"retries": 2},
-    "NF": {},
-    "HT": {"speed_change": 0.75, "adjust_pitch": NO_CHECK},
-    "DC": {"speed_change": 0.75},
-    "HR": {},
-    "SD": {},
-    "PF": {},
-    "HD": {},
-    "DT": {"speed_change": 1.5, "adjust_pitch": NO_CHECK},
-    "NC": {"speed_change": 1.5},
-    "FL": {"size_multiplier": 1.0, "combo_based_size": True},
-    "AC": {},
-    "MU": {},
-    "TD": {},
-}
-
-RANKED_MODS: dict[int, dict[str, dict]] = {
-    0: deepcopy(COMMON_CONFIG),
-    1: deepcopy(COMMON_CONFIG),
-    2: deepcopy(COMMON_CONFIG),
-    3: deepcopy(COMMON_CONFIG),
-}
-# osu
-RANKED_MODS[0]["HD"]["only_fade_approach_circles"] = False
-RANKED_MODS[0]["FL"]["follow_delay"] = 1.0
-RANKED_MODS[0]["BL"] = {}
-RANKED_MODS[0]["NS"] = {}
-RANKED_MODS[0]["SO"] = {}
-RANKED_MODS[0]["TC"] = {}
-# taiko
-del RANKED_MODS[1]["EZ"]["retries"]
-# catch
-RANKED_MODS[2]["NS"] = {}
-# mania
-del RANKED_MODS[3]["HR"]
-RANKED_MODS[3]["FL"]["combo_based_size"] = False
-RANKED_MODS[3]["MR"] = {}
-for i in range(4, 10):
-    RANKED_MODS[3][f"{i}K"] = {}
 
 
 def mods_can_get_pp_vanilla(ruleset_id: int, mods: list[APIMod]) -> bool:
@@ -202,6 +198,12 @@ ENUM_TO_STR = {
     1: {"AC": {"accuracy_judge_mode"}},
     2: {"AC": {"accuracy_judge_mode"}},
     3: {"AC": {"accuracy_judge_mode"}},
+    10: {
+        "AC": {"accuracy_judge_mode"},
+        "C": {"live_setting"},
+        "HR": {"judgement_mode", "minimum_valid_result"},
+        "BR": {"direction"},
+    },
 }
 
 
