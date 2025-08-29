@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from app.calculator import calculate_beatmap_attribute
 from app.config import settings
+from app.database.beatmap_tags import BeatmapTagVote
 from app.database.failtime import FailTime, FailTimeResp
 from app.models.beatmap import BeatmapAttributes, BeatmapRankStatus
 from app.models.mods import APIMod
@@ -191,6 +192,27 @@ class BeatmapResp(BeatmapBase):
                     )
                 )
             ).one()
+
+            all_votes = (
+                await session.exec(
+                    select(BeatmapTagVote.tag_id, func.count().label("vote_count"))
+                    .where(BeatmapTagVote.beatmap_id == beatmap.id)
+                    .group_by(col(BeatmapTagVote.tag_id))
+                )
+            ).all()
+            top_tag_ids: list[dict[str, int]] = []
+            for id, votes in all_votes:
+                top_tag_ids.append({"tag_id": id, "count": votes})
+            beatmap_["top_tag_ids"] = top_tag_ids
+
+            if user is not None:
+                beatmap_["current_user_tag_ids"] = await session.exec(
+                    select(BeatmapTagVote)
+                    .where(BeatmapTagVote.beatmap_id == beatmap.id)
+                    .where(BeatmapTagVote.user_id == user.id)
+                )
+            else:
+                beatmap_["current_user_tag_ids"] = []
         return cls.model_validate(beatmap_)
 
 
