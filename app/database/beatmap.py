@@ -206,11 +206,13 @@ class BeatmapResp(BeatmapBase):
             beatmap_["top_tag_ids"] = top_tag_ids
 
             if user is not None:
-                beatmap_["current_user_tag_ids"] = await session.exec(
-                    select(BeatmapTagVote)
-                    .where(BeatmapTagVote.beatmap_id == beatmap.id)
-                    .where(BeatmapTagVote.user_id == user.id)
-                )
+                beatmap_["current_user_tag_ids"] = (
+                    await session.exec(
+                        select(BeatmapTagVote.tag_id)
+                        .where(BeatmapTagVote.beatmap_id == beatmap.id)
+                        .where(BeatmapTagVote.user_id == user.id)
+                    )
+                ).all()
             else:
                 beatmap_["current_user_tag_ids"] = []
         return cls.model_validate(beatmap_)

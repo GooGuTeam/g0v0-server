@@ -49,8 +49,7 @@ async def vote_beatmap_tags(
     - **tag_id**: 标签ID
     """
     try:
-        tag = get_tag_by_id(tag_id)
-        assert tag is not None
+        get_tag_by_id(tag_id)
         beatmap = await session.get(Beatmap, beatmap_id)
         if beatmap is None:
             raise HTTPException(404, "beatmap not found")
@@ -67,7 +66,7 @@ async def vote_beatmap_tags(
             session.add(new_vote)
         await session.commit()
     except ValueError as e:
-        raise HTTPException(400, e)
+        raise HTTPException(400, str(e))
 
 
 @router.delete(
@@ -104,4 +103,4 @@ async def devote_beatmap_tags(
             await session.delete(previous_votes)
         await session.commit()
     except ValueError as e:
-        raise HTTPException(400, e)
+        raise HTTPException(400, str(e))
