@@ -150,8 +150,8 @@ class BeatmapResp(BeatmapBase):
     playcount: int = 0
     passcount: int = 0
     failtimes: FailTimeResp | None = None
-    top_tag_ids: list[APIBeatmapTag]
-    current_user_tag_ids = list[int]
+    top_tag_ids: list[APIBeatmapTag] | None = None
+    current_user_tag_ids: list[int] | None = None
 
     @classmethod
     async def from_db(

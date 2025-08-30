@@ -13,7 +13,7 @@ from .router import router
 
 from fastapi import Depends, HTTPException, Path
 from pydantic import BaseModel
-from sqlmodel import select
+from sqlmodel import col, exists, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 
@@ -35,15 +35,14 @@ async def router_get_all_tags():
 async def check_user_can_vote(user: User, beatmap_id: int, session: AsyncSession):
     user_beatmap_score = (
         await session.exec(
-            select(Score)
+            select(exists())
             .where(Score.beatmap_id == beatmap_id)
             .where(Score.user_id == user.id)
-            .where(Score.rank < Rank.C)
+            .where(col(Score.rank).not_in([Rank.F, Rank.D]))
+            .where(col(Score.beatmap).has(col(Beatmap.mode) == Score.gamemode))
         )
     ).first()
     if user_beatmap_score is None:
-        return False
-    elif user_beatmap_score.gamemode != user_beatmap_score.beatmap.mode:
         return False
     return True
 
@@ -63,8 +62,8 @@ async def vote_beatmap_tags(
 ):
     try:
         get_tag_by_id(tag_id)
-        beatmap = await session.get(Beatmap, beatmap_id)
-        if beatmap is None:
+        beatmap = (await session.exec(select(exists()).where(Beatmap.id == beatmap_id))).first()
+        if beatmap is None or (not beatmap):
             raise HTTPException(404, "beatmap not found")
         previous_votes = (
             await session.exec(
