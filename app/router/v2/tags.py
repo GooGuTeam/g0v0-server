@@ -93,7 +93,7 @@ async def devote_beatmap_tags(
     beatmap_id: int = Path(..., description="谱面 ID"),
     tag_id: int = Path(..., description="标签 ID"),
     session: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_client_user),
 ):
     """
     取消对谱面指定标签的投票。
