@@ -5,7 +5,7 @@ from app.database.beatmap_tags import BeatmapTagVote
 from app.database.lazer_user import User
 from app.database.score import Score
 from app.dependencies.database import get_db
-from app.dependencies.user import get_current_user
+from app.dependencies.user import get_client_user, get_current_user
 from app.models.score import Rank
 from app.models.tags import BeatmapTags, get_all_tags, get_tag_by_id
 
@@ -50,15 +50,15 @@ async def check_user_can_vote(user: User, beatmap_id: int, session: AsyncSession
 @router.put(
     "/beatmaps/{beatmap_id}/tags/{tag_id}",
     tags=["用户标签"],
-    status_code=201,
+    status_code=204,
     name="为谱面投票标签",
     description="为指定谱面添加标签投票。",
 )
 async def vote_beatmap_tags(
-    beatmap_id: int = Path(..., description="谱面id"),
-    tag_id: int = Path(..., description="标签id"),
+    beatmap_id: int = Path(..., description="谱面 ID"),
+    tag_id: int = Path(..., description="标签 ID"),
     session: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_client_user),
 ):
     try:
         get_tag_by_id(tag_id)
@@ -90,8 +90,8 @@ async def vote_beatmap_tags(
     description="取消对指定谱面标签的投票。",
 )
 async def devote_beatmap_tags(
-    beatmap_id: int = Path(..., description="谱面id"),
-    tag_id: int = Path(..., description="标签id"),
+    beatmap_id: int = Path(..., description="谱面 ID"),
+    tag_id: int = Path(..., description="标签 ID"),
     session: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -118,5 +118,5 @@ async def devote_beatmap_tags(
         if previous_votes is not None:
             await session.delete(previous_votes)
         await session.commit()
-    except ValueError as e:
-        raise HTTPException(400, str(e))
+    except ValueError:
+        raise HTTPException(400, "Tag is not found")
