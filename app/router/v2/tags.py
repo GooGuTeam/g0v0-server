@@ -5,7 +5,7 @@ from app.database.beatmap_tags import BeatmapTagVote
 from app.database.lazer_user import User
 from app.database.score import Score
 from app.dependencies.database import get_db
-from app.dependencies.user import get_client_user, get_current_user
+from app.dependencies.user import get_client_user
 from app.models.score import Rank
 from app.models.tags import BeatmapTags, get_all_tags, get_tag_by_id
 
