@@ -401,11 +401,14 @@ async def create_solo_score(
     beatmap_id: int = Path(description="谱面 ID"),
     version_hash: str = Form("", description="游戏版本哈希"),
     beatmap_hash: str = Form(description="谱面文件哈希"),
-    ruleset_id: int = Form(..., ge=0, le=3, description="ruleset 数字 ID (0-3)"),
+    ruleset_id: int = Form(..., ge=0, description="ruleset 数字 ID"),
     current_user: User = Security(get_client_user),
 ):
     # 立即获取用户ID，避免懒加载问题
     user_id = current_user.id
+
+    if ruleset_id >= 10 and not settings.enable_custom_rulesets:
+        raise HTTPException(status_code=403, detail="Custom rulesets are not enabled")
 
     background_task.add_task(_preload_beatmap_for_pp_calculation, beatmap_id)
     async with db:
@@ -454,12 +457,14 @@ async def create_playlist_score(
     playlist_id: int,
     beatmap_id: int = Form(description="谱面 ID"),
     beatmap_hash: str = Form(description="游戏版本哈希"),
-    ruleset_id: int = Form(..., ge=0, le=3, description="ruleset 数字 ID (0-3)"),
+    ruleset_id: int = Form(..., ge=0, description="ruleset 数字 ID (0-3)"),
     version_hash: str = Form("", description="谱面版本哈希"),
     current_user: User = Security(get_client_user),
 ):
     # 立即获取用户ID，避免懒加载问题
     user_id = current_user.id
+    if ruleset_id >= 10 and not settings.enable_custom_rulesets:
+        raise HTTPException(status_code=403, detail="Custom rulesets are not enabled")
 
     room = await session.get(Room, room_id)
     if not room:

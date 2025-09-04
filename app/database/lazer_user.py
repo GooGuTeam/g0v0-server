@@ -319,14 +319,14 @@ class UserResp(UserBase):
                 u.daily_challenge_user_stats = DailyChallengeStatsResp.from_db(daily_challenge_stats)
 
         if "statistics" in include:
-            current_stattistics = None
+            current_statistics = None
             for i in await obj.awaitable_attrs.statistics:
                 if i.mode == ruleset:
-                    current_stattistics = i
+                    current_statistics = i
                     break
             u.statistics = (
-                await UserStatisticsResp.from_db(current_stattistics, session, obj.country_code)
-                if current_stattistics
+                await UserStatisticsResp.from_db(current_statistics, session, obj.country_code)
+                if current_statistics
                 else None
             )
 
@@ -440,7 +440,6 @@ class UserResp(UserBase):
                 )
             ).first()
             u.session_verified = unverified_session is None
-
         return u
 
 

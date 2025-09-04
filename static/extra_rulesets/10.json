@@ -1,0 +1,566 @@
+{
+  "Name": "Sentakki",
+  "RulesetID": 10,
+  "Mods": [
+    {
+      "Acronym": "AT",
+      "Name": "Auto Touch",
+      "Description": "Focus on the laned notes.\nTouch notes and Slide bodies will be automatically completed.",
+      "Type": "Automation",
+      "Settings": [],
+      "IncompatibleMods": [],
+      "RequiresConfiguration": false,
+      "UserPlayable": true,
+      "ValidForMultiplayer": false,
+      "ValidForFreestyleAsRequiredMod": false,
+      "ValidForMultiplayerAsFreeMod": false,
+      "AlwaysValidForSubmission": false
+    },
+    {
+      "Acronym": "AC",
+      "Name": "Accuracy Challenge",
+      "Description": "Fail the play if your accuracy drops below a configured threshold.",
+      "Type": "DifficultyIncrease",
+      "Settings": [
+        {
+          "Name": "minimum_accuracy",
+          "Type": "number",
+          "Label": "Minimum accuracy",
+          "Description": "Trigger a failure if your accuracy goes below this value."
+        },
+        {
+          "Name": "accuracy_judge_mode",
+          "Type": "string",
+          "Label": "Accuracy mode",
+          "Description": "The mode of accuracy that will trigger failure."
+        },
+        {
+          "Name": "restart",
+          "Type": "boolean",
+          "Label": "Restart on fail",
+          "Description": "Automatically restarts when failed."
+        }
+      ],
+      "IncompatibleMods": [
+        "EZ",
+        "PF",
+        "SD",
+        "C"
+      ],
+      "RequiresConfiguration": false,
+      "UserPlayable": true,
+      "ValidForMultiplayer": true,
+      "ValidForFreestyleAsRequiredMod": true,
+      "ValidForMultiplayerAsFreeMod": true,
+      "AlwaysValidForSubmission": false
+    },
+    {
+      "Acronym": "BR",
+      "Name": "Barrel Roll",
+      "Description": "Rotate the entire playfield — notes move on a spinning wheel.",
+      "Type": "Fun",
+      "Settings": [
+        {
+          "Name": "spin_speed",
+          "Type": "number",
+          "Label": "Roll speed",
+          "Description": "Rotations per minute"
+        },
+        {
+          "Name": "direction",
+          "Type": "string",
+          "Label": "Direction",
+          "Description": "The direction of rotation"
+        }
+      ],
+      "IncompatibleMods": [],
+      "RequiresConfiguration": false,
+      "UserPlayable": true,
+      "ValidForMultiplayer": true,
+      "ValidForFreestyleAsRequiredMod": true,
+      "ValidForMultiplayerAsFreeMod": true,
+      "AlwaysValidForSubmission": false
+    },
+    {
+      "Acronym": "C",
+      "Name": "Challenge",
+      "Description": "You only get a small margin for errors.",
+      "Type": "DifficultyIncrease",
+      "Settings": [
+        {
+          "Name": "live_setting",
+          "Type": "string",
+          "Label": "Number of lives",
+          "Description": "The number of lives the player starts with."
+        }
+      ],
+      "IncompatibleMods": [
+        "RX",
+        "PF",
+        "SD",
+        "AC",
+        "NF"
+      ],
+      "RequiresConfiguration": true,
+      "UserPlayable": true,
+      "ValidForMultiplayer": true,
+      "ValidForFreestyleAsRequiredMod": true,
+      "ValidForMultiplayerAsFreeMod": true,
+      "AlwaysValidForSubmission": false
+    },
+    {
+      "Acronym": "DC",
+      "Name": "Daycore",
+      "Description": "Apply the 'daycore' audio effect (a subtle speed/pitch change) for a different feel.",
+      "Type": "DifficultyReduction",
+      "Settings": [],
+      "IncompatibleMods": [],
+      "RequiresConfiguration": false,
+      "UserPlayable": true,
+      "ValidForMultiplayer": true,
+      "ValidForFreestyleAsRequiredMod": true,
+      "ValidForMultiplayerAsFreeMod": true,
+      "AlwaysValidForSubmission": false
+    },
+    {
+      "Acronym": "DA",
+      "Name": "Difficulty Adjust",
+      "Description": "Override beatmap difficulty options (e.g. No BREAK notes, No EX notes, or All EX notes).",
+      "Type": "Conversion",
+      "Settings": [
+        {
+          "Name": "break_removal",
+          "Type": "boolean",
+          "Label": "No BREAK notes",
+          "Description": "No BREAK notes"
+        },
+        {
+          "Name": "ex_removal",
+          "Type": "boolean",
+          "Label": "No EX notes",
+          "Description": "No EX notes"
+        },
+        {
+          "Name": "all_ex",
+          "Type": "boolean",
+          "Label": "All EX notes",
+          "Description": "All EX notes"
+        }
+      ],
+      "IncompatibleMods": [
+        "EZ",
+        "HR"
+      ],
+      "RequiresConfiguration": true,
+      "UserPlayable": true,
+      "ValidForMultiplayer": true,
+      "ValidForFreestyleAsRequiredMod": true,
+      "ValidForMultiplayerAsFreeMod": true,
+      "AlwaysValidForSubmission": false
+    },
+    {
+      "Acronym": "DT",
+      "Name": "Double Time",
+      "Description": "Increase playback speed (song plays faster).",
+      "Type": "DifficultyIncrease",
+      "Settings": [
+        {
+          "Name": "speed_change",
+          "Type": "number",
+          "Label": "Speed increase",
+          "Description": "The actual increase to apply"
+        },
+        {
+          "Name": "adjust_pitch",
+          "Type": "boolean",
+          "Label": "Adjust pitch",
+          "Description": "Should pitch be adjusted with speed"
+        }
+      ],
+      "IncompatibleMods": [],
+      "RequiresConfiguration": false,
+      "UserPlayable": true,
+      "ValidForMultiplayer": true,
+      "ValidForFreestyleAsRequiredMod": true,
+      "ValidForMultiplayerAsFreeMod": true,
+      "AlwaysValidForSubmission": false
+    },
+    {
+      "Acronym": "EX",
+      "Name": "Experimental",
+      "Description": "Some experimental features to be added to future sentakki builds. Autoplay/No-Fail recommended.\nReplays unsupported.",
+      "Type": "Conversion",
+      "Settings": [
+        {
+          "Name": "enable_slide_fans",
+          "Type": "boolean",
+          "Label": "Fan slides",
+          "Description": "Allow fan slides to occasionally appear (Requires multitouch)"
+        },
+        {
+          "Name": "old_conversion",
+          "Type": "boolean",
+          "Label": "Use old converter",
+          "Description": "The old converter relied on RNG for just about everything. Included for comparison purposes."
+        },
+        {
+          "Name": "enable_twin_slides",
+          "Type": "boolean",
+          "Label": "Twin slides",
+          "Description": "Allow more than one Slide-body to share the same time and origin (Requires multitouch)"
+        },
+        {
+          "Name": "enable_twin_notes",
+          "Type": "boolean",
+          "Label": "Twin notes",
+          "Description": "Allow more than one note to share the same times (Requires multitouch)"
+        }
+      ],
+      "IncompatibleMods": [],
+      "RequiresConfiguration": true,
+      "UserPlayable": true,
+      "ValidForMultiplayer": true,
+      "ValidForFreestyleAsRequiredMod": true,
+      "ValidForMultiplayerAsFreeMod": true,
+      "AlwaysValidForSubmission": false
+    },
+    {
+      "Acronym": "HT",
+      "Name": "Half Time",
+      "Description": "Decrease playback speed (song plays slower).",
+      "Type": "DifficultyReduction",
+      "Settings": [
+        {
+          "Name": "speed_change",
+          "Type": "number",
+          "Label": "Speed increase",
+          "Description": "The actual increase to apply"
+        },
+        {
+          "Name": "adjust_pitch",
+          "Type": "boolean",
+          "Label": "Adjust pitch",
+          "Description": "Should pitch be adjusted with speed"
+        }
+      ],
+      "IncompatibleMods": [],
+      "RequiresConfiguration": false,
+      "UserPlayable": true,
+      "ValidForMultiplayer": true,
+      "ValidForFreestyleAsRequiredMod": true,
+      "ValidForMultiplayerAsFreeMod": true,
+      "AlwaysValidForSubmission": false
+    },
+    {
+      "Acronym": "HR",
+      "Name": "Hard Rock",
+      "Description": "Judgement modes determine how strict the hit windows are during gameplay.",
+      "Type": "DifficultyIncrease",
+      "Settings": [
+        {
+          "Name": "judgement_mode",
+          "Type": "string",
+          "Label": "Judgement mode",
+          "Description": "Judgement modes determine how strict the hitwindows are during gameplay."
+        },
+        {
+          "Name": "minimum_valid_result",
+          "Type": "string",
+          "Label": "Minimum result",
+          "Description": "The minimum HitResult that is accepted during gameplay. Anything below will be considered a miss."
+        },
+        {
+          "Name": "strict_slider_tracking",
+          "Type": "string",
+          "Label": "Strict slider tracking",
+          "Description": "Whether strict tracking rules for slider-like objects are enabled."
+        }
+      ],
+      "IncompatibleMods": [
+        "ModEasy",
+        "ModDifficultyAdjust"
+      ],
+      "RequiresConfiguration": false,
+      "UserPlayable": true,
+      "ValidForMultiplayer": true,
+      "ValidForFreestyleAsRequiredMod": true,
+      "ValidForMultiplayerAsFreeMod": true,
+      "AlwaysValidForSubmission": false
+    },
+    {
+      "Acronym": "HD",
+      "Name": "Hidden",
+      "Description": "Notes fade out just before you hit them.",
+      "Type": "DifficultyIncrease",
+      "Settings": [
+        {
+          "Name": "visible_radius",
+          "Type": "number",
+          "Label": "Visible radius",
+          "Description": "The visible radius of laned notes."
+        }
+      ],
+      "IncompatibleMods": [],
+      "RequiresConfiguration": false,
+      "UserPlayable": true,
+      "ValidForMultiplayer": true,
+      "ValidForFreestyleAsRequiredMod": true,
+      "ValidForMultiplayerAsFreeMod": true,
+      "AlwaysValidForSubmission": false
+    },
+    {
+      "Acronym": "MR",
+      "Name": "Mirror",
+      "Description": "Flip the playfield horizontally, vertically, or both!",
+      "Type": "Conversion",
+      "Settings": [
+        {
+          "Name": "vertical_mirrored",
+          "Type": "boolean",
+          "Label": "⇅ Mirror vertically",
+          "Description": "Mirror entire playfield across the x-axis"
+        },
+        {
+          "Name": "horizontal_mirrored",
+          "Type": "boolean",
+          "Label": "⇆ Mirror horizontally",
+          "Description": "Mirror entire playfield across the y-axis"
+        }
+      ],
+      "IncompatibleMods": [],
+      "RequiresConfiguration": true,
+      "UserPlayable": true,
+      "ValidForMultiplayer": true,
+      "ValidForFreestyleAsRequiredMod": true,
+      "ValidForMultiplayerAsFreeMod": true,
+      "AlwaysValidForSubmission": false
+    },
+    {
+      "Acronym": "MU",
+      "Name": "Muted",
+      "Description": "Can you still feel the rhythm without music?",
+      "Type": "Fun",
+      "Settings": [
+        {
+          "Name": "inverse_muting",
+          "Type": "boolean",
+          "Label": "Start muted",
+          "Description": "Increase volume as combo builds."
+        },
+        {
+          "Name": "enable_metronome",
+          "Type": "boolean",
+          "Label": "Enable metronome",
+          "Description": "Add a metronome beat to help you keep track of the rhythm."
+        },
+        {
+          "Name": "mute_combo_count",
+          "Type": "number",
+          "Label": "Final volume at combo",
+          "Description": "The combo count at which point the track reaches its final volume."
+        },
+        {
+          "Name": "affects_hit_sounds",
+          "Type": "boolean",
+          "Label": "Mute hit sounds",
+          "Description": "Hit sounds are also muted alongside the track."
+        }
+      ],
+      "IncompatibleMods": [],
+      "RequiresConfiguration": false,
+      "UserPlayable": true,
+      "ValidForMultiplayer": true,
+      "ValidForFreestyleAsRequiredMod": true,
+      "ValidForMultiplayerAsFreeMod": true,
+      "AlwaysValidForSubmission": false
+    },
+    {
+      "Acronym": "NC",
+      "Name": "Nightcore",
+      "Description": "Uguuuuuuuu...",
+      "Type": "DifficultyIncrease",
+      "Settings": [
+        {
+          "Name": "speed_change",
+          "Type": "number",
+          "Label": "Speed increase",
+          "Description": "The actual increase to apply"
+        }
+      ],
+      "IncompatibleMods": [],
+      "RequiresConfiguration": false,
+      "UserPlayable": true,
+      "ValidForMultiplayer": true,
+      "ValidForFreestyleAsRequiredMod": true,
+      "ValidForMultiplayerAsFreeMod": true,
+      "AlwaysValidForSubmission": false
+    },
+    {
+      "Acronym": "PF",
+      "Name": "Perfect",
+      "Description": "SS or quit.",
+      "Type": "DifficultyIncrease",
+      "Settings": [
+        {
+          "Name": "restart",
+          "Type": "boolean",
+          "Label": "Restart on fail",
+          "Description": "Automatically restarts when failed."
+        }
+      ],
+      "IncompatibleMods": [
+        "NF",
+        "RX",
+        "C",
+        "SD"
+      ],
+      "RequiresConfiguration": false,
+      "UserPlayable": true,
+      "ValidForMultiplayer": true,
+      "ValidForFreestyleAsRequiredMod": false,
+      "ValidForMultiplayerAsFreeMod": true,
+      "AlwaysValidForSubmission": false
+    },
+    {
+      "Acronym": "SD",
+      "Name": "Sudden Death",
+      "Description": "Miss and fail.",
+      "Type": "DifficultyIncrease",
+      "Settings": [
+        {
+          "Name": "restart",
+          "Type": "boolean",
+          "Label": "Restart on fail",
+          "Description": "Automatically restarts when failed."
+        }
+      ],
+      "IncompatibleMods": [
+        "NF",
+        "RX",
+        "C",
+        "PF"
+      ],
+      "RequiresConfiguration": false,
+      "UserPlayable": true,
+      "ValidForMultiplayer": true,
+      "ValidForFreestyleAsRequiredMod": true,
+      "ValidForMultiplayerAsFreeMod": true,
+      "AlwaysValidForSubmission": false
+    },
+    {
+      "Acronym": "SY",
+      "Name": "Synesthesia",
+      "Description": "Colour hitobjects based on distance to previous/next hitobject.",
+      "Type": "Fun",
+      "Settings": [
+        {
+          "Name": "interval_colouring",
+          "Type": "boolean",
+          "Label": "Interval colouring",
+          "Description": "Colour hitobjects based on distance to previous/next hitobject."
+        }
+      ],
+      "IncompatibleMods": [],
+      "RequiresConfiguration": false,
+      "UserPlayable": true,
+      "ValidForMultiplayer": true,
+      "ValidForFreestyleAsRequiredMod": true,
+      "ValidForMultiplayerAsFreeMod": true,
+      "AlwaysValidForSubmission": false
+    },
+    {
+      "Acronym": "TD",
+      "Name": "Touch Device",
+      "Description": "Automatically applied to plays on devices with a touchscreen.",
+      "Type": "System",
+      "Settings": [],
+      "IncompatibleMods": [],
+      "RequiresConfiguration": false,
+      "UserPlayable": true,
+      "ValidForMultiplayer": false,
+      "ValidForFreestyleAsRequiredMod": false,
+      "ValidForMultiplayerAsFreeMod": false,
+      "AlwaysValidForSubmission": false
+    },
+    {
+      "Acronym": "WU",
+      "Name": "Wind Up",
+      "Description": "Can you keep up?",
+      "Type": "Fun",
+      "Settings": [
+        {
+          "Name": "initial_rate",
+          "Type": "number",
+          "Label": "Initial rate",
+          "Description": "The starting speed of the track"
+        },
+        {
+          "Name": "final_rate",
+          "Type": "number",
+          "Label": "Final rate",
+          "Description": "The final speed to ramp to"
+        },
+        {
+          "Name": "adjust_pitch",
+          "Type": "boolean",
+          "Label": "Adjust pitch",
+          "Description": "Should pitch be adjusted with speed"
+        }
+      ],
+      "IncompatibleMods": [
+        "HT",
+        "DC",
+        "DT",
+        "NC",
+        "WD",
+        "AS"
+      ],
+      "RequiresConfiguration": false,
+      "UserPlayable": true,
+      "ValidForMultiplayer": true,
+      "ValidForFreestyleAsRequiredMod": true,
+      "ValidForMultiplayerAsFreeMod": false,
+      "AlwaysValidForSubmission": false
+    },
+    {
+      "Acronym": "WD",
+      "Name": "Wind Down",
+      "Description": "Sloooow doooown...",
+      "Type": "Fun",
+      "Settings": [
+        {
+          "Name": "initial_rate",
+          "Type": "number",
+          "Label": "Initial rate",
+          "Description": "The starting speed of the track"
+        },
+        {
+          "Name": "final_rate",
+          "Type": "number",
+          "Label": "Final rate",
+          "Description": "The final speed to ramp to"
+        },
+        {
+          "Name": "adjust_pitch",
+          "Type": "boolean",
+          "Label": "Adjust pitch",
+          "Description": "Should pitch be adjusted with speed"
+        }
+      ],
+      "IncompatibleMods": [
+        "HT",
+        "DC",
+        "DT",
+        "NC",
+        "WU",
+        "AS"
+      ],
+      "RequiresConfiguration": false,
+      "UserPlayable": true,
+      "ValidForMultiplayer": true,
+      "ValidForFreestyleAsRequiredMod": true,
+      "ValidForMultiplayerAsFreeMod": false,
+      "AlwaysValidForSubmission": false
+    }
+  ]
+}
