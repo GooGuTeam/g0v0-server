@@ -128,13 +128,20 @@ def downgrade() -> None:
     op.alter_column(
         "rank_top",
         "mode",
-        existing_type=mysql.ENUM("OSU", "TAIKO", "FRUITS", "MANIA", "OSURX", "OSUAP", "TAIKORX", "FRUITSRX"),
+        existing_type=mysql.ENUM(
+            "OSU",
+            "TAIKO",
+            "FRUITS",
+            "MANIA",
+            "OSURX",
+            "OSUAP",
+        ),
         nullable=False,
     )
     op.alter_column(
-        "rank_top",
+        "rank_history",
         "mode",
-        existing_type=mysql.ENUM("OSU", "TAIKO", "FRUITS", "MANIA", "OSURX", "OSUAP", "TAIKORX", "FRUITSRX"),
+        existing_type=mysql.ENUM("OSU", "TAIKO", "FRUITS", "MANIA", "OSURX", "OSUAP"),
         nullable=False,
     )
     # ### end Alembic commands ###
