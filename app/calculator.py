@@ -47,6 +47,9 @@ def calculate_beatmap_attribute(
     gamemode: GameMode | None = None,
     mods: int | list[APIMod] | list[str] = 0,
 ) -> BeatmapAttributes:
+    if gamemode is not None and gamemode.is_custom_ruleset:
+        # TODO: custom ruleset difficulty calculate
+        return BeatmapAttributes(star_rating=0.0, max_combo=0)
     map = rosu.Beatmap(content=beatmap)
     if gamemode is not None:
         map.convert(gamemode.to_rosu(), mods)  # pyright: ignore[reportArgumentType]
@@ -67,6 +70,10 @@ def calculate_beatmap_attribute(
 
 async def calculate_pp(score: "Score", beatmap: str, session: AsyncSession) -> float:
     from app.database.beatmap import BannedBeatmaps
+
+    if score.gamemode.is_custom_ruleset:
+        # TODO: custom ruleset pp calculate
+        return 0
 
     if settings.suspicious_score_check:
         beatmap_banned = (

@@ -1,0 +1,32 @@
+{
+  "10": {
+    "HT": {
+      "speed_change": 0.75,
+      "adjust_pitch": "DO_NO_CHECK"
+    },
+    "DC": {
+      "speed_change": 0.75
+    },
+    "DT": {
+      "speed_change": 1.5,
+      "adjust_pitch": "DO_NO_CHECK"
+    },
+    "NC": {
+      "speed_change": 1.5
+    },
+    "HR": {
+      "judgement_mode": 0,
+      "strict_slider_tracking": false,
+      "minimum_valid_result": 0
+    },
+    "HD": {
+      "visible_radius": 0.6
+    },
+    "EX": {},
+    "DA": {},
+    "MR": {},
+    "MU": {},
+    "SY": {},
+    "TD": {}
+  }
+}

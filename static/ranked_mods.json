@@ -1,0 +1,138 @@
+{
+  "0": {
+    "EZ": {
+      "retries": 2
+    },
+    "NF": {},
+    "HT": {
+      "speed_change": 0.75,
+      "adjust_pitch": "DO_NO_CHECK"
+    },
+    "DC": {
+      "speed_change": 0.75
+    },
+    "HR": {},
+    "SD": {},
+    "PF": {},
+    "HD": {
+      "only_fade_approach_circles": false
+    },
+    "DT": {
+      "speed_change": 1.5,
+      "adjust_pitch": "DO_NO_CHECK"
+    },
+    "NC": {
+      "speed_change": 1.5
+    },
+    "FL": {
+      "size_multiplier": 1.0,
+      "combo_based_size": true,
+      "follow_delay": 1.0
+    },
+    "AC": {},
+    "MU": {},
+    "TD": {},
+    "BL": {},
+    "NS": {},
+    "SO": {},
+    "TC": {}
+  },
+  "1": {
+    "EZ": {},
+    "NF": {},
+    "HT": {
+      "speed_change": 0.75,
+      "adjust_pitch": "DO_NO_CHECK"
+    },
+    "DC": {
+      "speed_change": 0.75
+    },
+    "HR": {},
+    "SD": {},
+    "PF": {},
+    "HD": {},
+    "DT": {
+      "speed_change": 1.5,
+      "adjust_pitch": "DO_NO_CHECK"
+    },
+    "NC": {
+      "speed_change": 1.5
+    },
+    "FL": {
+      "size_multiplier": 1.0,
+      "combo_based_size": true
+    },
+    "AC": {},
+    "MU": {},
+    "TD": {}
+  },
+  "2": {
+    "EZ": {
+      "retries": 2
+    },
+    "NF": {},
+    "HT": {
+      "speed_change": 0.75,
+      "adjust_pitch": "DO_NO_CHECK"
+    },
+    "DC": {
+      "speed_change": 0.75
+    },
+    "HR": {},
+    "SD": {},
+    "PF": {},
+    "HD": {},
+    "DT": {
+      "speed_change": 1.5,
+      "adjust_pitch": "DO_NO_CHECK"
+    },
+    "NC": {
+      "speed_change": 1.5
+    },
+    "FL": {
+      "size_multiplier": 1.0,
+      "combo_based_size": true
+    },
+    "AC": {},
+    "MU": {},
+    "TD": {},
+    "NS": {}
+  },
+  "3": {
+    "EZ": {
+      "retries": 2
+    },
+    "NF": {},
+    "HT": {
+      "speed_change": 0.75,
+      "adjust_pitch": "DO_NO_CHECK"
+    },
+    "DC": {
+      "speed_change": 0.75
+    },
+    "SD": {},
+    "PF": {},
+    "HD": {},
+    "DT": {
+      "speed_change": 1.5,
+      "adjust_pitch": "DO_NO_CHECK"
+    },
+    "NC": {
+      "speed_change": 1.5
+    },
+    "FL": {
+      "size_multiplier": 1.0,
+      "combo_based_size": false
+    },
+    "AC": {},
+    "MU": {},
+    "TD": {},
+    "MR": {},
+    "4K": {},
+    "5K": {},
+    "6K": {},
+    "7K": {},
+    "8K": {},
+    "9K": {}
+  }
+}
