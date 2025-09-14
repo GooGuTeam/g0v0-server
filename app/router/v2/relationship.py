@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from app.database import Relationship, RelationshipResp, RelationshipType, User
+from app.database.lazer_user import UserResp
+from app.dependencies.api_version import APIVersion
 from app.dependencies.database import Database
 from app.dependencies.user import get_client_user, get_current_user
 
@@ -14,9 +16,34 @@ from sqlmodel import select
 @router.get(
     "/friends",
     tags=["用户关系"],
-    response_model=list[RelationshipResp],
+    responses={
+        200: {
+            "description": "好友列表",
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "oneOf": [
+                            {
+                                "type": "array",
+                                "items": {"$ref": "#/components/schemas/RelationshipResp"},
+                                "description": "好友列表",
+                            },
+                            {
+                                "type": "array",
+                                "items": {"$ref": "#/components/schemas/UserResp"},
+                                "description": "好友列表 (`x-api-version < 20241022`)",
+                            },
+                        ]
+                    }
+                }
+            },
+        }
+    },
     name="获取好友列表",
-    description="获取当前用户的好友列表。",
+    description=(
+        "获取当前用户的好友列表。\n\n"
+        "如果 `x-api-version < 20241022`，返回值为 `UserResp` 列表，否则为 `RelationshipResp` 列表。"
+    ),
 )
 @router.get(
     "/blocks",
@@ -28,6 +55,7 @@ from sqlmodel import select
 async def get_relationship(
     db: Database,
     request: Request,
+    api_version: APIVersion,
     current_user: User = Security(get_current_user, scopes=["friends.read"]),
 ):
     relationship_type = RelationshipType.FOLLOW if request.url.path.endswith("/friends") else RelationshipType.BLOCK
@@ -37,7 +65,22 @@ async def get_relationship(
             Relationship.type == relationship_type,
         )
     )
-    return [await RelationshipResp.from_db(db, rel) for rel in relationships.unique()]
+    if api_version >= 20241022 or relationship_type == RelationshipType.BLOCK:
+        return [await RelationshipResp.from_db(db, rel) for rel in relationships.unique()]
+    else:
+        return [
+            await UserResp.from_db(
+                rel.target,
+                db,
+                include=[
+                    "team",
+                    "daily_challenge_user_stats",
+                    "statistics",
+                    "statistics_rulesets",
+                ],
+            )
+            for rel in relationships.unique()
+        ]
 
 
 class AddFriendResp(BaseModel):
