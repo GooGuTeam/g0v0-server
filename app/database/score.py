@@ -358,7 +358,7 @@ class LegacyScoreResp(UTCBaseModel):
     mode_int: int
     mods: list[str]  # acronym
     passed: bool
-    perfect: bool
+    perfect: bool = False
     pp: float
     rank: Rank
     replay: bool
@@ -374,57 +374,53 @@ class LegacyScoreResp(UTCBaseModel):
     @classmethod
     async def from_db(cls, session: AsyncSession, score: Score) -> "LegacyScoreResp":
         await session.refresh(score)
-        s = cls.model_validate(
-            {
-                "accuracy": score.accuracy,
-                "best_id": await get_best_id(session, score.id) or 0,
-                "created_at": score.ended_at,
-                "id": score.id,
-                "max_combo": score.max_combo,
-                "mode": score.gamemode,
-                "mode_int": int(score.gamemode),
-                "mods": [m["acronym"] for m in score.mods],
-                "passed": score.passed,
-                "perfect": False,
-                "pp": score.pp,
-                "rank": score.rank,
-                "replay": score.has_replay,
-                "score": score.total_score,
-                "statistics": {
-                    "count_300": score.n300,
-                    "count_100": score.n100,
-                    "count_50": score.n50,
-                    "count_miss": score.nmiss,
-                    "count_geki": score.ngeki or 0,
-                    "count_katu": score.nkatu or 0,
-                },
-                "type": score.type,
-                "user_id": score.user_id,
-            }
-        )
         await score.awaitable_attrs.beatmap
-        s.beatmap = await BeatmapResp.from_db(score.beatmap)
-        s.user = await UserResp.from_db(
-            score.user,
-            session,
-            include=["statistics", "team", "daily_challenge_user_stats"],
-            ruleset=score.gamemode,
-        )
-        s.perfect = score.is_perfect_combo
-        s.current_user_attributes = CurrentUserAttributes(
-            pin=PinAttributes(is_pinned=bool(score.pinned_order), score_id=score.id)
-        )
-        s.rank_global = (
-            await get_score_position_by_id(
+        return cls(
+            accuracy=score.accuracy,
+            best_id=await get_best_id(session, score.id) or 0,
+            created_at=score.started_at,
+            id=score.id,
+            max_combo=score.max_combo,
+            mode=score.gamemode,
+            mode_int=int(score.gamemode),
+            mods=[m["acronym"] for m in score.mods],
+            passed=score.passed,
+            pp=score.pp,
+            rank=score.rank,
+            replay=score.has_replay,
+            score=score.total_score,
+            statistics=LegacyStatistics(
+                count_300=score.n300,
+                count_100=score.n100,
+                count_50=score.n50,
+                count_miss=score.nmiss,
+                count_geki=score.ngeki or 0,
+                count_katu=score.nkatu or 0,
+            ),
+            type=score.type,
+            user_id=score.user_id,
+            current_user_attributes=CurrentUserAttributes(
+                pin=PinAttributes(is_pinned=bool(score.pinned_order), score_id=score.id)
+            ),
+            user=await UserResp.from_db(
+                score.user,
                 session,
-                score.beatmap_id,
-                score.id,
-                mode=score.gamemode,
-                user=score.user,
-            )
-            or None
+                include=["statistics", "team", "daily_challenge_user_stats"],
+                ruleset=score.gamemode,
+            ),
+            beatmap=await BeatmapResp.from_db(score.beatmap),
+            perfect=score.is_perfect_combo,
+            rank_global=(
+                await get_score_position_by_id(
+                    session,
+                    score.beatmap_id,
+                    score.id,
+                    mode=score.gamemode,
+                    user=score.user,
+                )
+                or None
+            ),
         )
-        return s
 
 
 class MultiplayerScores(RespWithCursor):
