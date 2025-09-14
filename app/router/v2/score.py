@@ -29,12 +29,14 @@ from app.database.playlist_best_score import (
 )
 from app.database.relationship import Relationship, RelationshipType
 from app.database.score import (
+    LegacyScoreResp,
     MultiplayerScores,
     ScoreAround,
     get_leaderboard,
     process_score,
     process_user,
 )
+from app.dependencies.api_version import APIVersion
 from app.dependencies.database import Database, get_redis, with_db
 from app.dependencies.fetcher import get_fetcher
 from app.dependencies.storage import get_storage_service
@@ -264,21 +266,31 @@ async def _preload_beatmap_for_pp_calculation(beatmap_id: int) -> None:
         logger.warning(f"Failed to preload beatmap {beatmap_id}: {e}")
 
 
-class BeatmapScores(BaseModel):
-    scores: list[ScoreResp]
-    user_score: BeatmapUserScore | None = None
+class BeatmapUserScore[T: ScoreResp | LegacyScoreResp](BaseModel):
+    position: int
+    score: T
+
+
+class BeatmapScores[T: ScoreResp | LegacyScoreResp](BaseModel):
+    scores: list[T]
+    user_score: BeatmapUserScore[T] | None = None
     score_count: int = 0
 
 
 @router.get(
     "/beatmaps/{beatmap_id}/scores",
     tags=["成绩"],
-    response_model=BeatmapScores,
+    response_model=BeatmapScores[ScoreResp] | BeatmapScores[LegacyScoreResp],
     name="获取谱面排行榜",
-    description="获取指定谱面在特定条件下的排行榜及当前用户成绩。",
+    description=(
+        "获取指定谱面在特定条件下的排行榜及当前用户成绩。\n\n"
+        "如果 `x-api-version >= 20220705`，返回值为 `BeatmapScores[ScoreResp]`，"
+        "否则为 `BeatmapScores[LegacyScoreResp]`。"
+    ),
 )
 async def get_beatmap_scores(
     db: Database,
+    api_version: APIVersion,
     beatmap_id: int = Path(description="谱面 ID"),
     mode: GameMode = Query(description="指定 auleset"),
     legacy_only: bool = Query(None, description="是否只查询 Stable 分数"),
@@ -303,9 +315,9 @@ async def get_beatmap_scores(
         mods=sorted(mods),
     )
 
-    user_score_resp = await ScoreResp.from_db(db, user_score) if user_score else None
+    user_score_resp = await user_score.to_resp(db, api_version) if user_score else None
     resp = BeatmapScores(
-        scores=[await ScoreResp.from_db(db, score) for score in all_scores],
+        scores=[await score.to_resp(db, api_version) for score in all_scores],
         user_score=BeatmapUserScore(score=user_score_resp, position=user_score_resp.rank_global or 0)
         if user_score_resp
         else None,
@@ -314,20 +326,20 @@ async def get_beatmap_scores(
     return resp
 
 
-class BeatmapUserScore(BaseModel):
-    position: int
-    score: ScoreResp
-
-
 @router.get(
     "/beatmaps/{beatmap_id}/scores/users/{user_id}",
     tags=["成绩"],
-    response_model=BeatmapUserScore,
+    response_model=BeatmapUserScore[ScoreResp] | BeatmapUserScore[LegacyScoreResp],
     name="获取用户谱面最高成绩",
-    description="获取指定用户在指定谱面上的最高成绩。",
+    description=(
+        "获取指定用户在指定谱面上的最高成绩。\n\n"
+        "如果 `x-api-version >= 20220705`，返回值为 `BeatmapUserScore[ScoreResp]`，"
+        "否则为 `BeatmapUserScore[LegacyScoreResp]`。"
+    ),
 )
 async def get_user_beatmap_score(
     db: Database,
+    api_version: APIVersion,
     beatmap_id: int = Path(description="谱面 ID"),
     user_id: int = Path(description="用户 ID"),
     legacy_only: bool = Query(None, description="是否只查询 Stable 分数"),
@@ -355,7 +367,7 @@ async def get_user_beatmap_score(
             detail=f"Cannot find user {user_id}'s score on this beatmap",
         )
     else:
-        resp = await ScoreResp.from_db(db, user_score)
+        resp = await user_score.to_resp(db, api_version=api_version)
         return BeatmapUserScore(
             position=resp.rank_global or 0,
             score=resp,
@@ -365,12 +377,17 @@ async def get_user_beatmap_score(
 @router.get(
     "/beatmaps/{beatmap_id}/scores/users/{user_id}/all",
     tags=["成绩"],
-    response_model=list[ScoreResp],
+    response_model=list[ScoreResp] | list[LegacyScoreResp],
     name="获取用户谱面全部成绩",
-    description="获取指定用户在指定谱面上的全部成绩列表。",
+    description=(
+        "获取指定用户在指定谱面上的全部成绩列表。\n\n"
+        "如果 `x-api-version >= 20220705`，返回值为 `ScoreResp`列表，"
+        "否则为 `LegacyScoreResp`列表。"
+    ),
 )
 async def get_user_all_beatmap_scores(
     db: Database,
+    api_version: APIVersion,
     beatmap_id: int = Path(description="谱面 ID"),
     user_id: int = Path(description="用户 ID"),
     legacy_only: bool = Query(None, description="是否只查询 Stable 分数"),
@@ -390,7 +407,7 @@ async def get_user_all_beatmap_scores(
         )
     ).all()
 
-    return [await ScoreResp.from_db(db, score) for score in all_user_scores]
+    return [await score.to_resp(db, api_version) for score in all_user_scores]
 
 
 @router.post(
