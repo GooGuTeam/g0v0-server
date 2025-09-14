@@ -15,7 +15,8 @@ from app.database import (
 from app.database.events import Event
 from app.database.lazer_user import SEARCH_INCLUDED
 from app.database.pp_best_score import PPBestScore
-from app.database.score import Score, ScoreResp, get_user_first_scores
+from app.database.score import LegacyScoreResp, Score, ScoreResp, get_user_first_scores
+from app.dependencies.api_version import APIVersion
 from app.dependencies.database import Database, get_redis
 from app.dependencies.user import get_current_user
 from app.log import logger
@@ -313,13 +314,18 @@ async def get_user_beatmapsets(
 
 @router.get(
     "/users/{user_id}/scores/{type}",
-    response_model=list[ScoreResp],
+    response_model=list[ScoreResp] | list[LegacyScoreResp],
     name="获取用户成绩列表",
-    description="获取用户特定类型的成绩列表，如最好成绩、最近成绩等。",
+    description=(
+        "获取用户特定类型的成绩列表，如最好成绩、最近成绩等。\n\n"
+        "如果 `x-api-version >= 20220705`，返回值为 `ScoreResp`列表，"
+        "否则为 `LegacyScoreResp`列表。"
+    ),
     tags=["用户"],
 )
 async def get_user_scores(
     session: Database,
+    api_version: APIVersion,
     background_task: BackgroundTasks,
     user_id: int = Path(description="用户 ID"),
     type: Literal["best", "recent", "firsts", "pinned"] = Path(
@@ -332,12 +338,15 @@ async def get_user_scores(
     offset: int = Query(0, ge=0, description="偏移量"),
     current_user: User = Security(get_current_user, scopes=["public"]),
 ):
+    is_legacy_api = api_version < 20220705
     redis = get_redis()
     cache_service = get_user_cache_service(redis)
 
     # 先尝试从缓存获取（对于recent类型使用较短的缓存时间）
     cache_expire = 30 if type == "recent" else settings.user_scores_cache_expire_seconds
-    cached_scores = await cache_service.get_user_scores_from_cache(user_id, type, include_fails, mode, limit, offset)
+    cached_scores = await cache_service.get_user_scores_from_cache(
+        user_id, type, include_fails, mode, limit, offset, is_legacy_api
+    )
     if cached_scores is not None:
         return cached_scores
 
@@ -373,9 +382,9 @@ async def get_user_scores(
         scores = [best_score.score for best_score in best_scores]
 
     score_responses = [
-        await ScoreResp.from_db(
+        await score.to_resp(
             session,
-            score,
+            api_version,
         )
         for score in scores
     ]
@@ -385,12 +394,13 @@ async def get_user_scores(
         cache_service.cache_user_scores,
         user_id,
         type,
-        score_responses,
+        score_responses,  # pyright: ignore[reportArgumentType]
         include_fails,
         mode,
         limit,
         offset,
         cache_expire,
+        is_legacy_api,
     )
 
     return score_responses

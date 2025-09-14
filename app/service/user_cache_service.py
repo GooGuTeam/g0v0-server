@@ -13,7 +13,7 @@ from app.config import settings
 from app.const import BANCHOBOT_ID
 from app.database import User, UserResp
 from app.database.lazer_user import SEARCH_INCLUDED
-from app.database.score import ScoreResp
+from app.database.score import LegacyScoreResp, ScoreResp
 from app.log import logger
 from app.models.score import GameMode
 from app.service.asset_proxy_service import get_asset_proxy_service
@@ -111,11 +111,13 @@ class UserCacheService:
         mode: GameMode | None = None,
         limit: int = 100,
         offset: int = 0,
+        is_legacy: bool = False,
     ) -> str:
         """生成用户成绩缓存键"""
         mode_part = f":{mode}" if mode else ""
         return (
-            f"user:{user_id}:scores:{score_type}{mode_part}:limit:{limit}:offset:{offset}:include_fail:{include_fail}"
+            f"user:{user_id}:scores:{score_type}{mode_part}:limit:{limit}:offset:"
+            f"{offset}:include_fail:{include_fail}:is_legacy:{is_legacy}"
         )
 
     def _get_user_beatmapsets_cache_key(
@@ -166,10 +168,13 @@ class UserCacheService:
         mode: GameMode | None = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> list[ScoreResp] | None:
+        is_legacy: bool = False,
+    ) -> list[ScoreResp] | list[LegacyScoreResp] | None:
         """从缓存获取用户成绩"""
         try:
-            cache_key = self._get_user_scores_cache_key(user_id, score_type, include_fail, mode, limit, offset)
+            cache_key = self._get_user_scores_cache_key(
+                user_id, score_type, include_fail, mode, limit, offset, is_legacy
+            )
             cached_data = await self.redis.get(cache_key)
             if cached_data:
                 logger.debug(f"User scores cache hit for user {user_id}, type {score_type}")
@@ -184,18 +189,21 @@ class UserCacheService:
         self,
         user_id: int,
         score_type: str,
-        scores: list[ScoreResp],
+        scores: list[ScoreResp] | list[LegacyScoreResp],
         include_fail: bool,
         mode: GameMode | None = None,
         limit: int = 100,
         offset: int = 0,
         expire_seconds: int | None = None,
+        is_legacy: bool = False,
     ):
         """缓存用户成绩"""
         try:
             if expire_seconds is None:
                 expire_seconds = settings.user_scores_cache_expire_seconds
-            cache_key = self._get_user_scores_cache_key(user_id, score_type, include_fail, mode, limit, offset)
+            cache_key = self._get_user_scores_cache_key(
+                user_id, score_type, include_fail, mode, limit, offset, is_legacy
+            )
             # 使用 model_dump_json() 而不是 model_dump() + json.dumps()
             scores_json_list = [score.model_dump_json() for score in scores]
             cached_data = f"[{','.join(scores_json_list)}]"
