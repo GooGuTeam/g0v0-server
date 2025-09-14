@@ -385,7 +385,7 @@ class LegacyScoreResp(UTCBaseModel):
                 "mode_int": int(score.gamemode),
                 "mods": [m["acronym"] for m in score.mods],
                 "passed": score.passed,
-                "perfect": score.max_combo == score.beatmap.max_combo,
+                "perfect": False,
                 "pp": score.pp,
                 "rank": score.rank,
                 "replay": score.has_replay,
@@ -410,6 +410,7 @@ class LegacyScoreResp(UTCBaseModel):
             include=["statistics", "team", "daily_challenge_user_stats"],
             ruleset=score.gamemode,
         )
+        s.perfect = score.is_perfect_combo
         s.current_user_attributes = CurrentUserAttributes(
             pin=PinAttributes(is_pinned=bool(score.pinned_order), score_id=score.id)
         )
