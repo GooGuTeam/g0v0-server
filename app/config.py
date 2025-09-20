@@ -120,7 +120,9 @@ class Settings(BaseSettings):
     # 日志设置
     log_level: str = "INFO"
 
-    # 邮件服务设置
+    # 验证服务设置
+    enable_totp_verification: bool = Field(default=True, description="是否启用TOTP双因素验证")
+    totp_issuer: str | None = None
     enable_email_verification: bool = Field(default=False, description="是否启用邮件验证功能")
     smtp_server: str = "localhost"
     smtp_port: int = 587

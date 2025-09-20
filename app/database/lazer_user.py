@@ -1,8 +1,9 @@
 from datetime import datetime, timedelta
 import json
-from typing import TYPE_CHECKING, NotRequired, TypedDict
+from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict
 
 from app.config import settings
+from app.database.auth import TotpKeys
 from app.models.model import UTCBaseModel
 from app.models.score import GameMode
 from app.models.user import Country, Page
@@ -166,6 +167,7 @@ class User(AsyncAttrs, UserBase, table=True):
         back_populates="user",
     )
     events: list[Event] = Relationship(back_populates="user")
+    totp_key: TotpKeys | None = Relationship(back_populates="user")
 
     email: str = Field(max_length=254, unique=True, index=True, exclude=True)
     priv: int = Field(default=1, exclude=True)
@@ -421,26 +423,36 @@ class UserResp(UserBase):
             )
         ).one()
 
-        # 检查会话验证状态
-        # 如果邮件验证功能被禁用，则始终设置 session_verified 为 true
+        if "session_verified" in include:
+            from app.service.verification_service import LoginSessionService
 
-        if not settings.enable_email_verification:
-            u.session_verified = True
+            u.session_verified = not await LoginSessionService.check_is_need_verification(session, user_id=obj.id)
+
+        return u
+
+
+class MeResp(UserResp):
+    session_verification_method: Literal["totp", "mail"] | None = None
+
+    @classmethod
+    async def from_db(
+        cls,
+        obj: User,
+        session: AsyncSession,
+        include: list[str] = [],
+        ruleset: GameMode | None = None,
+    ) -> "MeResp":
+        from app.dependencies.database import get_redis
+        from app.service.verification_service import LoginSessionService
+
+        u = await super().from_db(obj, session, ["session_verified", *include], ruleset)
+        u = cls.model_validate(u.model_dump())
+        if settings.enable_totp_verification or settings.enable_email_verification:
+            redis = get_redis()
+            if not u.session_verified:
+                u.session_verification_method = await LoginSessionService.get_login_method(obj.id, redis)
         else:
-            # 如果用户有未验证的登录会话，则设置 session_verified 为 false
-            from .email_verification import LoginSession
-
-            unverified_session = (
-                await session.exec(
-                    select(LoginSession).where(
-                        LoginSession.user_id == obj.id,
-                        col(LoginSession.is_verified).is_(False),
-                        LoginSession.expires_at > utcnow(),
-                    )
-                )
-            ).first()
-            u.session_verified = unverified_session is None
-
+            u.session_verification_method = None
         return u
 
 
@@ -455,6 +467,7 @@ ALL_INCLUDED = [
     "monthly_playcounts",
     "replays_watched_counts",
     "rank_history",
+    "session_verified",
 ]
 
 

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from app.database.email_verification import EmailVerification, LoginSession
+from app.database.verification import EmailVerification, LoginSession
 from app.log import logger
 from app.utils import utcnow
 

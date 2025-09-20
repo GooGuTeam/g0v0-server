@@ -7,15 +7,16 @@ from __future__ import annotations
 from datetime import timedelta
 import secrets
 import string
+from typing import Literal
 
 from app.config import settings
-from app.database.email_verification import EmailVerification, LoginSession
+from app.database.verification import EmailVerification, LoginSession
 from app.log import logger
 from app.service.email_queue import email_queue  # 导入邮件队列
 from app.utils import utcnow
 
 from redis.asyncio import Redis
-from sqlmodel import col, select
+from sqlmodel import col, exists, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 
@@ -279,20 +280,20 @@ This email was sent automatically, please do not reply.
             return False
 
     @staticmethod
-    async def verify_code(
+    async def verify_email_code(
         db: AsyncSession,
         redis: Redis,
         user_id: int,
         code: str,
         ip_address: str | None = None,
     ) -> tuple[bool, str]:
-        """验证验证码"""
+        """验证邮箱验证码"""
         try:
             # 检查是否启用邮件验证功能
             if not settings.enable_email_verification:
                 logger.debug(f"[Email Verification] Email verification is disabled, auto-approving for user {user_id}")
                 # 仍然标记登录会话为已验证
-                await LoginSessionService.mark_session_verified(db, user_id)
+                await LoginSessionService.mark_session_verified(db, redis, user_id)
                 return True, "验证成功（邮件验证功能已禁用）"
 
             # 先从 Redis 检查
@@ -320,7 +321,7 @@ This email was sent automatically, please do not reply.
             verification.used_at = utcnow()
 
             # 同时更新对应的登录会话状态
-            await LoginSessionService.mark_session_verified(db, user_id)
+            await LoginSessionService.mark_session_verified(db, redis, user_id)
 
             await db.commit()
 
@@ -386,6 +387,7 @@ class LoginSessionService:
         user_agent: str | None = None,
         country_code: str | None = None,
         is_new_location: bool = False,
+        is_verified: bool = False,
     ) -> LoginSession:
         """创建登录会话"""
 
@@ -399,7 +401,7 @@ class LoginSessionService:
             country_code=country_code,
             is_new_location=is_new_location,
             expires_at=utcnow() + timedelta(hours=24),  # 24小时过期
-            is_verified=not is_new_location,  # 新位置需要验证
+            is_verified=is_verified,
         )
 
         db.add(session)
@@ -417,6 +419,18 @@ class LoginSessionService:
         return session
 
     @staticmethod
+    async def get_login_method(user_id: int, redis: Redis) -> Literal["totp", "mail"] | None:
+        return await redis.get(f"session_verification_method:{user_id}")
+
+    @staticmethod
+    async def set_login_method(user_id: int, method: Literal["totp", "mail"], redis: Redis) -> None:
+        await redis.set(f"session_verification_method:{user_id}", method)
+
+    @staticmethod
+    async def clear_login_method(user_id: int, redis: Redis) -> None:
+        await redis.delete(f"session_verification_method:{user_id}")
+
+    @staticmethod
     async def verify_session(
         db: AsyncSession, redis: Redis, session_token: str, verification_code: str
     ) -> tuple[bool, str]:
@@ -430,7 +444,7 @@ class LoginSessionService:
             user_id = int(user_id)
 
             # 验证邮件验证码
-            success, message = await EmailVerificationService.verify_code(db, redis, user_id, verification_code)
+            success, message = await EmailVerificationService.verify_email_code(db, redis, user_id, verification_code)
 
             if not success:
                 return False, message
@@ -485,7 +499,7 @@ class LoginSessionService:
             return True
 
     @staticmethod
-    async def mark_session_verified(db: AsyncSession, user_id: int) -> bool:
+    async def mark_session_verified(db: AsyncSession, redis: Redis, user_id: int) -> bool:
         """标记用户的未验证会话为已验证"""
         try:
             # 查找用户所有未验证且未过期的会话
@@ -507,8 +521,26 @@ class LoginSessionService:
             if sessions:
                 logger.info(f"[Login Session] Marked {len(sessions)} session(s) as verified for user {user_id}")
 
+            await LoginSessionService.clear_login_method(user_id, redis)
+
             return len(sessions) > 0
 
         except Exception as e:
             logger.error(f"[Login Session] Exception during marking sessions as verified: {e}")
             return False
+
+    @staticmethod
+    async def check_is_need_verification(db: AsyncSession, user_id: int) -> bool:
+        """检查用户是否需要验证（有未验证的会话）"""
+        if settings.enable_totp_verification or settings.enable_email_verification:
+            unverified_session = (
+                await db.exec(
+                    select(exists()).where(
+                        LoginSession.user_id == user_id,
+                        col(LoginSession.is_verified).is_(False),
+                        LoginSession.expires_at > utcnow(),
+                    )
+                )
+            ).first()
+            return unverified_session or False
+        return True

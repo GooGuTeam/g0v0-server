@@ -52,3 +52,13 @@ class V1APIKeys(SQLModel, table=True):
     name: str = Field(max_length=100, index=True)
     key: str = Field(default_factory=secrets.token_hex, index=True)
     owner_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
+
+
+class TotpKeys(SQLModel, table=True):
+    __tablename__: str = "totp_keys"
+    user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), primary_key=True))
+    secret: str = Field(max_length=100)
+    backup_keys: list[str] = Field(default_factory=list, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=utcnow, sa_column=Column(DateTime))
+
+    user: "User" = Relationship(back_populates="totp_key")

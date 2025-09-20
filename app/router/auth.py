@@ -17,6 +17,7 @@ from app.auth import (
 from app.config import settings
 from app.const import BANCHOBOT_ID
 from app.database import DailyChallengeStats, OAuthClient, User
+from app.database.auth import TotpKeys
 from app.database.statistics import UserStatistics
 from app.dependencies.database import Database, get_redis
 from app.dependencies.geoip import get_client_ip, get_geoip_helper
@@ -30,12 +31,12 @@ from app.models.oauth import (
     UserRegistrationErrors,
 )
 from app.models.score import GameMode
-from app.service.email_verification_service import (
+from app.service.login_log_service import LoginLogService
+from app.service.password_reset_service import password_reset_service
+from app.service.verification_service import (
     EmailVerificationService,
     LoginSessionService,
 )
-from app.service.login_log_service import LoginLogService
-from app.service.password_reset_service import password_reset_service
 from app.utils import utcnow
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -300,15 +301,24 @@ async def oauth_token(
         # 检查是否为新位置登录
         is_new_location = await LoginSessionService.check_new_location(db, user_id, ip_address, country_code)
 
-        # 创建登录会话记录
-        login_session = await LoginSessionService.create_session(  # noqa: F841
-            db, redis, user_id, ip_address, user_agent, country_code, is_new_location
-        )
+        totp_key: TotpKeys | None = await user.awaitable_attrs.totp_key
 
-        # 如果是新位置登录，需要邮件验证
-        if is_new_location and settings.enable_email_verification:
+        session_verification_method = None
+        if settings.enable_totp_verification and totp_key is not None:
+            session_verification_method = "totp"
+            await LoginLogService.record_login(
+                db=db,
+                user_id=user_id,
+                request=request,
+                login_success=True,
+                login_method="password_pending_verification",
+                notes="需要 TOTP 验证",
+            )
+        elif is_new_location and settings.enable_email_verification:
+            # 如果是新位置登录，需要邮件验证
             # 刷新用户对象以确保属性已加载
             await db.refresh(user)
+            session_verification_method = "mail"
 
             # 发送邮件验证码
             verification_sent = await EmailVerificationService.send_verification_email(
@@ -330,7 +340,7 @@ async def oauth_token(
                 logger.error(f"[Auth] Failed to send email verification code for user {user_id}")
         elif is_new_location and not settings.enable_email_verification:
             # 新位置登录但邮件验证功能被禁用，直接标记会话为已验证
-            await LoginSessionService.mark_session_verified(db, user_id)
+            await LoginSessionService.mark_session_verified(db, redis, user_id)
             logger.debug(
                 f"[Auth] New location login detected but email verification disabled, auto-verifying user {user_id}"
             )
@@ -343,6 +353,15 @@ async def oauth_token(
                 login_success=True,
                 login_method="password",
                 notes=f"正常登录 - IP: {ip_address}, 国家: {country_code}",
+            )
+        if session_verification_method:
+            await LoginSessionService.create_session(
+                db, redis, user_id, ip_address, user_agent, country_code, is_new_location, False
+            )
+            await LoginSessionService.set_login_method(user_id, session_verification_method, redis)
+        else:
+            await LoginSessionService.create_session(
+                db, redis, user_id, ip_address, user_agent, country_code, is_new_location, True
             )
 
         # 无论是否新位置登录，都返回正常的token

@@ -7,16 +7,20 @@ import secrets
 import string
 
 from app.config import settings
+from app.const import BACKUP_CODE_LENGTH
 from app.database import (
     OAuthToken,
     User,
 )
+from app.database.auth import TotpKeys
 from app.log import logger
+from app.models.totp import FinishStatus, StartCreateTotpKeyResp
 from app.utils import utcnow
 
 import bcrypt
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+import pyotp
 from redis.asyncio import Redis
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -277,3 +281,76 @@ async def get_user_by_authorization_code(
         await db.refresh(user)
         return (user, scopes.split(","))
     return None
+
+
+def totp_redis_key(user: User) -> str:
+    return f"totp:setup:{user.email}"
+
+
+async def start_create_totp_key(user: User, redis: Redis) -> StartCreateTotpKeyResp:
+    secret = pyotp.random_base32()
+    await redis.hset(totp_redis_key(user), mapping={"secret": secret, "fails": 0})  # pyright: ignore[reportGeneralTypeIssues]
+    await redis.expire(totp_redis_key(user), 300)
+    return StartCreateTotpKeyResp(
+        secret=secret,
+        uri=pyotp.totp.TOTP(secret).provisioning_uri(name=user.email, issuer_name=settings.totp_issuer),
+    )
+
+
+def verify_totp_key(secret: str, code: str) -> bool:
+    return pyotp.TOTP(secret).verify(code, valid_window=1)
+
+
+def _generate_backup_codes(count=10, length=BACKUP_CODE_LENGTH) -> list[str]:
+    alphabet = string.ascii_uppercase + string.digits
+    return ["".join(secrets.choice(alphabet) for _ in range(length)) for _ in range(count)]
+
+
+async def _store_totp_key(user: User, secret: str, db: AsyncSession) -> list[str]:
+    backup_codes = _generate_backup_codes()
+    hashed_codes = [bcrypt.hashpw(code.encode(), bcrypt.gensalt()) for code in backup_codes]
+    totp_secret = TotpKeys(user_id=user.id, secret=secret, backup_keys=[code.decode() for code in hashed_codes])
+    db.add(totp_secret)
+    await db.commit()
+    return backup_codes
+
+
+async def finish_create_totp_key(
+    user: User, code: str, redis: Redis, db: AsyncSession
+) -> tuple[FinishStatus, list[str]]:
+    data = await redis.hgetall(totp_redis_key(user))  # pyright: ignore[reportGeneralTypeIssues]
+    if not data or "secret" not in data or "fails" not in data:
+        return FinishStatus.INVALID, []
+
+    secret = data["secret"]
+    fails = int(data["fails"])
+
+    if fails >= 3:
+        await redis.delete(f"totp:setup:{user.email}")  # pyright: ignore[reportGeneralTypeIssues]
+        return FinishStatus.TOO_MANY_ATTEMPTS, []
+
+    if verify_totp_key(secret, code):
+        await redis.delete(f"totp:setup:{user.email}")  # pyright: ignore[reportGeneralTypeIssues]
+        backup_codes = await _store_totp_key(user, secret, db)
+        return FinishStatus.SUCCESS, backup_codes
+    else:
+        fails += 1
+        await redis.hset(f"totp:setup:{user.email}", "fails", str(fails))  # pyright: ignore[reportGeneralTypeIssues]
+        return FinishStatus.FAILED, []
+
+
+async def disable_totp(user: User, db: AsyncSession) -> None:
+    totp = await db.get(TotpKeys, user.id)
+    if totp:
+        await db.delete(totp)
+        await db.commit()
+
+
+def check_totp_backup_code(totp: TotpKeys, code: str) -> bool:
+    for hashed_code in totp.backup_keys:
+        if bcrypt.checkpw(code.encode(), hashed_code.encode()):
+            copy = totp.backup_keys[:]
+            copy.remove(hashed_code)
+            totp.backup_keys = copy
+            return True
+    return False
