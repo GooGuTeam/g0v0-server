@@ -25,7 +25,12 @@ from redis.asyncio import Redis
 @router.post(
     "/totp/create",
     name="开始 TOTP 创建流程",
-    description="开始 TOTP 创建流程，返回 TOTP 密钥和 URI",
+    description=(
+        "开始 TOTP 创建流程\n\n"
+        "返回 TOTP 密钥和 URI，供用户在身份验证器应用中添加账户。\n\n"
+        "然后将身份验证器应用提供的 TOTP 代码请求 PUT `/api/private/totp/create` 来完成 TOTP 创建流程。\n\n"
+        "若 5 分钟内未完成或错误 3 次以上则创建流程需要重新开始。"
+    ),
     tags=["验证", "g0v0 API"],
     response_model=StartCreateTotpKeyResp,
     status_code=201,
