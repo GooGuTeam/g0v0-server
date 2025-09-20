@@ -41,6 +41,9 @@ class SessionReissueResponse(BaseModel):
     message: str
 
 
+class VerifyFailed(Exception): ...
+
+
 @router.post(
     "/session/verify",
     name="验证会话",
@@ -65,21 +68,20 @@ async def verify_session(
     if not await LoginSessionService.check_is_need_verification(db, user_id=user_id):
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-    if api_version < 20250913:
-        verify_method = "mail"
-    else:
-        verify_method: str | None = await LoginSessionService.get_login_method(user_id, redis)
+    verify_method: str | None = (
+        "mail" if api_version < 20250913 else await LoginSessionService.get_login_method(user_id, redis)
+    )
+
     ip_address = get_client_ip(request)
     user_agent = request.headers.get("User-Agent", "Unknown")
+    login_method = "password"
 
     try:
         totp_key: TotpKeys | None = await current_user.awaitable_attrs.totp_key
         if verify_method is None:
-            if totp_key:
-                verify_method = "totp"
-            else:
-                verify_method = "mail"
+            verify_method = "totp" if totp_key else "mail"
             await LoginSessionService.set_login_method(user_id, verify_method, redis)
+        login_method = verify_method
 
         if verify_method == "totp":
             if not totp_key:
@@ -88,74 +90,43 @@ async def verify_session(
                     await EmailVerificationService.send_verification_email(
                         db, redis, user_id, current_user.username, current_user.email, ip_address, user_agent
                     )
-                    return JSONResponse(content={"method": "mail"}, status_code=status.HTTP_422_UNPROCESSABLE_ENTITY)
-                else:
-                    await LoginSessionService.mark_session_verified(db, redis, user_id)
-                    return Response(status_code=status.HTTP_204_NO_CONTENT)
+                    verify_method = "mail"
+                    raise VerifyFailed("用户未设置 TOTP，已发送邮件验证码")
+                # 如果未开启邮箱验证，则直接认为认证通过
+                # 正常不会进入到这里
 
-            if verify_totp_key(totp_key.secret, verification_key):
-                await LoginLogService.record_login(
-                    db=db,
-                    user_id=user_id,
-                    request=request,
-                    login_method="totp",
-                    login_success=True,
-                    notes="TOTP 验证成功",
-                )
-                await LoginSessionService.mark_session_verified(db, redis, user_id)
-                return Response(status_code=status.HTTP_204_NO_CONTENT)
-            elif len(verification_key) == BACKUP_CODE_LENGTH:
-                if check_totp_backup_code(totp_key, verification_key):
-                    await db.commit()
-                    await LoginLogService.record_login(
-                        db=db,
-                        user_id=user_id,
-                        request=request,
-                        login_method="totp_backup_code",
-                        login_success=True,
-                        notes="TOTP 备份码验证成功",
-                    )
-                    await LoginSessionService.mark_session_verified(db, redis, user_id)
-                    await db.commit()
-                    return Response(status_code=status.HTTP_204_NO_CONTENT)
-            await LoginLogService.record_failed_login(
-                db=db,
-                request=request,
-                attempted_username=current_user.username,
-                login_method="totp",
-                notes="TOTP 失败",
-            )
+            elif verify_totp_key(totp_key.secret, verification_key):
+                pass
+            elif len(verification_key) == BACKUP_CODE_LENGTH and check_totp_backup_code(totp_key, verification_key):
+                login_method = "totp_backup_code"
+            else:
+                raise VerifyFailed("TOTP 验证失败")
         else:
             success, message = await EmailVerificationService.verify_email_code(db, redis, user_id, verification_key)
+            if not success:
+                raise VerifyFailed(f"邮件验证失败: {message}")
 
-            if success:
-                # 记录成功的邮件验证
-                await LoginLogService.record_login(
-                    db=db,
-                    user_id=user_id,
-                    request=request,
-                    login_method="email_verification",
-                    login_success=True,
-                    notes="邮件验证成功",
-                )
+        await LoginLogService.record_login(
+            db=db,
+            user_id=user_id,
+            request=request,
+            login_method=login_method,
+            login_success=True,
+            notes=f"{login_method} 验证成功",
+        )
+        await LoginSessionService.mark_session_verified(db, redis, user_id)
+        await db.commit()
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-                # 返回 204 No Content 表示验证成功
-                return Response(status_code=status.HTTP_204_NO_CONTENT)
-            else:
-                # 记录失败的邮件验证尝试
-                await LoginLogService.record_failed_login(
-                    db=db,
-                    request=request,
-                    attempted_username=current_user.username,
-                    login_method="email_verification",
-                    notes=f"邮件验证失败: {message}",
-                )
+    except VerifyFailed as e:
+        await LoginLogService.record_failed_login(
+            db=db,
+            request=request,
+            attempted_username=current_user.username,
+            login_method=login_method,
+            notes=str(e),
+        )
         return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content={"method": verify_method})
-
-    except ValueError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="无效的用户会话")
-    except Exception:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="验证过程中发生错误")
 
 
 @router.post(
@@ -174,13 +145,7 @@ async def reissue_verification_code(
     try:
         ip_address = get_client_ip(request)
         user_agent = request.headers.get("User-Agent", "Unknown")
-
-        # 从当前认证用户获取信息
         user_id = current_user.id
-        if not user_id:
-            return SessionReissueResponse(success=False, message="用户未认证")
-
-        # 重新发送验证码
         success, message = await EmailVerificationService.resend_verification_code(
             db,
             redis,

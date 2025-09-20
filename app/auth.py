@@ -326,16 +326,16 @@ async def finish_create_totp_key(
     fails = int(data["fails"])
 
     if fails >= 3:
-        await redis.delete(f"totp:setup:{user.email}")  # pyright: ignore[reportGeneralTypeIssues]
+        await redis.delete(totp_redis_key(user))  # pyright: ignore[reportGeneralTypeIssues]
         return FinishStatus.TOO_MANY_ATTEMPTS, []
 
     if verify_totp_key(secret, code):
-        await redis.delete(f"totp:setup:{user.email}")  # pyright: ignore[reportGeneralTypeIssues]
+        await redis.delete(totp_redis_key(user))  # pyright: ignore[reportGeneralTypeIssues]
         backup_codes = await _store_totp_key(user, secret, db)
         return FinishStatus.SUCCESS, backup_codes
     else:
         fails += 1
-        await redis.hset(f"totp:setup:{user.email}", "fails", str(fails))  # pyright: ignore[reportGeneralTypeIssues]
+        await redis.hset(totp_redis_key(user), "fails", str(fails))  # pyright: ignore[reportGeneralTypeIssues]
         return FinishStatus.FAILED, []
 
 

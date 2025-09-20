@@ -338,7 +338,7 @@ async def oauth_token(
             if not verification_sent:
                 # 邮件发送失败，记录错误
                 logger.error(f"[Auth] Failed to send email verification code for user {user_id}")
-        elif is_new_location and not settings.enable_email_verification:
+        elif is_new_location:
             # 新位置登录但邮件验证功能被禁用，直接标记会话为已验证
             await LoginSessionService.mark_session_verified(db, redis, user_id)
             logger.debug(
