@@ -9,7 +9,7 @@ import asyncio
 from app.database.user_login_log import UserLoginLog
 from app.dependencies.geoip import get_client_ip, get_geoip_helper, normalize_ip
 from app.log import logger
-from app.utils import utcnow
+from app.utils import simplify_user_agent, utcnow
 
 from fastapi import Request
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -44,9 +44,6 @@ class LoginLogService:
         # 获取客户端IP并标准化格式
         raw_ip = get_client_ip(request)
         ip_address = normalize_ip(raw_ip)
-
-        # 获取并简化User-Agent
-        from app.utils import simplify_user_agent
 
         raw_user_agent = request.headers.get("User-Agent", "")
         user_agent = simplify_user_agent(raw_user_agent, max_length=500)

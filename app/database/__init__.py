@@ -1,5 +1,5 @@
 from .achievement import UserAchievement, UserAchievementResp
-from .auth import OAuthClient, OAuthToken, V1APIKeys
+from .auth import OAuthClient, OAuthToken, TotpKeys, V1APIKeys
 from .beatmap import (
     Beatmap,
     BeatmapResp,
@@ -25,10 +25,10 @@ from .counts import (
     ReplayWatchedCount,
 )
 from .daily_challenge import DailyChallengeStats, DailyChallengeStatsResp
-from .email_verification import EmailVerification, LoginSession
 from .events import Event
 from .favourite_beatmapset import FavouriteBeatmapset
 from .lazer_user import (
+    MeResp,
     User,
     UserResp,
 )
@@ -67,6 +67,7 @@ from .user_account_history import (
     UserAccountHistoryType,
 )
 from .user_login_log import UserLoginLog
+from .verification import EmailVerification, LoginSession
 
 __all__ = [
     "APIUploadedRoom",
@@ -93,6 +94,7 @@ __all__ = [
     "ItemAttemptsCount",
     "ItemAttemptsResp",
     "LoginSession",
+    "MeResp",
     "MonthlyPlaycounts",
     "MultiplayerEvent",
     "MultiplayerEventResp",
@@ -126,6 +128,7 @@ __all__ = [
     "Team",
     "TeamMember",
     "TeamRequest",
+    "TotpKeys",
     "User",
     "UserAccountHistory",
     "UserAccountHistoryResp",
