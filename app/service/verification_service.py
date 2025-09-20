@@ -543,4 +543,4 @@ class LoginSessionService:
                 )
             ).first()
             return unverified_session or False
-        return True
+        return False

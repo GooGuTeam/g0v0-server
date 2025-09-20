@@ -11,10 +11,10 @@ from app.config import settings
 from app.const import BACKUP_CODE_LENGTH
 from app.database import User
 from app.database.auth import TotpKeys
-from app.dependencies import get_current_user
 from app.dependencies.api_version import APIVersion
 from app.dependencies.database import Database, get_redis
 from app.dependencies.geoip import get_client_ip
+from app.dependencies.user import get_client_user_no_verified
 from app.log import logger
 from app.service.login_log_service import LoginLogService
 from app.service.verification_service import (
@@ -61,7 +61,7 @@ async def verify_session(
     api_version: APIVersion,
     redis: Annotated[Redis, Depends(get_redis)],
     verification_key: str = Form(..., description="8 位邮件验证码或者 6 位 TOTP 代码或 10 位备份码 （g0v0 扩展支持）"),
-    current_user: User = Security(get_current_user),
+    current_user: User = Security(get_client_user_no_verified),
 ) -> Response:
     user_id = current_user.id
 
@@ -140,7 +140,7 @@ async def reissue_verification_code(
     request: Request,
     db: Database,
     redis: Annotated[Redis, Depends(get_redis)],
-    current_user: User = Security(get_current_user),
+    current_user: User = Security(get_client_user_no_verified),
 ) -> SessionReissueResponse:
     try:
         ip_address = get_client_ip(request)
@@ -175,7 +175,7 @@ async def fallback_email(
     db: Database,
     request: Request,
     redis: Annotated[Redis, Depends(get_redis)],
-    current_user: User = Security(get_current_user),
+    current_user: User = Security(get_client_user_no_verified),
 ) -> VerifyMethod:
     if not await LoginSessionService.get_login_method(current_user.id, redis):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前会话不需要回退")

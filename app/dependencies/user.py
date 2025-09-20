@@ -75,7 +75,7 @@ async def v1_authorize(
         raise HTTPException(status_code=401, detail="Invalid API key")
 
 
-async def get_client_user(
+async def get_client_user_no_verified(
     db: Database,
     token: Annotated[str, Depends(oauth2_password)],
 ):
@@ -88,6 +88,14 @@ async def get_client_user(
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
     await db.refresh(user)
+    return user
+
+
+async def get_client_user(db: Database, user: User = Depends(get_client_user_no_verified)):
+    from app.service.verification_service import LoginSessionService
+
+    if await LoginSessionService.check_is_need_verification(db, user.id):
+        raise HTTPException(status_code=403, detail="User not verified")
     return user
 
 
