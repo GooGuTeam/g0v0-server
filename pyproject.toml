@@ -25,6 +25,7 @@ dependencies = [
     "pillow>=11.3.0",
     "pydantic-settings>=2.10.1",
     "pydantic[email]>=2.5.0",
+    "pyotp>=2.9.0",
     "python-dotenv>=1.0.0",
     "python-jose[cryptography]>=3.3.0",
     "python-multipart>=0.0.6",
