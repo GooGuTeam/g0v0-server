@@ -12,7 +12,6 @@ from app.service.ranking_cache_service import get_ranking_cache_service
 from .router import router
 
 from fastapi import BackgroundTasks, Path, Query, Security
-from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlmodel import col, select
 
@@ -40,13 +39,16 @@ SortType = Literal["performance", "score"]
     name="获取战队排行榜",
     description="获取在指定模式下按照 pp 排序的战队排行榜",
     tags=["排行榜"],
-    status_code=301,
+    response_model=TeamResponse,
 )
 async def get_team_ranking_pp(
+    session: Database,
+    background_tasks: BackgroundTasks,
     ruleset: GameMode = Path(..., description="指定 ruleset"),
     page: int = Query(1, ge=1, description="页码"),
+    current_user: User = Security(get_current_user, scopes=["public"]),
 ):
-    return RedirectResponse(url=f"/api/v2/rankings/{ruleset}/team/performance?page={page}", status_code=301)
+    return await get_team_ranking(session, background_tasks, "performance", ruleset, page, current_user)
 
 
 @router.get(
@@ -161,13 +163,16 @@ class CountryResponse(BaseModel):
     name="获取地区排行榜",
     description="获取在指定模式下按照 pp 排序的地区排行榜",
     tags=["排行榜"],
-    status_code=301,
+    response_model=CountryResponse,
 )
 async def get_country_ranking_pp(
+    session: Database,
+    background_tasks: BackgroundTasks,
     ruleset: GameMode = Path(..., description="指定 ruleset"),
     page: int = Query(1, ge=1, description="页码"),
+    current_user: User = Security(get_current_user, scopes=["public"]),
 ):
-    return RedirectResponse(url=f"/api/v2/rankings/{ruleset}/country/performance?page={page}", status_code=301)
+    return await get_country_ranking(session, background_tasks, ruleset, page, "performance", current_user)
 
 
 @router.get(
