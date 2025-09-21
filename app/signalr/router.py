@@ -9,6 +9,7 @@ import uuid
 from app.database import User as DBUser
 from app.dependencies import get_current_user
 from app.dependencies.database import DBFactory, get_db_factory
+from app.dependencies.user import get_current_user_and_token
 from app.log import logger
 from app.models.signalr import NegotiateResponse, Transport
 
@@ -61,9 +62,11 @@ async def connect(
         return
     try:
         async for session in factory():
-            if (user := await get_current_user(session, SecurityScopes(scopes=["*"]), token_pw=token)) is None or str(
-                user.id
-            ) != user_id:
+            if (
+                user_and_token := await get_current_user_and_token(
+                    session, SecurityScopes(scopes=["*"]), token_pw=token
+                )
+            ) is None or str(user_and_token[0].id) != user_id:
                 await websocket.close(code=1008)
                 return
     except HTTPException:
