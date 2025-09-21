@@ -455,10 +455,10 @@ class MeResp(UserResp):
 
         u = await super().from_db(obj, session, ["session_verified", *include], ruleset, token_id=token_id)
         u = cls.model_validate(u.model_dump())
-        if settings.enable_totp_verification or settings.enable_email_verification:
+        if (settings.enable_totp_verification or settings.enable_email_verification) and token_id:
             redis = get_redis()
             if not u.session_verified:
-                u.session_verification_method = await LoginSessionService.get_login_method(obj.id, redis)
+                u.session_verification_method = await LoginSessionService.get_login_method(obj.id, token_id, redis)
         else:
             u.session_verification_method = None
         return u

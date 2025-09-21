@@ -292,8 +292,6 @@ This email was sent automatically, please do not reply.
             # 检查是否启用邮件验证功能
             if not settings.enable_email_verification:
                 logger.debug(f"[Email Verification] Email verification is disabled, auto-approving for user {user_id}")
-                # 仍然标记登录会话为已验证
-                await LoginSessionService.mark_session_verified(db, redis, user_id)
                 return True, "验证成功（邮件验证功能已禁用）"
 
             # 先从 Redis 检查
@@ -319,9 +317,6 @@ This email was sent automatically, please do not reply.
             # 标记为已使用
             verification.is_used = True
             verification.used_at = utcnow()
-
-            # 同时更新对应的登录会话状态
-            await LoginSessionService.mark_session_verified(db, redis, user_id)
 
             await db.commit()
 
@@ -419,17 +414,21 @@ class LoginSessionService:
         logger.info(f"[Login Session] Created session for user {user_id} (new location: {is_new_location})")
         return session
 
-    @staticmethod
-    async def get_login_method(user_id: int, redis: Redis) -> Literal["totp", "mail"] | None:
-        return await redis.get(f"session_verification_method:{user_id}")
+    @classmethod
+    def _session_verify_redis_key(cls, user_id: int, token_id: int) -> str:
+        return f"session_verification_method:{user_id}:{token_id}"
 
-    @staticmethod
-    async def set_login_method(user_id: int, method: Literal["totp", "mail"], redis: Redis) -> None:
-        await redis.set(f"session_verification_method:{user_id}", method)
+    @classmethod
+    async def get_login_method(cls, user_id: int, token_id: int, redis: Redis) -> Literal["totp", "mail"] | None:
+        return await redis.get(cls._session_verify_redis_key(user_id, token_id))
 
-    @staticmethod
-    async def clear_login_method(user_id: int, redis: Redis) -> None:
-        await redis.delete(f"session_verification_method:{user_id}")
+    @classmethod
+    async def set_login_method(cls, user_id: int, token_id: int, method: Literal["totp", "mail"], redis: Redis) -> None:
+        await redis.set(cls._session_verify_redis_key(user_id, token_id), method)
+
+    @classmethod
+    async def clear_login_method(cls, user_id: int, token_id: int, redis: Redis) -> None:
+        await redis.delete(cls._session_verify_redis_key(user_id, token_id))
 
     @staticmethod
     async def check_new_location(
@@ -459,7 +458,7 @@ class LoginSessionService:
             return True
 
     @staticmethod
-    async def mark_session_verified(db: AsyncSession, redis: Redis, user_id: int) -> bool:
+    async def mark_session_verified(db: AsyncSession, redis: Redis, user_id: int, token_id: int) -> bool:
         """标记用户的未验证会话为已验证"""
         try:
             # 查找用户所有未验证且未过期的会话
@@ -468,6 +467,7 @@ class LoginSessionService:
                     LoginSession.user_id == user_id,
                     col(LoginSession.is_verified).is_(False),
                     LoginSession.expires_at > utcnow(),
+                    LoginSession.token_id == token_id,
                 )
             )
 
@@ -481,7 +481,7 @@ class LoginSessionService:
             if sessions:
                 logger.info(f"[Login Session] Marked {len(sessions)} session(s) as verified for user {user_id}")
 
-            await LoginSessionService.clear_login_method(user_id, redis)
+            await LoginSessionService.clear_login_method(user_id, token_id, redis)
 
             return len(sessions) > 0
 

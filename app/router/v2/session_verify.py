@@ -9,12 +9,11 @@ from typing import Annotated, Literal
 from app.auth import check_totp_backup_code, verify_totp_key
 from app.config import settings
 from app.const import BACKUP_CODE_LENGTH
-from app.database import User
 from app.database.auth import TotpKeys
 from app.dependencies.api_version import APIVersion
 from app.dependencies.database import Database, get_redis
 from app.dependencies.geoip import get_client_ip
-from app.dependencies.user import UserAndToken, get_client_user_and_token, get_client_user_no_verified
+from app.dependencies.user import UserAndToken, get_client_user_and_token
 from app.log import logger
 from app.service.login_log_service import LoginLogService
 from app.service.verification_service import (
@@ -64,13 +63,14 @@ async def verify_session(
     user_and_token: UserAndToken = Security(get_client_user_and_token),
 ) -> Response:
     current_user = user_and_token[0]
+    token_id = user_and_token[1].id
     user_id = current_user.id
 
-    if not await LoginSessionService.check_is_need_verification(db, user_id=user_id, token_id=user_and_token[1].id):
+    if not await LoginSessionService.check_is_need_verification(db, user_id, token_id):
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     verify_method: str | None = (
-        "mail" if api_version < 20250913 else await LoginSessionService.get_login_method(user_id, redis)
+        "mail" if api_version < 20250913 else await LoginSessionService.get_login_method(user_id, token_id, redis)
     )
 
     ip_address = get_client_ip(request)
@@ -81,13 +81,13 @@ async def verify_session(
         totp_key: TotpKeys | None = await current_user.awaitable_attrs.totp_key
         if verify_method is None:
             verify_method = "totp" if totp_key else "mail"
-            await LoginSessionService.set_login_method(user_id, verify_method, redis)
+            await LoginSessionService.set_login_method(user_id, token_id, verify_method, redis)
         login_method = verify_method
 
         if verify_method == "totp":
             if not totp_key:
                 if settings.enable_email_verification:
-                    await LoginSessionService.set_login_method(user_id, "mail", redis)
+                    await LoginSessionService.set_login_method(user_id, token_id, "mail", redis)
                     await EmailVerificationService.send_verification_email(
                         db, redis, user_id, current_user.username, current_user.email, ip_address, user_agent
                     )
@@ -115,7 +115,7 @@ async def verify_session(
             login_success=True,
             notes=f"{login_method} 验证成功",
         )
-        await LoginSessionService.mark_session_verified(db, redis, user_id)
+        await LoginSessionService.mark_session_verified(db, redis, user_id, token_id)
         await db.commit()
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -140,9 +140,23 @@ async def verify_session(
 async def reissue_verification_code(
     request: Request,
     db: Database,
+    api_version: APIVersion,
     redis: Annotated[Redis, Depends(get_redis)],
-    current_user: User = Security(get_client_user_no_verified),
+    user_and_token: UserAndToken = Security(get_client_user_and_token),
 ) -> SessionReissueResponse:
+    current_user = user_and_token[0]
+    token_id = user_and_token[1].id
+    user_id = current_user.id
+
+    if not await LoginSessionService.check_is_need_verification(db, user_id, token_id):
+        return SessionReissueResponse(success=False, message="当前会话不需要验证")
+
+    verify_method: str | None = (
+        "mail" if api_version < 20250913 else await LoginSessionService.get_login_method(user_id, token_id, redis)
+    )
+    if verify_method != "mail":
+        return SessionReissueResponse(success=False, message="当前会话不支持重新发送验证码")
+
     try:
         ip_address = get_client_ip(request)
         user_agent = request.headers.get("User-Agent", "Unknown")
@@ -176,15 +190,17 @@ async def fallback_email(
     db: Database,
     request: Request,
     redis: Annotated[Redis, Depends(get_redis)],
-    current_user: User = Security(get_client_user_no_verified),
+    user_and_token: UserAndToken = Security(get_client_user_and_token),
 ) -> VerifyMethod:
-    if not await LoginSessionService.get_login_method(current_user.id, redis):
+    current_user = user_and_token[0]
+    token_id = user_and_token[1].id
+    if not await LoginSessionService.get_login_method(current_user.id, token_id, redis):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前会话不需要回退")
 
     ip_address = get_client_ip(request)
     user_agent = request.headers.get("User-Agent", "Unknown")
 
-    await LoginSessionService.set_login_method(current_user.id, "mail", redis)
+    await LoginSessionService.set_login_method(current_user.id, token_id, "mail", redis)
     success, message = await EmailVerificationService.resend_verification_code(
         db,
         redis,
@@ -195,5 +211,7 @@ async def fallback_email(
         user_agent,
     )
     if not success:
-        logger.error(f"[Email Fallback] Failed to send fallback email to user {current_user.id}: {message}")
+        logger.error(
+            f"[Email Fallback] Failed to send fallback email to user {current_user.id} (token: {token_id}): {message}"
+        )
     return VerifyMethod()

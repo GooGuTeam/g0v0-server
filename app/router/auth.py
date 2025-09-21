@@ -353,7 +353,7 @@ async def oauth_token(
                 logger.error(f"[Auth] Failed to send email verification code for user {user_id}")
         elif is_new_location:
             # 新位置登录但邮件验证功能被禁用，直接标记会话为已验证
-            await LoginSessionService.mark_session_verified(db, redis, user_id)
+            await LoginSessionService.mark_session_verified(db, redis, user_id, token_id)
             logger.debug(
                 f"[Auth] New location login detected but email verification disabled, auto-verifying user {user_id}"
             )
@@ -372,7 +372,7 @@ async def oauth_token(
             await LoginSessionService.create_session(
                 db, redis, user_id, token_id, ip_address, user_agent, country_code, is_new_location, False
             )
-            await LoginSessionService.set_login_method(user_id, session_verification_method, redis)
+            await LoginSessionService.set_login_method(user_id, token_id, session_verification_method, redis)
         else:
             await LoginSessionService.create_session(
                 db, redis, user_id, token_id, ip_address, user_agent, country_code, is_new_location, True
