@@ -12,7 +12,7 @@ from app.dependencies.database import (
     get_redis,
     with_db,
 )
-from app.dependencies.user import get_current_user
+from app.dependencies.user import get_current_user_and_token
 from app.log import logger
 from app.models.chat import ChatEvent
 from app.models.notification import NotificationDetail
@@ -311,7 +311,11 @@ async def chat_websocket(
             await websocket.close(code=1008, reason="Missing authentication token")
             return
 
-        if (user := await get_current_user(session, SecurityScopes(scopes=["chat.read"]), token_pw=auth_token)) is None:
+        if (
+            user_and_token := await get_current_user_and_token(
+                session, SecurityScopes(scopes=["chat.read"]), token_pw=auth_token
+            )
+        ) is None:
             await websocket.close(code=1008, reason="Invalid or expired token")
             return
 
@@ -320,6 +324,7 @@ async def chat_websocket(
         if login.get("event") != "chat.start":
             await websocket.close(code=1008)
             return
+        user = user_and_token[0]
         user_id = user.id
         server.connect(user_id, websocket)
         # 使用明确的查询避免延迟加载

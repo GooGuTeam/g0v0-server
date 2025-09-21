@@ -5,7 +5,7 @@ from typing import Annotated
 from app.auth import get_token_by_access_token
 from app.config import settings
 from app.database import User
-from app.database.auth import V1APIKeys
+from app.database.auth import OAuthToken, V1APIKeys
 from app.models.oauth import OAuth2ClientCredentialsBearer
 
 from .database import Database
@@ -75,10 +75,10 @@ async def v1_authorize(
         raise HTTPException(status_code=401, detail="Invalid API key")
 
 
-async def get_client_user_no_verified(
+async def get_client_user_and_token(
     db: Database,
     token: Annotated[str, Depends(oauth2_password)],
-):
+) -> tuple[User, OAuthToken]:
     token_record = await get_token_by_access_token(db, token)
     if not token_record:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
@@ -87,25 +87,33 @@ async def get_client_user_no_verified(
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
-    await db.refresh(user)
-    return user
+    return user, token_record
 
 
-async def get_client_user(db: Database, user: User = Depends(get_client_user_no_verified)):
+UserAndToken = tuple[User, OAuthToken]
+
+
+async def get_client_user_no_verified(user_and_token: UserAndToken = Depends(get_client_user_and_token)):
+    return user_and_token[0]
+
+
+async def get_client_user(db: Database, user_and_token: UserAndToken = Depends(get_client_user_and_token)):
     from app.service.verification_service import LoginSessionService
 
-    if await LoginSessionService.check_is_need_verification(db, user.id):
+    user, token = user_and_token
+
+    if await LoginSessionService.check_is_need_verification(db, user.id, token.id):
         raise HTTPException(status_code=403, detail="User not verified")
     return user
 
 
-async def get_current_user(
+async def get_current_user_and_token(
     db: Database,
     security_scopes: SecurityScopes,
     token_pw: Annotated[str | None, Depends(oauth2_password)] = None,
     token_code: Annotated[str | None, Depends(oauth2_code)] = None,
     token_client_credentials: Annotated[str | None, Depends(oauth2_client_credentials)] = None,
-) -> User:
+) -> UserAndToken:
     """获取当前认证用户"""
     token = token_pw or token_code or token_client_credentials
     if not token:
@@ -128,6 +136,10 @@ async def get_current_user(
     user = (await db.exec(select(User).where(User.id == token_record.user_id))).first()
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+    return user, token_record
 
-    await db.refresh(user)
-    return user
+
+async def get_current_user(
+    user_and_token: UserAndToken = Depends(get_current_user_and_token),
+) -> User:
+    return user_and_token[0]

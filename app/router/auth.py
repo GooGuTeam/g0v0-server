@@ -288,8 +288,23 @@ async def oauth_token(
         # 确保用户对象与当前会话关联
         await db.refresh(user)
 
-        # 获取用户信息和客户端信息
         user_id = user.id
+        totp_key: TotpKeys | None = await user.awaitable_attrs.totp_key
+
+        # 生成令牌
+        access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
+        access_token = create_access_token(data={"sub": str(user_id)}, expires_delta=access_token_expires)
+        refresh_token_str = generate_refresh_token()
+        token = await store_token(
+            db,
+            user_id,
+            client_id,
+            scopes,
+            access_token,
+            refresh_token_str,
+            settings.access_token_expire_minutes * 60,
+        )
+        token_id = token.id
 
         ip_address = get_client_ip(request)
         user_agent = request.headers.get("User-Agent", "")
@@ -300,8 +315,6 @@ async def oauth_token(
 
         # 检查是否为新位置登录
         is_new_location = await LoginSessionService.check_new_location(db, user_id, ip_address, country_code)
-
-        totp_key: TotpKeys | None = await user.awaitable_attrs.totp_key
 
         session_verification_method = None
         if settings.enable_totp_verification and totp_key is not None:
@@ -354,35 +367,17 @@ async def oauth_token(
                 login_method="password",
                 notes=f"正常登录 - IP: {ip_address}, 国家: {country_code}",
             )
+
         if session_verification_method:
             await LoginSessionService.create_session(
-                db, redis, user_id, ip_address, user_agent, country_code, is_new_location, False
+                db, redis, user_id, token_id, ip_address, user_agent, country_code, is_new_location, False
             )
             await LoginSessionService.set_login_method(user_id, session_verification_method, redis)
         else:
             await LoginSessionService.create_session(
-                db, redis, user_id, ip_address, user_agent, country_code, is_new_location, True
+                db, redis, user_id, token_id, ip_address, user_agent, country_code, is_new_location, True
             )
 
-        # 无论是否新位置登录，都返回正常的token
-        # session_verified状态通过/me接口的session_verified字段来体现
-
-        # 生成令牌
-        access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
-        # 获取用户ID，避免触发延迟加载
-        access_token = create_access_token(data={"sub": str(user_id)}, expires_delta=access_token_expires)
-        refresh_token_str = generate_refresh_token()
-
-        # 存储令牌
-        await store_token(
-            db,
-            user_id,
-            client_id,
-            scopes,
-            access_token,
-            refresh_token_str,
-            settings.access_token_expire_minutes * 60,
-        )
         return TokenResponse(
             access_token=access_token,
             token_type="Bearer",

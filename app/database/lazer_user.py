@@ -257,6 +257,8 @@ class UserResp(UserBase):
         session: AsyncSession,
         include: list[str] = [],
         ruleset: GameMode | None = None,
+        *,
+        token_id: int | None = None,
     ) -> "UserResp":
         from app.dependencies.database import get_redis
 
@@ -426,7 +428,11 @@ class UserResp(UserBase):
         if "session_verified" in include:
             from app.service.verification_service import LoginSessionService
 
-            u.session_verified = not await LoginSessionService.check_is_need_verification(session, user_id=obj.id)
+            u.session_verified = (
+                not await LoginSessionService.check_is_need_verification(session, user_id=obj.id, token_id=token_id)
+                if token_id
+                else True
+            )
 
         return u
 
@@ -441,11 +447,13 @@ class MeResp(UserResp):
         session: AsyncSession,
         include: list[str] = [],
         ruleset: GameMode | None = None,
+        *,
+        token_id: int | None = None,
     ) -> "MeResp":
         from app.dependencies.database import get_redis
         from app.service.verification_service import LoginSessionService
 
-        u = await super().from_db(obj, session, ["session_verified", *include], ruleset)
+        u = await super().from_db(obj, session, ["session_verified", *include], ruleset, token_id=token_id)
         u = cls.model_validate(u.model_dump())
         if settings.enable_totp_verification or settings.enable_email_verification:
             redis = get_redis()

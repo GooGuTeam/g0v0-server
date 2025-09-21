@@ -383,6 +383,7 @@ class LoginSessionService:
         db: AsyncSession,
         redis: Redis,
         user_id: int,
+        token_id: int,
         ip_address: str,
         user_agent: str | None = None,
         country_code: str | None = None,
@@ -395,7 +396,7 @@ class LoginSessionService:
 
         session = LoginSession(
             user_id=user_id,
-            session_token=session_token,
+            token_id=token_id,
             ip_address=ip_address,
             user_agent=None,
             country_code=country_code,
@@ -429,47 +430,6 @@ class LoginSessionService:
     @staticmethod
     async def clear_login_method(user_id: int, redis: Redis) -> None:
         await redis.delete(f"session_verification_method:{user_id}")
-
-    @staticmethod
-    async def verify_session(
-        db: AsyncSession, redis: Redis, session_token: str, verification_code: str
-    ) -> tuple[bool, str]:
-        """验证会话（通过邮件验证码）"""
-        try:
-            # 从 Redis 获取用户ID
-            user_id = await redis.get(f"login_session:{session_token}")
-            if not user_id:
-                return False, "会话无效或已过期"
-
-            user_id = int(user_id)
-
-            # 验证邮件验证码
-            success, message = await EmailVerificationService.verify_email_code(db, redis, user_id, verification_code)
-
-            if not success:
-                return False, message
-
-            # 更新会话状态
-            result = await db.exec(
-                select(LoginSession).where(
-                    LoginSession.session_token == session_token,
-                    LoginSession.user_id == user_id,
-                    col(LoginSession.is_verified).is_(False),
-                )
-            )
-
-            session = result.first()
-            if session:
-                session.is_verified = True
-                session.verified_at = utcnow()
-                await db.commit()
-
-            logger.info(f"[Login Session] User {user_id} session verification successful")
-            return True, "会话验证成功"
-
-        except Exception as e:
-            logger.error(f"[Login Session] Exception during session verification: {e}")
-            return False, "验证过程中发生错误"
 
     @staticmethod
     async def check_new_location(
@@ -530,7 +490,7 @@ class LoginSessionService:
             return False
 
     @staticmethod
-    async def check_is_need_verification(db: AsyncSession, user_id: int) -> bool:
+    async def check_is_need_verification(db: AsyncSession, user_id: int, token_id: int) -> bool:
         """检查用户是否需要验证（有未验证的会话）"""
         if settings.enable_totp_verification or settings.enable_email_verification:
             unverified_session = (
@@ -539,6 +499,7 @@ class LoginSessionService:
                         LoginSession.user_id == user_id,
                         col(LoginSession.is_verified).is_(False),
                         LoginSession.expires_at > utcnow(),
+                        LoginSession.token_id == token_id,
                     )
                 )
             ).first()

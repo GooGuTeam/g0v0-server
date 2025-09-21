@@ -14,7 +14,7 @@ from app.database.auth import TotpKeys
 from app.dependencies.api_version import APIVersion
 from app.dependencies.database import Database, get_redis
 from app.dependencies.geoip import get_client_ip
-from app.dependencies.user import get_client_user_no_verified
+from app.dependencies.user import UserAndToken, get_client_user_and_token, get_client_user_no_verified
 from app.log import logger
 from app.service.login_log_service import LoginLogService
 from app.service.verification_service import (
@@ -61,11 +61,12 @@ async def verify_session(
     api_version: APIVersion,
     redis: Annotated[Redis, Depends(get_redis)],
     verification_key: str = Form(..., description="8 位邮件验证码或者 6 位 TOTP 代码或 10 位备份码 （g0v0 扩展支持）"),
-    current_user: User = Security(get_client_user_no_verified),
+    user_and_token: UserAndToken = Security(get_client_user_and_token),
 ) -> Response:
+    current_user = user_and_token[0]
     user_id = current_user.id
 
-    if not await LoginSessionService.check_is_need_verification(db, user_id=user_id):
+    if not await LoginSessionService.check_is_need_verification(db, user_id=user_id, token_id=user_and_token[1].id):
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     verify_method: str | None = (

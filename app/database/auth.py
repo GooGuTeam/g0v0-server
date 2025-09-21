@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING
 from app.models.model import UTCBaseModel
 from app.utils import utcnow
 
+from .verification import LoginSession
+
 from sqlalchemy import Column, DateTime
 from sqlmodel import (
     JSON,
@@ -23,7 +25,7 @@ if TYPE_CHECKING:
 class OAuthToken(UTCBaseModel, SQLModel, table=True):
     __tablename__: str = "oauth_tokens"
 
-    id: int | None = Field(default=None, primary_key=True, index=True)
+    id: int = Field(default=None, primary_key=True, index=True)
     user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
     client_id: int = Field(index=True)
     access_token: str = Field(max_length=500, unique=True)
@@ -34,6 +36,7 @@ class OAuthToken(UTCBaseModel, SQLModel, table=True):
     created_at: datetime = Field(default_factory=utcnow, sa_column=Column(DateTime))
 
     user: "User" = Relationship()
+    login_session: LoginSession | None = Relationship(back_populates="token", passive_deletes=True)
 
 
 class OAuthClient(SQLModel, table=True):

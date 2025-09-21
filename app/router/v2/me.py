@@ -4,6 +4,7 @@ from app.database import MeResp, User
 from app.database.lazer_user import ALL_INCLUDED
 from app.dependencies import get_current_user
 from app.dependencies.database import Database
+from app.dependencies.user import UserAndToken, get_current_user_and_token
 from app.exceptions.userpage import UserpageError
 from app.models.score import GameMode
 from app.models.user import Page
@@ -30,14 +31,9 @@ from fastapi import HTTPException, Path, Security
 async def get_user_info_with_ruleset(
     session: Database,
     ruleset: GameMode = Path(description="指定 ruleset"),
-    current_user: User = Security(get_current_user, scopes=["identify"]),
+    user_and_token: UserAndToken = Security(get_current_user_and_token, scopes=["identify"]),
 ):
-    user_resp = await MeResp.from_db(
-        current_user,
-        session,
-        ALL_INCLUDED,
-        ruleset,
-    )
+    user_resp = await MeResp.from_db(user_and_token[0], session, ALL_INCLUDED, ruleset, token_id=user_and_token[1].id)
     return user_resp
 
 
@@ -50,14 +46,9 @@ async def get_user_info_with_ruleset(
 )
 async def get_user_info_default(
     session: Database,
-    current_user: User = Security(get_current_user, scopes=["identify"]),
+    user_and_token: UserAndToken = Security(get_current_user_and_token, scopes=["identify"]),
 ):
-    user_resp = await MeResp.from_db(
-        current_user,
-        session,
-        ALL_INCLUDED,
-        None,
-    )
+    user_resp = await MeResp.from_db(user_and_token[0], session, ALL_INCLUDED, None, token_id=user_and_token[1].id)
     return user_resp
 
 
