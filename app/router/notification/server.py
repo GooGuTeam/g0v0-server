@@ -4,8 +4,8 @@ import asyncio
 from typing import overload
 
 from app.database.chat import ChannelType, ChatChannel, ChatChannelResp, ChatMessageResp
-from app.database.lazer_user import User
 from app.database.notification import UserNotification, insert_notification
+from app.database.user.lazer_user import User
 from app.dependencies.database import (
     DBFactory,
     get_db_factory,
@@ -16,7 +16,7 @@ from app.dependencies.user import get_current_user_and_token
 from app.log import logger
 from app.models.chat import ChatEvent
 from app.models.notification import NotificationDetail
-from app.service.subscribers.chat import ChatSubscriber
+from app.service.messaging.subscribers.chat import ChatSubscriber
 from app.utils import bg_tasks
 
 from fastapi import APIRouter, Depends, Header, Query, WebSocket, WebSocketDisconnect

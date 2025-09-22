@@ -12,7 +12,7 @@ from app.database import Beatmap
 from app.dependencies.database import get_redis, with_db
 from app.dependencies.fetcher import get_fetcher
 from app.log import logger
-from app.models.mods import APIMod, get_available_mods
+from app.models.beatmap.mods import APIMod, get_available_mods
 from app.models.score import GameMode
 
 logger.remove()

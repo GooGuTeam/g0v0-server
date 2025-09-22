@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from app.dependencies.database import get_redis
-from app.service.user_cache_service import get_user_cache_service
+from app.service.cache.user_cache_service import get_user_cache_service
 
 from .router import router
 

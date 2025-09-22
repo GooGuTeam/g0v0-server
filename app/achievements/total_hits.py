@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from functools import partial
 
-from app.database.score import Beatmap, Score
-from app.database.statistics import UserStatistics
+from app.database.beatmap import Beatmap
+from app.database.score import Score
+from app.database.user.statistics import UserStatistics
 from app.models.achievement import Achievement, Medals
 from app.models.score import GameMode
 

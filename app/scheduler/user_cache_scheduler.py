@@ -11,7 +11,7 @@ from app.config import settings
 from app.database.score import Score
 from app.dependencies.database import get_redis
 from app.log import logger
-from app.service.user_cache_service import get_user_cache_service
+from app.service.cache.user_cache_service import get_user_cache_service
 from app.utils import utcnow
 
 from sqlmodel import col, func, select
@@ -74,7 +74,7 @@ async def schedule_user_cache_warmup_task():
 
         async with with_db() as session:
             # 获取全球排行榜前100的用户
-            from app.database.statistics import UserStatistics
+            from app.database.user.statistics import UserStatistics
             from app.models.score import GameMode
 
             for mode in GameMode:

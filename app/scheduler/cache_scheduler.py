@@ -133,7 +133,7 @@ class CacheScheduler:
             # 导入排行榜缓存服务
             # 使用独立的数据库会话
             from app.dependencies.database import with_db
-            from app.service.ranking_cache_service import (
+            from app.service.cache.ranking_cache_service import (
                 schedule_ranking_refresh_task,
             )
 

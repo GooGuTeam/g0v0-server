@@ -11,7 +11,7 @@ from app.dependencies.fetcher import get_fetcher
 from app.dependencies.user import get_current_user
 from app.fetcher import Fetcher
 from app.models.beatmap import BeatmapAttributes
-from app.models.mods import APIMod, int_to_mods
+from app.models.beatmap.mods import APIMod, int_to_mods
 from app.models.score import (
     GameMode,
 )

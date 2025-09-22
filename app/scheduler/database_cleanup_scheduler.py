@@ -8,7 +8,7 @@ import asyncio
 
 from app.dependencies.database import engine
 from app.log import logger
-from app.service.database_cleanup_service import DatabaseCleanupService
+from app.service.maintenance.database_cleanup_service import DatabaseCleanupService
 
 from sqlmodel.ext.asyncio.session import AsyncSession
 

@@ -27,16 +27,19 @@ from app.scheduler.database_cleanup_scheduler import (
     start_database_cleanup_scheduler,
     stop_database_cleanup_scheduler,
 )
-from app.service.beatmap_download_service import download_service
-from app.service.calculate_all_user_rank import calculate_user_rank
-from app.service.create_banchobot import create_banchobot
-from app.service.daily_challenge import daily_challenge_job, process_daily_challenge_top
-from app.service.email_queue import start_email_processor, stop_email_processor
-from app.service.geoip_scheduler import schedule_geoip_updates
-from app.service.init_geoip import init_geoip
-from app.service.load_achievements import load_achievements
-from app.service.osu_rx_statistics import create_rx_statistics
-from app.service.redis_message_system import redis_message_system
+from app.service.achievements.load_achievements import load_achievements
+from app.service.assets.beatmap_download_service import download_service
+from app.service.bootstrap.create_banchobot import create_banchobot
+from app.service.email.email_queue import start_email_processor, stop_email_processor
+from app.service.geoip.geoip_scheduler import schedule_geoip_updates
+from app.service.geoip.init_geoip import init_geoip
+from app.service.messaging.redis_message_system import redis_message_system
+from app.service.ranking.calculate_all_user_rank import calculate_user_rank
+from app.service.ranking.osu_rx_statistics import create_rx_statistics
+from app.service.rooms.daily_challenge import (
+    daily_challenge_job,
+    process_daily_challenge_top,
+)
 from app.utils import bg_tasks, utcnow
 
 from fastapi import FastAPI, HTTPException, Request

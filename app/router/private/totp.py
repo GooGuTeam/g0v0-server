@@ -1,19 +1,19 @@
 from __future__ import annotations
 
-from app.auth import (
+from app.config import settings
+from app.const import BACKUP_CODE_LENGTH
+from app.database.auth import TotpKeys
+from app.database.user.lazer_user import User
+from app.dependencies.database import Database, get_redis
+from app.dependencies.user import get_client_user
+from app.models.auth import FinishStatus, StartCreateTotpKeyResp
+from app.service.auth import (
     check_totp_backup_code,
     finish_create_totp_key,
     start_create_totp_key,
     totp_redis_key,
     verify_totp_key,
 )
-from app.config import settings
-from app.const import BACKUP_CODE_LENGTH
-from app.database.auth import TotpKeys
-from app.database.lazer_user import User
-from app.dependencies.database import Database, get_redis
-from app.dependencies.user import get_client_user
-from app.models.totp import FinishStatus, StartCreateTotpKeyResp
 
 from .router import router
 
