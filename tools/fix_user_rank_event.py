@@ -22,7 +22,7 @@ import sys
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from app.database.events import Event, EventType
+from app.database.room.events import Event, EventType
 from app.dependencies.database import engine
 from app.log import logger
 

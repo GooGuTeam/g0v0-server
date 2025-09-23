@@ -3,16 +3,19 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from app.database.beatmap import Beatmap, calculate_beatmap_attributes
-from app.database.beatmap_playcounts import BeatmapPlaycounts
-from app.database.beatmapset import Beatmapset
-from app.database.favourite_beatmapset import FavouriteBeatmapset
-from app.database.score import Score
+from app.database import (
+    Beatmap,
+    BeatmapPlaycounts,
+    Beatmapset,
+    FavouriteBeatmapset,
+    Score,
+)
+from app.database.beatmap import calculate_beatmap_attributes
 from app.dependencies.database import Database, get_redis
 from app.dependencies.fetcher import get_fetcher
 from app.fetcher import Fetcher
 from app.models.beatmap import BeatmapRankStatus, Genre, Language
-from app.models.mods import int_to_mods
+from app.models.beatmap.mods import int_to_mods
 from app.models.score import GameMode
 
 from .router import AllStrModel, router

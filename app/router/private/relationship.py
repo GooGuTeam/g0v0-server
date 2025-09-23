@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from app.database import Relationship, User
-from app.database.relationship import RelationshipType
+from app.database import Relationship, RelationshipType, User
 from app.dependencies.database import Database
 from app.dependencies.user import get_client_user
 

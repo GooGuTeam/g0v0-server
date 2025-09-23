@@ -7,17 +7,26 @@ from typing import override
 from app.database import Room
 from app.database.beatmap import Beatmap
 from app.database.chat import ChannelType, ChatChannel
-from app.database.lazer_user import User
-from app.database.multiplayer_event import MultiplayerEvent
-from app.database.playlists import Playlist
-from app.database.relationship import Relationship, RelationshipType
-from app.database.room_participated_user import RoomParticipatedUser
+from app.database.room.multiplayer_event import MultiplayerEvent
+from app.database.room.participated_user import RoomParticipatedUser
+from app.database.room.playlists import Playlist
+from app.database.user.lazer_user import User
+from app.database.user.relationship import Relationship, RelationshipType
 from app.dependencies.database import get_redis, with_db
 from app.dependencies.fetcher import get_fetcher
 from app.exception import InvokeException
 from app.log import logger
-from app.models.mods import APIMod
-from app.models.multiplayer_hub import (
+from app.models.beatmap.mods import APIMod
+from app.models.room import (
+    DownloadState,
+    MatchType,
+    MultiplayerRoomState,
+    MultiplayerUserState,
+    RoomCategory,
+    RoomStatus,
+)
+from app.models.score import GameMode
+from app.models.signalr.multiplayer_hub import (
     BeatmapAvailability,
     ForceGameplayStartCountdown,
     GameplayAbortReason,
@@ -35,15 +44,6 @@ from app.models.multiplayer_hub import (
     StartMatchCountdownRequest,
     StopCountdownRequest,
 )
-from app.models.room import (
-    DownloadState,
-    MatchType,
-    MultiplayerRoomState,
-    MultiplayerUserState,
-    RoomCategory,
-    RoomStatus,
-)
-from app.models.score import GameMode
 from app.utils import utcnow
 
 from .hub import Client, Hub
@@ -805,7 +805,7 @@ class MultiplayerHub(Hub[MultiplayerClientState]):
                 elif room_user.state == MultiplayerUserState.RESULTS:
                     # Create a synthetic finished state for cross-hub spectating
                     try:
-                        from app.models.spectator_hub import (
+                        from app.models.signalr.spectator_hub import (
                             SpectatedUserState,
                             SpectatorState,
                         )
@@ -1363,7 +1363,7 @@ class MultiplayerHub(Hub[MultiplayerClientState]):
         """
         try:
             # Import here to avoid circular imports
-            from app.models.spectator_hub import SpectatedUserState, SpectatorState
+            from app.models.signalr.spectator_hub import SpectatedUserState, SpectatorState
             from app.signalr.hub import SpectatorHubs
 
             # For each user who finished the game, notify SpectatorHub

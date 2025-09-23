@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from app.dependencies.database import get_redis
-from app.service.user_cache_service import get_user_cache_service
+from app.service.cache.user_cache_service import get_user_cache_service
 
 from .router import router
 
@@ -134,7 +134,7 @@ async def warmup_cache(
             return {"message": f"Warmed up cache for {len(request.user_ids)} users"}
         else:
             # 预热活跃用户
-            from app.scheduler.user_cache_scheduler import (
+            from app.scheduler.user import (
                 schedule_user_cache_preload_task,
             )
 

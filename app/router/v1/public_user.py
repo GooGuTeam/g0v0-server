@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from typing import Literal
 
-from app.database.lazer_user import User
-from app.database.statistics import UserStatistics
+from app.database import User, UserStatistics
 from app.dependencies.database import Database, get_redis
 from app.log import logger
 from app.models.score import GameMode
-from app.models.v1_user import (
+from app.models.user.v1_user import (
     GetPlayerCountResponse,
     GetPlayerInfoResponse,
     PlayerAllResponse,
@@ -27,7 +26,7 @@ async def _create_player_mode_stats(
     session: Database, user: User, mode: GameMode, user_statistics: list[UserStatistics]
 ):
     """创建指定模式的玩家统计数据"""
-    from app.models.v1_user import PlayerModeStats
+    from app.models.user.v1_user import PlayerModeStats
 
     # 查找对应模式的统计数据
     statistics = None
@@ -89,7 +88,7 @@ async def _create_player_mode_stats(
 
 async def _create_player_info(user: User):
     """创建玩家基本信息"""
-    from app.models.v1_user import PlayerInfo
+    from app.models.user.v1_user import PlayerInfo
 
     return PlayerInfo(
         id=user.id,

@@ -1,20 +1,20 @@
 from __future__ import annotations
 
 from app.database import MeResp, User
-from app.database.lazer_user import ALL_INCLUDED
+from app.database.user.lazer_user import ALL_INCLUDED
 from app.dependencies import get_current_user
 from app.dependencies.database import Database
 from app.dependencies.user import UserAndToken, get_current_user_and_token
 from app.exceptions.userpage import UserpageError
 from app.models.score import GameMode
 from app.models.user import Page
-from app.models.userpage import (
+from app.models.user.userpage import (
     UpdateUserpageRequest,
     UpdateUserpageResponse,
     ValidateBBCodeRequest,
     ValidateBBCodeResponse,
 )
-from app.service.bbcode_service import bbcode_service
+from app.service.content.bbcode_service import bbcode_service
 
 from .router import router
 
