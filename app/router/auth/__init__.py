@@ -360,9 +360,7 @@ async def oauth_token(
                 # 对于新位置但信任的设备或禁用邮件验证的情况，直接标记为已验证
                 await LoginSessionService.mark_session_verified(db, redis, user_id, token_id)
                 if settings.enable_email_verification and is_trusted_device:
-                    logger.debug(
-                        f"[Auth] Trusted device bypassed email verification for user {user_id}"
-                    )
+                    logger.debug(f"[Auth] Trusted device bypassed email verification for user {user_id}")
                 elif not settings.enable_email_verification:
                     logger.debug(
                         "[Auth] New location login detected but email verification disabled, "
@@ -370,9 +368,7 @@ async def oauth_token(
                     )
 
             login_notes = f"正常登录 - IP: {ip_address}, 国家: {country_code}"
-            if is_trusted_device and (
-                (settings.enable_totp_verification and totp_key is not None) or is_new_location
-            ):
+            if is_trusted_device and ((settings.enable_totp_verification and totp_key is not None) or is_new_location):
                 login_notes = f"信任设备登录 - IP: {ip_address}, 国家: {country_code}"
 
             # 不是新位置登录，或信任设备直接通过
