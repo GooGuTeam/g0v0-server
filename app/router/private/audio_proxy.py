@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from app.dependencies.database import get_redis
-from app.service.audio_proxy_service import AudioProxyService, get_audio_proxy_service
+from app.service.assets.audio_proxy_service import AudioProxyService, get_audio_proxy_service
 
 from fastapi import APIRouter, Depends, HTTPException, Path
 from fastapi.responses import Response

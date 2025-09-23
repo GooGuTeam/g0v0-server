@@ -10,14 +10,14 @@ from app.database.chat import (
     SilenceUser,
     UserSilenceResp,
 )
-from app.database.lazer_user import User
+from app.database.user.lazer_user import User
 from app.dependencies.database import Database, get_redis
 from app.dependencies.param import BodyOrForm
 from app.dependencies.user import get_current_user
 from app.log import logger
 from app.models.notification import ChannelMessage, ChannelMessageTeam
 from app.router.v2 import api_v2_router as router
-from app.service.redis_message_system import redis_message_system
+from app.service.messaging.redis_message_system import redis_message_system
 
 from .banchobot import bot
 from .server import server

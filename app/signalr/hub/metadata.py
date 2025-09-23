@@ -8,13 +8,14 @@ from typing import override
 
 from app.calculator import clamp
 from app.database import Relationship, RelationshipType, User
-from app.database.playlist_best_score import PlaylistBestScore
-from app.database.playlists import Playlist
 from app.database.room import Room
+from app.database.room.playlists import Playlist
 from app.database.score import Score
+from app.database.score.playlist_best_score import PlaylistBestScore
 from app.dependencies.database import with_db
 from app.log import logger
-from app.models.metadata_hub import (
+from app.models.room import RoomCategory
+from app.models.signalr.metadata_hub import (
     TOTAL_SCORE_DISTRIBUTION_BINS,
     DailyChallengeInfo,
     MetadataClientState,
@@ -24,8 +25,7 @@ from app.models.metadata_hub import (
     OnlineStatus,
     UserActivity,
 )
-from app.models.room import RoomCategory
-from app.service.subscribers.score_processed import ScoreSubscriber
+from app.service.messaging.subscribers.score_processed import ScoreSubscriber
 from app.utils import utcnow
 
 from .hub import Client, Hub

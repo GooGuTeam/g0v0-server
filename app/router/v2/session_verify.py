@@ -6,17 +6,17 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from app.auth import check_totp_backup_code, verify_totp_key
 from app.config import settings
 from app.const import BACKUP_CODE_LENGTH
 from app.database.auth import TotpKeys
-from app.dependencies.api_version import APIVersion
 from app.dependencies.database import Database, get_redis
 from app.dependencies.geoip import get_client_ip
 from app.dependencies.user import UserAndToken, get_client_user_and_token
+from app.dependencies.version import APIVersion
 from app.log import logger
-from app.service.login_log_service import LoginLogService
-from app.service.verification_service import (
+from app.service.auth import check_totp_backup_code, verify_totp_key
+from app.service.session.login_log_service import LoginLogService
+from app.service.session.verification_service import (
     EmailVerificationService,
     LoginSessionService,
 )
@@ -74,7 +74,7 @@ async def verify_session(
     )
 
     ip_address = get_client_ip(request)
-    user_agent = request.headers.get("User-Agent", "Unknown")
+    user_agent = request.headers.get("User-Agent")
     login_method = "password"
 
     try:
@@ -116,6 +116,8 @@ async def verify_session(
             notes=f"{login_method} 验证成功",
         )
         await LoginSessionService.mark_session_verified(db, redis, user_id, token_id)
+        fingerprint = LoginSessionService.make_device_fingerprint(ip_address, user_agent)
+        await LoginSessionService.remember_trusted_device(redis, user_id, fingerprint)
         await db.commit()
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 

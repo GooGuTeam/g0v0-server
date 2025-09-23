@@ -3,12 +3,12 @@ from __future__ import annotations
 from functools import partial
 from typing import Literal, cast
 
-from app.database.beatmap import calculate_beatmap_attributes
-from app.database.score import Beatmap, Score
+from app.database.beatmap import Beatmap, calculate_beatmap_attributes
+from app.database.score import Score
 from app.dependencies.database import get_redis
 from app.dependencies.fetcher import get_fetcher
 from app.models.achievement import Achievement, Medals
-from app.models.mods import API_MODS, mods_can_get_pp_vanilla
+from app.models.beatmap.mods import API_MODS, mods_can_get_pp_vanilla
 from app.models.score import GameMode
 
 from sqlmodel.ext.asyncio.session import AsyncSession

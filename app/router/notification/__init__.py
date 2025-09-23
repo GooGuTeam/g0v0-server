@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from app.config import settings
-from app.database.lazer_user import User
 from app.database.notification import Notification, UserNotification
+from app.database.user.lazer_user import User
 from app.dependencies.database import Database
 from app.dependencies.user import get_client_user
 from app.models.chat import ChatEvent

@@ -10,7 +10,7 @@ from app.database.chat import (
     SilenceUser,
     UserSilenceResp,
 )
-from app.database.lazer_user import User, UserResp
+from app.database.user.lazer_user import User, UserResp
 from app.dependencies.database import Database, get_redis
 from app.dependencies.param import BodyOrForm
 from app.dependencies.user import get_current_user

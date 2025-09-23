@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from app.database.beatmap import calculate_beatmap_attributes
-from app.database.score import Beatmap, Score
+from app.database.beatmap import Beatmap, calculate_beatmap_attributes
+from app.database.score import Score
 from app.dependencies.database import get_redis
 from app.dependencies.fetcher import get_fetcher
 from app.models.achievement import Achievement, Medals
 from app.models.beatmap import BeatmapRankStatus
-from app.models.mods import get_speed_rate, mod_to_save
+from app.models.beatmap.mods import get_speed_rate, mod_to_save
 from app.models.score import Rank
 
 from sqlmodel.ext.asyncio.session import AsyncSession
