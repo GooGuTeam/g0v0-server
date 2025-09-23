@@ -70,9 +70,7 @@ class CacheScheduler:
         # 从配置文件获取间隔设置
         check_interval = 5 * 60  # 5分钟检查间隔
         beatmap_cache_interval = 30 * 60  # 30分钟beatmap缓存间隔
-        ranking_cache_interval = (
-            settings.ranking_cache_refresh_interval_minutes * 60
-        )  # 从配置读取
+        ranking_cache_interval = settings.ranking_cache_refresh_interval_minutes * 60  # 从配置读取
         user_cache_interval = 15 * 60  # 15分钟用户缓存预加载间隔
         user_cleanup_interval = 60 * 60  # 60分钟用户缓存清理间隔
 
