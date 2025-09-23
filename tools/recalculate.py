@@ -14,13 +14,13 @@ from app.config import settings
 from app.const import BANCHOBOT_ID
 from app.database import BestScore, UserStatistics
 from app.database.beatmap import Beatmap
-from app.database.pp_best_score import PPBestScore
 from app.database.score import Score, calculate_playtime, calculate_user_pp
+from app.database.score.pp_best_score import PPBestScore
 from app.dependencies.database import engine, get_redis
 from app.dependencies.fetcher import get_fetcher
 from app.fetcher import Fetcher
 from app.log import logger
-from app.models.mods import mod_to_save, mods_can_get_pp
+from app.models.beatmap.mods import mod_to_save, mods_can_get_pp
 from app.models.score import GameMode, Rank
 
 from httpx import HTTPError

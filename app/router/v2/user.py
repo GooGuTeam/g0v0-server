@@ -12,18 +12,18 @@ from app.database import (
     User,
     UserResp,
 )
-from app.database.events import Event
-from app.database.lazer_user import SEARCH_INCLUDED
-from app.database.pp_best_score import PPBestScore
+from app.database.room.events import Event
 from app.database.score import LegacyScoreResp, Score, ScoreResp, get_user_first_scores
-from app.dependencies.api_version import APIVersion
+from app.database.score.pp_best_score import PPBestScore
+from app.database.user.lazer_user import SEARCH_INCLUDED
 from app.dependencies.database import Database, get_redis
 from app.dependencies.user import get_current_user
+from app.dependencies.version import APIVersion
 from app.log import logger
 from app.models.score import GameMode
 from app.models.user import BeatmapsetType
-from app.service.asset_proxy_helper import process_response_assets
-from app.service.user_cache_service import get_user_cache_service
+from app.service.assets.asset_proxy_helper import process_response_assets
+from app.service.cache.user_cache_service import get_user_cache_service
 from app.utils import utcnow
 
 from .router import router

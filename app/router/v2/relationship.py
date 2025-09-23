@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from app.database import Relationship, RelationshipResp, RelationshipType, User
-from app.database.lazer_user import UserResp
-from app.dependencies.api_version import APIVersion
+from app.database.user.lazer_user import UserResp
 from app.dependencies.database import Database
 from app.dependencies.user import get_client_user, get_current_user
+from app.dependencies.version import APIVersion
 
 from .router import router
 
