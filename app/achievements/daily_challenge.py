@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from functools import partial
 
-from app.database.daily_challenge import DailyChallengeStats
-from app.database.score import Beatmap, Score
+from app.database.beatmap import Beatmap
+from app.database.beatmap.daily_challenge import DailyChallengeStats
+from app.database.score import Score
 from app.models.achievement import Achievement
 
 from sqlmodel import select

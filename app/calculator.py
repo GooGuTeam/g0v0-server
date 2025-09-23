@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from app.config import settings
 from app.log import logger
 from app.models.beatmap import BeatmapAttributes
-from app.models.mods import APIMod, parse_enum_to_str
+from app.models.beatmap.mods import APIMod, parse_enum_to_str
 from app.models.score import GameMode
 
 from osupyparser import HitObject, OsuFile

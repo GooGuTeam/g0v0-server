@@ -4,19 +4,28 @@ import re
 from typing import Annotated, Literal
 from urllib.parse import parse_qs
 
-from app.database import Beatmap, Beatmapset, BeatmapsetResp, FavouriteBeatmapset, User
-from app.database.beatmapset import SearchBeatmapsetsResp
-from app.dependencies.beatmap_download import get_beatmap_download_service
-from app.dependencies.beatmapset_cache import get_beatmapset_cache_dependency
+from app.database import (
+    Beatmap,
+    Beatmapset,
+    BeatmapsetResp,
+    FavouriteBeatmapset,
+    SearchBeatmapsetsResp,
+    User,
+)
+from app.dependencies.beatmap import get_beatmap_download_service
+from app.dependencies.cache import get_beatmapset_cache_dependency
 from app.dependencies.database import Database, get_redis, with_db
 from app.dependencies.fetcher import get_fetcher
 from app.dependencies.geoip import get_client_ip, get_geoip_helper
 from app.dependencies.user import get_client_user, get_current_user
 from app.fetcher import Fetcher
 from app.models.beatmap import SearchQueryModel
-from app.service.asset_proxy_helper import process_response_assets
-from app.service.beatmap_download_service import BeatmapDownloadService
-from app.service.beatmapset_cache_service import BeatmapsetCacheService, generate_hash
+from app.service.assets.asset_proxy_helper import process_response_assets
+from app.service.assets.beatmap_download_service import BeatmapDownloadService
+from app.service.cache.beatmapset_cache_service import (
+    BeatmapsetCacheService,
+    generate_hash,
+)
 
 from .router import router
 

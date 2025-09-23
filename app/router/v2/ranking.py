@@ -7,7 +7,7 @@ from app.database import Team, TeamMember, User, UserStatistics, UserStatisticsR
 from app.dependencies import get_current_user
 from app.dependencies.database import Database, get_redis
 from app.models.score import GameMode
-from app.service.ranking_cache_service import get_ranking_cache_service
+from app.service.cache.ranking_cache_service import get_ranking_cache_service
 
 from .router import router
 
@@ -354,7 +354,7 @@ async def get_user_ranking(
         wheres.append(col(UserStatistics.user).has(country_code=country.upper()))
 
     # 查询总数
-    count_query = select(func.count(UserStatistics.id)).where(*wheres)
+    count_query = select(func.count(col(UserStatistics.id))).where(*wheres)
     total_count_result = await session.exec(count_query)
     total_count = total_count_result.one()
 

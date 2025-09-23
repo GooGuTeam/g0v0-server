@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-from app.database.beatmap import Beatmap
-from app.database.beatmap_tags import BeatmapTagVote
-from app.database.lazer_user import User
-from app.database.score import Score
+from app.database import Beatmap, Score, User
+from app.database.beatmap.tags import BeatmapTagVote
 from app.dependencies.database import get_db
 from app.dependencies.user import get_client_user
+from app.models.beatmap.tags import BeatmapTags, get_all_tags, get_tag_by_id
 from app.models.score import Rank
-from app.models.tags import BeatmapTags, get_all_tags, get_tag_by_id
 
 from .router import router
 
