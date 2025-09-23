@@ -35,6 +35,8 @@ class DailyChallengeStats(DailyChallengeStatsBase, table=True):
             primary_key=True,
         ),
     )
+
+
 class DailyChallengeStatsResp(DailyChallengeStatsBase):
     user_id: int
 

@@ -117,9 +117,7 @@ class Beatmapset(AsyncAttrs, BeatmapsetBase, table=True):
     beatmap_status: BeatmapRankStatus = Field(default=BeatmapRankStatus.GRAVEYARD, index=True)
 
     # optional
-    beatmaps: list["Beatmap"] = Relationship(
-        sa_relationship=relationship("Beatmap", back_populates="beatmapset")
-    )
+    beatmaps: list["Beatmap"] = Relationship(sa_relationship=relationship("Beatmap", back_populates="beatmapset"))
     beatmap_genre: Genre = Field(default=Genre.UNSPECIFIED, index=True)
     beatmap_language: Language = Field(default=Language.UNSPECIFIED, index=True)
     nominations_required: int = Field(default=0)
