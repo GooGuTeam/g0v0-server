@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 
-from app.database.lazer_user import User
+from app.database.user.lazer_user import User
 from app.dependencies.database import Database
 from app.dependencies.storage import get_storage_service
 from app.dependencies.user import get_client_user

@@ -1,73 +1,42 @@
+from __future__ import annotations
+
 from .achievement import UserAchievement, UserAchievementResp
 from .auth import OAuthClient, OAuthToken, TotpKeys, V1APIKeys
-from .beatmap import (
-    Beatmap,
-    BeatmapResp,
-)
-from .beatmap_playcounts import BeatmapPlaycounts, BeatmapPlaycountsResp
-from .beatmap_tags import BeatmapTagVote
-from .beatmapset import (
-    Beatmapset,
-    BeatmapsetResp,
-)
-from .beatmapset_ratings import BeatmapRating
-from .best_score import BestScore
-from .chat import (
-    ChannelType,
-    ChatChannel,
-    ChatChannelResp,
-    ChatMessage,
-    ChatMessageResp,
-)
-from .counts import (
-    CountResp,
-    MonthlyPlaycounts,
-    ReplayWatchedCount,
-)
-from .daily_challenge import DailyChallengeStats, DailyChallengeStatsResp
-from .events import Event
-from .favourite_beatmapset import FavouriteBeatmapset
-from .lazer_user import (
-    MeResp,
-    User,
-    UserResp,
-)
-from .multiplayer_event import MultiplayerEvent, MultiplayerEventResp
+from .auth.password_reset import PasswordReset
+from .auth.verification import EmailVerification, LoginSession
+from .beatmap import Beatmap, BeatmapResp
+from .beatmap.beatmapset import Beatmapset, BeatmapsetResp, SearchBeatmapsetsResp
+from .beatmap.daily_challenge import DailyChallengeStats, DailyChallengeStatsResp
+from .beatmap.failtime import FailTime, FailTimeResp
+from .beatmap.favourites import FavouriteBeatmapset
+from .beatmap.playcounts import BeatmapPlaycounts, BeatmapPlaycountsResp
+from .beatmap.ratings import BeatmapRating
+from .beatmap.tags import BeatmapTagVote
+from .chat import ChannelType, ChatChannel, ChatChannelResp, ChatMessage, ChatMessageResp
 from .notification import Notification, UserNotification
-from .password_reset import PasswordReset
-from .playlist_attempts import (
-    ItemAttemptsCount,
-    ItemAttemptsResp,
-    PlaylistAggregateScore,
-)
-from .playlist_best_score import PlaylistBestScore
-from .playlists import Playlist, PlaylistResp
-from .pp_best_score import PPBestScore
-from .rank_history import RankHistory, RankHistoryResp, RankTop
-from .relationship import Relationship, RelationshipResp, RelationshipType
 from .room import APIUploadedRoom, Room, RoomResp
-from .room_participated_user import RoomParticipatedUser
-from .score import (
-    MultiplayerScores,
-    Score,
-    ScoreAround,
-    ScoreBase,
-    ScoreResp,
-    ScoreStatistics,
-)
-from .score_token import ScoreToken, ScoreTokenResp
-from .statistics import (
-    UserStatistics,
-    UserStatisticsResp,
-)
-from .team import Team, TeamMember, TeamRequest
-from .user_account_history import (
+from .room.events import Event
+from .room.multiplayer_event import MultiplayerEvent, MultiplayerEventResp
+from .room.participated_user import RoomParticipatedUser
+from .room.playlist_attempts import ItemAttemptsCount, ItemAttemptsResp, PlaylistAggregateScore
+from .room.playlists import Playlist, PlaylistResp
+from .score import MultiplayerScores, Score, ScoreAround, ScoreBase, ScoreResp, ScoreStatistics
+from .score.best_score import BestScore
+from .score.playlist_best_score import PlaylistBestScore
+from .score.pp_best_score import PPBestScore
+from .score.token import ScoreToken, ScoreTokenResp
+from .user.account_history import (
     UserAccountHistory,
     UserAccountHistoryResp,
     UserAccountHistoryType,
 )
-from .user_login_log import UserLoginLog
-from .verification import EmailVerification, LoginSession
+from .user.counts import CountResp, MonthlyPlaycounts, ReplayWatchedCount
+from .user.lazer_user import MeResp, User, UserResp
+from .user.login_log import UserLoginLog
+from .user.rank_history import RankHistory, RankHistoryResp, RankTop
+from .user.relationship import Relationship, RelationshipResp, RelationshipType
+from .user.statistics import UserStatistics, UserStatisticsResp
+from .user.team import Team, TeamMember, TeamRequest
 
 __all__ = [
     "APIUploadedRoom",
@@ -90,6 +59,8 @@ __all__ = [
     "DailyChallengeStatsResp",
     "EmailVerification",
     "Event",
+    "FailTime",
+    "FailTimeResp",
     "FavouriteBeatmapset",
     "ItemAttemptsCount",
     "ItemAttemptsResp",
@@ -125,6 +96,7 @@ __all__ = [
     "ScoreStatistics",
     "ScoreToken",
     "ScoreTokenResp",
+    "SearchBeatmapsetsResp",
     "Team",
     "TeamMember",
     "TeamRequest",
@@ -133,7 +105,6 @@ __all__ = [
     "UserAccountHistory",
     "UserAccountHistoryResp",
     "UserAccountHistoryType",
-    "UserAchievement",
     "UserAchievement",
     "UserAchievementResp",
     "UserLoginLog",

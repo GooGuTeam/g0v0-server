@@ -9,6 +9,7 @@ from app.config import settings
 from app.database import (
     Beatmap,
     Playlist,
+    ReplayWatchedCount,
     Room,
     Score,
     ScoreResp,
@@ -17,17 +18,9 @@ from app.database import (
     User,
 )
 from app.database.achievement import process_achievements
-from app.database.best_score import BestScore
-from app.database.counts import ReplayWatchedCount
-from app.database.daily_challenge import process_daily_challenge_score
-from app.database.events import Event, EventType
-from app.database.playlist_attempts import ItemAttemptsCount
-from app.database.playlist_best_score import (
-    PlaylistBestScore,
-    get_position,
-    process_playlist_best_score,
-)
-from app.database.relationship import Relationship, RelationshipType
+from app.database.beatmap.daily_challenge import process_daily_challenge_score
+from app.database.room.events import Event, EventType
+from app.database.room.playlist_attempts import ItemAttemptsCount
 from app.database.score import (
     LegacyScoreResp,
     MultiplayerScores,
@@ -36,11 +29,18 @@ from app.database.score import (
     process_score,
     process_user,
 )
-from app.dependencies.api_version import APIVersion
+from app.database.score.best_score import BestScore
+from app.database.score.playlist_best_score import (
+    PlaylistBestScore,
+    get_position,
+    process_playlist_best_score,
+)
+from app.database.user.relationship import Relationship, RelationshipType
 from app.dependencies.database import Database, get_redis, with_db
 from app.dependencies.fetcher import get_fetcher
 from app.dependencies.storage import get_storage_service
 from app.dependencies.user import get_client_user, get_current_user
+from app.dependencies.version import APIVersion
 from app.fetcher import Fetcher
 from app.log import logger
 from app.models.room import RoomCategory
@@ -50,7 +50,7 @@ from app.models.score import (
     Rank,
     SoloScoreSubmissionInfo,
 )
-from app.service.user_cache_service import get_user_cache_service
+from app.service.cache.user_cache_service import get_user_cache_service
 from app.storage.base import StorageService
 from app.utils import utcnow
 
@@ -126,7 +126,7 @@ async def submit_score(
     else:
         # 智能预取beatmap缓存（异步进行，不阻塞主流程）
         try:
-            from app.service.beatmap_cache_service import get_beatmap_cache_service
+            from app.service.cache.beatmap_cache_service import get_beatmap_cache_service
 
             cache_service = get_beatmap_cache_service(redis, fetcher)
             await cache_service.smart_preload_for_score(beatmap)
@@ -154,7 +154,7 @@ async def submit_score(
         await db.refresh(current_user)
         score_id = score.id
         score_token.score_id = score_id
-        await process_user(db, current_user, score, token, beatmap_length, status)
+        await process_user(db, current_user, score, token, beatmap_length, status, redis)
         score = (await db.exec(select(Score).options(joinedload(Score.user)).where(Score.id == score_id))).one()
 
     resp: ScoreResp = await ScoreResp.from_db(db, score)

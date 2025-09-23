@@ -1,10 +1,6 @@
 from __future__ import annotations
 
-from app.database.beatmap import Beatmap
-from app.database.beatmapset import Beatmapset
-from app.database.beatmapset_ratings import BeatmapRating
-from app.database.lazer_user import User
-from app.database.score import Score
+from app.database import Beatmap, BeatmapRating, Beatmapset, Score, User
 from app.dependencies.database import Database
 from app.dependencies.user import get_client_user
 

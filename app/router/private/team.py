@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import hashlib
 
-from app.database.lazer_user import BASE_INCLUDES, User, UserResp
-from app.database.team import Team, TeamMember, TeamRequest
+from app.database.user.lazer_user import BASE_INCLUDES, User, UserResp
+from app.database.user.team import Team, TeamMember, TeamRequest
 from app.dependencies.database import Database, get_redis
 from app.dependencies.storage import get_storage_service
 from app.dependencies.user import get_client_user
@@ -13,7 +13,7 @@ from app.models.notification import (
     TeamApplicationStore,
 )
 from app.router.notification import server
-from app.service.ranking_cache_service import get_ranking_cache_service
+from app.service.cache.ranking_cache_service import get_ranking_cache_service
 from app.storage.base import StorageService
 from app.utils import check_image, utcnow
 
