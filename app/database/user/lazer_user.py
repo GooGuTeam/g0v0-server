@@ -185,7 +185,6 @@ class User(AsyncAttrs, UserBase, table=True):
     donor_end_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True)), exclude=True)
 
     async def is_user_can_pm(self, from_user: "User", session: AsyncSession) -> tuple[bool, str]:
-
         from_relationship = (
             await session.exec(
                 select(UserRelationship).where(
@@ -310,9 +309,9 @@ class UserResp(UserBase):
                 await RelationshipResp.from_db(session, r)
                 for r in (
                     await session.exec(
-                    select(UserRelationship).where(
-                        UserRelationship.user_id == obj.id,
-                        UserRelationship.type == RelationshipType.FOLLOW,
+                        select(UserRelationship).where(
+                            UserRelationship.user_id == obj.id,
+                            UserRelationship.type == RelationshipType.FOLLOW,
                         )
                     )
                 ).all()
@@ -364,9 +363,7 @@ class UserResp(UserBase):
         if "achievements" in include:
             from app.database.achievement import UserAchievementResp
 
-            u.user_achievements = [
-                UserAchievementResp.from_db(ua) for ua in await obj.awaitable_attrs.achievement
-            ]
+            u.user_achievements = [UserAchievementResp.from_db(ua) for ua in await obj.awaitable_attrs.achievement]
         if "rank_history" in include:
             rank_history = await RankHistoryResp.from_db(session, obj.id, ruleset)
             if len(rank_history.data) != 0:
