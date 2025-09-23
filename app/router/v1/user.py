@@ -3,18 +3,17 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from app.database.lazer_user import User
-from app.database.statistics import UserStatistics, UserStatisticsResp
+from app.database import User, UserStatistics, UserStatisticsResp
 from app.dependencies.database import Database, get_redis
 from app.log import logger
 from app.models.score import GameMode
-from app.models.v1_user import (
+from app.models.user.v1_user import (
     PlayerEventItem,
     PlayerInfo,
     PlayerModeStats,
     PlayerStatsHistory,
 )
-from app.service.user_cache_service import get_user_cache_service
+from app.service.cache.user_cache_service import get_user_cache_service
 
 from .router import AllStrModel, router
 
@@ -222,7 +221,7 @@ async def _create_player_mode_stats(
 
     # 获取排名信息
     try:
-        from app.database.statistics import get_rank
+        from app.database.user.statistics import get_rank
 
         global_rank = await get_rank(session, stats) or 0
         country_rank = await get_rank(session, stats, user.country_code) or 0

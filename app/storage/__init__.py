@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from .aws_s3 import AWSS3StorageService
 from .base import StorageService
-from .cloudflare_r2 import CloudflareR2StorageService
-from .local import LocalStorageService
+from .providers.aws_s3 import AWSS3StorageService
+from .providers.cloudflare_r2 import CloudflareR2StorageService
+from .providers.local import LocalStorageService
 
 __all__ = [
     "AWSS3StorageService",

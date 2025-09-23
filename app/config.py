@@ -203,6 +203,15 @@ STORAGE_SETTINGS='{
         ),
         "OAuth 设置",
     ]
+    max_oauth_sessions_per_client: Annotated[
+        int,
+        Field(
+            default=5,
+            ge=0,
+            description="同一用户和客户端允许的最大有效 OAuth 会话数，0 表示不限制",
+        ),
+        "OAuth 设置",
+    ]
 
     # 服务器设置
     host: Annotated[
@@ -307,6 +316,15 @@ STORAGE_SETTINGS='{
     enable_email_verification: Annotated[
         bool,
         Field(default=False, description="是否启用邮件验证功能"),
+        "验证服务设置",
+    ]
+    login_trust_duration_hours: Annotated[
+        int,
+        Field(
+            default=24,
+            ge=0,
+            description="记住已验证设备的时长（小时），0 表示每次都需要验证",
+        ),
         "验证服务设置",
     ]
     smtp_server: Annotated[

@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from functools import partial
 
-from app.database.score import Beatmap, Score
+from app.database.beatmap import Beatmap
+from app.database.score import Score
 from app.models.achievement import Achievement, Medals
-from app.models.mods import API_MODS
+from app.models.beatmap.mods import API_MODS
 
 from sqlmodel.ext.asyncio.session import AsyncSession
 

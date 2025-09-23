@@ -3,7 +3,7 @@ from __future__ import annotations
 import secrets
 
 from app.database.auth import OAuthClient, OAuthToken
-from app.database.lazer_user import User
+from app.database.user.lazer_user import User
 from app.dependencies.database import Database, get_redis
 from app.dependencies.user import get_client_user
 

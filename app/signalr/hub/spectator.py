@@ -10,18 +10,18 @@ from typing import override
 from app.calculator import clamp
 from app.config import settings
 from app.database import Beatmap, User
-from app.database.failtime import FailTime, FailTimeResp
+from app.database.beatmap.failtime import FailTime, FailTimeResp
 from app.database.score import Score
-from app.database.score_token import ScoreToken
-from app.database.statistics import UserStatistics
+from app.database.score.token import ScoreToken
+from app.database.user.statistics import UserStatistics
 from app.dependencies.database import get_redis, with_db
 from app.dependencies.fetcher import get_fetcher
 from app.dependencies.storage import get_storage_service
 from app.exception import InvokeException
 from app.log import logger
-from app.models.mods import APIMod, mods_to_int
+from app.models.beatmap.mods import APIMod, mods_to_int
 from app.models.score import GameMode, LegacyReplaySoloScoreInfo, ScoreStatistics
-from app.models.spectator_hub import (
+from app.models.signalr.spectator_hub import (
     APIUser,
     FrameDataBundle,
     LegacyReplayFrame,

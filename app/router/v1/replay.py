@@ -4,11 +4,11 @@ import base64
 from datetime import date
 from typing import Literal
 
-from app.database.counts import ReplayWatchedCount
+from app.database import ReplayWatchedCount
 from app.database.score import Score
 from app.dependencies.database import Database
 from app.dependencies.storage import get_storage_service
-from app.models.mods import int_to_mods
+from app.models.beatmap.mods import int_to_mods
 from app.models.score import GameMode
 from app.storage import StorageService
 

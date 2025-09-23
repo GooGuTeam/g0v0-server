@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from app.auth import validate_username
 from app.config import settings
-from app.database.events import Event, EventType
-from app.database.lazer_user import User
+from app.database.room.events import Event, EventType
+from app.database.user.lazer_user import User
 from app.dependencies.database import Database
 from app.dependencies.user import get_client_user
+from app.service.auth import validate_username
 from app.utils import utcnow
 
 from .router import router
