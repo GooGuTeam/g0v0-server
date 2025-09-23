@@ -181,7 +181,6 @@ class User(AsyncAttrs, UserBase, table=True):
     donor_end_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True)), exclude=True)
 
     async def is_user_can_pm(self, from_user: "User", session: AsyncSession) -> tuple[bool, str]:
-
         from_relationship = (
             await session.exec(
                 select(UserRelationship).where(
@@ -306,9 +305,9 @@ class UserResp(UserBase):
                 await RelationshipResp.from_db(session, r)
                 for r in (
                     await session.exec(
-                    select(UserRelationship).where(
-                        UserRelationship.user_id == obj.id,
-                        UserRelationship.type == RelationshipType.FOLLOW,
+                        select(UserRelationship).where(
+                            UserRelationship.user_id == obj.id,
+                            UserRelationship.type == RelationshipType.FOLLOW,
                         )
                     )
                 ).all()

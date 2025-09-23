@@ -75,14 +75,10 @@ class DatabaseCleanupScheduler:
                 logger.debug("Starting scheduled database cleanup...")
 
                 # 清理过期的验证码
-                expired_codes = await DatabaseCleanupService.cleanup_expired_verification_codes(
-                    db
-                )
+                expired_codes = await DatabaseCleanupService.cleanup_expired_verification_codes(db)
 
                 # 清理过期的登录会话
-                expired_sessions = await DatabaseCleanupService.cleanup_expired_login_sessions(
-                    db
-                )
+                expired_sessions = await DatabaseCleanupService.cleanup_expired_login_sessions(db)
 
                 # 只在有清理记录时输出总结
                 total_cleaned = expired_codes + expired_sessions
