@@ -331,22 +331,37 @@ class UserResp(UserBase):
                 u.daily_challenge_user_stats = DailyChallengeStatsResp.from_db(daily_challenge_stats)
 
         if "statistics" in include:
-            # 将扩展模式转换为标准模式来查询统计数据
-            db_ruleset = _convert_extended_mode_to_standard(ruleset)
             current_stattistics = None
-            for i in await obj.awaitable_attrs.statistics:
-                if i.mode == db_ruleset:
-                    current_stattistics = i
-                    break
-            if current_stattistics:
-                u.statistics = await UserStatisticsResp.from_db(current_stattistics, session, obj.country_code)
-                # 根据客户端类型设置返回的模式
-                if client_type == "osu_lazer" and u.statistics:
-                    u.statistics.mode = db_ruleset
-                elif u.statistics:
-                    u.statistics.mode = ruleset
+
+            if client_type == "osu_lazer":
+                # osu_lazer 客户端：查找用户的实际模式数据，但返回时显示标准模式
+                search_modes, display_mode = _get_search_modes_for_lazer(ruleset, obj.playmode)
+
+                # 按优先级查找统计数据
+                for search_mode in search_modes:
+                    for i in await obj.awaitable_attrs.statistics:
+                        if i.mode == search_mode:
+                            current_stattistics = i
+                            break
+                    if current_stattistics:
+                        break
+
+                if current_stattistics:
+                    u.statistics = await UserStatisticsResp.from_db(current_stattistics, session, obj.country_code)
+                    u.statistics.mode = display_mode  # 显示标准模式名称
+                else:
+                    u.statistics = None
             else:
-                u.statistics = None
+                # 其他客户端：直接使用请求的模式
+                for i in await obj.awaitable_attrs.statistics:
+                    if i.mode == ruleset:
+                        current_stattistics = i
+                        break
+                if current_stattistics:
+                    u.statistics = await UserStatisticsResp.from_db(current_stattistics, session, obj.country_code)
+                    u.statistics.mode = ruleset
+                else:
+                    u.statistics = None
 
         if "statistics_rulesets" in include:
             statistics_rulesets = {}
@@ -414,22 +429,39 @@ class UserResp(UserBase):
         if "achievements" in include:
             u.user_achievements = [UserAchievementResp.from_db(ua) for ua in await obj.awaitable_attrs.achievement]
         if "rank_history" in include:
-            # 将扩展模式转换为标准模式来查询数据库
-            db_ruleset = _convert_extended_mode_to_standard(ruleset)
-            rank_history = await RankHistoryResp.from_db(session, obj.id, db_ruleset)
-            if len(rank_history.data) != 0:
-                # 根据客户端类型设置返回的模式
-                if client_type == "osu_lazer":
-                    # osu_lazer 客户端显示标准模式
-                    rank_history.mode = db_ruleset
-                else:
-                    # 其他客户端显示原始请求的模式
-                    rank_history.mode = ruleset
-                u.rank_history = rank_history
+            rank_history = None
+            rank_top = None
 
-            rank_top = (
-                await session.exec(select(RankTop).where(RankTop.user_id == obj.id, RankTop.mode == db_ruleset))
-            ).first()
+            if client_type == "osu_lazer":
+                # osu_lazer 客户端：查找用户的实际模式数据，但返回时显示标准模式
+                search_modes, display_mode = _get_search_modes_for_lazer(ruleset, obj.playmode)
+
+                # 按优先级查找段位历史数据
+                for search_mode in search_modes:
+                    rank_history = await RankHistoryResp.from_db(session, obj.id, search_mode)
+                    if len(rank_history.data) != 0:
+                        rank_history.mode = display_mode  # 显示标准模式名称
+                        break
+                    rank_top = (
+                        await session.exec(
+                            select(RankTop).where(RankTop.user_id == obj.id, RankTop.mode == search_mode)
+                        )
+                    ).first()
+                    if rank_top:
+                        break
+
+                if rank_history and len(rank_history.data) != 0:
+                    u.rank_history = rank_history
+            else:
+                # 其他客户端：直接使用请求的模式
+                rank_history = await RankHistoryResp.from_db(session, obj.id, ruleset)
+                if len(rank_history.data) != 0:
+                    rank_history.mode = ruleset
+                    u.rank_history = rank_history
+
+                rank_top = (
+                    await session.exec(select(RankTop).where(RankTop.user_id == obj.id, RankTop.mode == ruleset))
+                ).first()
             if rank_top:
                 u.rank_highest = (
                     RankHighest(
@@ -445,8 +477,16 @@ class UserResp(UserBase):
                 select(func.count()).select_from(FavouriteBeatmapset).where(FavouriteBeatmapset.user_id == obj.id)
             )
         ).one()
-        # 将扩展模式转换为标准模式来查询分数数据
-        db_ruleset = _convert_extended_mode_to_standard(ruleset)
+        # 根据客户端类型确定查询的模式
+        if client_type == "osu_lazer":
+            # osu_lazer 客户端：查找用户的实际模式数据
+            search_modes, display_mode = _get_search_modes_for_lazer(ruleset, obj.playmode)
+            # 使用第一个可用的模式进行查询（优先用户偏好的模式）
+            query_mode = search_modes[0]
+        else:
+            # 其他客户端：直接使用请求的模式
+            query_mode = ruleset
+
         u.scores_pinned_count = (
             await session.exec(
                 select(func.count())
@@ -454,7 +494,7 @@ class UserResp(UserBase):
                 .where(
                     Score.user_id == obj.id,
                     Score.pinned_order > 0,
-                    Score.gamemode == db_ruleset,
+                    Score.gamemode == query_mode,
                     col(Score.passed).is_(True),
                 )
             )
@@ -465,7 +505,7 @@ class UserResp(UserBase):
                 .select_from(PPBestScore)
                 .where(
                     PPBestScore.user_id == obj.id,
-                    PPBestScore.gamemode == db_ruleset,
+                    PPBestScore.gamemode == query_mode,
                 )
                 .limit(200)
             )
@@ -476,13 +516,13 @@ class UserResp(UserBase):
                 .select_from(Score)
                 .where(
                     Score.user_id == obj.id,
-                    Score.gamemode == db_ruleset,
+                    Score.gamemode == query_mode,
                     col(Score.passed).is_(True),
                     Score.ended_at > utcnow() - timedelta(hours=24),
                 )
             )
         ).one()
-        u.scores_first_count = await get_user_first_score_count(session, obj.id, db_ruleset)
+        u.scores_first_count = await get_user_first_score_count(session, obj.id, query_mode)
         u.beatmap_playcounts_count = (
             await session.exec(
                 select(func.count())
@@ -610,3 +650,46 @@ def _convert_extended_mode_to_standard(mode: GameMode) -> GameMode:
         GameMode.FRUITSRX: GameMode.FRUITS,  # fruitsrx -> fruits
     }
     return conversion_map.get(mode, mode)
+
+
+def _get_search_modes_for_lazer(ruleset: GameMode, user_playmode: GameMode) -> tuple[list[GameMode], GameMode]:
+    """
+    为 osu_lazer 客户端获取查询模式优先级列表和显示模式
+
+    Args:
+        ruleset: 请求的模式（可能是标准模式或扩展模式）
+        user_playmode: 用户的默认模式
+
+    Returns:
+        tuple: (查询模式列表, 显示模式)
+    """
+    # 首先确定显示的标准模式
+    display_mode = _convert_extended_mode_to_standard(ruleset)
+
+    # 然后确定查询优先级
+    if display_mode == GameMode.OSU:
+        if user_playmode in [GameMode.OSURX, GameMode.OSUAP]:
+            search_modes = [user_playmode, GameMode.OSURX, GameMode.OSUAP, GameMode.OSU]
+        elif ruleset in [GameMode.OSURX, GameMode.OSUAP]:
+            # 如果请求的就是扩展模式，优先使用该扩展模式
+            search_modes = [ruleset, GameMode.OSURX, GameMode.OSUAP, GameMode.OSU]
+        else:
+            search_modes = [GameMode.OSU, GameMode.OSURX, GameMode.OSUAP]
+    elif display_mode == GameMode.TAIKO:
+        if user_playmode == GameMode.TAIKORX:
+            search_modes = [GameMode.TAIKORX, GameMode.TAIKO]
+        elif ruleset == GameMode.TAIKORX:
+            search_modes = [GameMode.TAIKORX, GameMode.TAIKO]
+        else:
+            search_modes = [GameMode.TAIKO, GameMode.TAIKORX]
+    elif display_mode == GameMode.FRUITS:
+        if user_playmode == GameMode.FRUITSRX:
+            search_modes = [GameMode.FRUITSRX, GameMode.FRUITS]
+        elif ruleset == GameMode.FRUITSRX:
+            search_modes = [GameMode.FRUITSRX, GameMode.FRUITS]
+        else:
+            search_modes = [GameMode.FRUITS, GameMode.FRUITSRX]
+    else:
+        search_modes = [ruleset]
+
+    return search_modes, display_mode
