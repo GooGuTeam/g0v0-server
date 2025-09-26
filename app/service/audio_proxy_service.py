@@ -31,6 +31,19 @@ class AudioProxyService:
         """生成beatmapset音频元数据缓存键"""
         return f"beatmapset_audio_meta:{beatmapset_id}"
 
+    async def _clear_corrupted_cache(self, beatmapset_id: int):
+        """清除损坏的缓存数据"""
+        try:
+            cache_key = self._get_beatmapset_cache_key(beatmapset_id)
+            metadata_key = self._get_beatmapset_metadata_key(beatmapset_id)
+
+            await self.redis.delete(cache_key)
+            await self.redis.delete(metadata_key)
+
+            logger.info(f"Cleared corrupted cache for beatmapset {beatmapset_id}")
+        except Exception as e:
+            logger.error(f"Error clearing corrupted cache for beatmapset {beatmapset_id}: {e}")
+
     async def get_beatmapset_audio_from_cache(self, beatmapset_id: int) -> tuple[bytes, str] | None:
         """从缓存获取beatmapset音频数据和内容类型"""
         try:
@@ -43,8 +56,23 @@ class AudioProxyService:
 
             if audio_data and metadata:
                 logger.debug(f"Beatmapset audio cache hit for ID: {beatmapset_id}")
-                # metadata 格式为 "content_type"
-                return audio_data, metadata.decode()
+                # metadata 格式为 "content_type"，安全解码
+                try:
+                    if isinstance(metadata, bytes):
+                        content_type = metadata.decode("utf-8")
+                    else:
+                        content_type = str(metadata)
+                except UnicodeDecodeError:
+                    logger.warning(
+                        f"Failed to decode metadata for beatmapset {beatmapset_id}, using default content type"
+                    )
+                    content_type = "audio/mpeg"  # 默认为MP3格式
+                return audio_data, content_type
+            return None
+        except UnicodeDecodeError as e:
+            logger.error(f"Unicode decode error getting beatmapset audio from cache for ID {beatmapset_id}: {e}")
+            # 清除损坏的缓存
+            await self._clear_corrupted_cache(beatmapset_id)
             return None
         except (redis.RedisError, redis.ConnectionError) as e:
             logger.error(f"Error getting beatmapset audio from cache: {e}")

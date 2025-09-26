@@ -30,12 +30,12 @@ class ClientDetectionService:
     # osu! 客户端的 User-Agent 模式
     OSU_CLIENT_PATTERNS: ClassVar[dict[str, list[str]]] = {
         "osu_stable": [
-            r"osu!/(\d+(?:\.\d+)*)",  # osu!/20241001
-            r"osu!",  # 简单匹配
+            r"osu!/(\d+(?:\.\d+)*)",  # osu!/20241001 (带版本号的是stable)
         ],
         "osu_lazer": [
             r"osu-lazer/(\d+(?:\.\d+)*)",  # osu-lazer/2024.1009.0
             r"osu!lazer/(\d+(?:\.\d+)*)",  # osu!lazer/2024.1009.0
+            r"^osu!$",  # 纯 "osu!" 是 lazer 客户端
         ],
         "osu_web": [
             r"Mozilla.*osu\.ppy\.sh",  # 网页客户端
@@ -82,46 +82,64 @@ class ClientDetectionService:
                     is_trusted_client=True,
                 )
             else:
-                # 其他版本号格式通常是 osu!lazer
-                return ClientInfo(
-                    client_type="osu_lazer",
-                    version=api_version,
-                    platform=ClientDetectionService._extract_platform(user_agent),
-                    device_fingerprint=ClientDetectionService._generate_device_fingerprint(user_agent),
-                    is_trusted_client=True,
-                )
+                # 检查User-Agent是否为浏览器
+                if any(browser in user_agent.lower() for browser in ["chrome", "firefox", "safari", "edge", "mozilla"]):
+                    # 浏览器发送的API版本请求，应该是web客户端
+                    return ClientInfo(
+                        client_type="osu_web",
+                        version=api_version,
+                        platform=ClientDetectionService._extract_platform(user_agent),
+                        device_fingerprint=ClientDetectionService._generate_device_fingerprint(user_agent),
+                        is_trusted_client=False,
+                    )
+                else:
+                    # 其他版本号格式通常是 osu!lazer
+                    return ClientInfo(
+                        client_type="osu_lazer",
+                        version=api_version,
+                        platform=ClientDetectionService._extract_platform(user_agent),
+                        device_fingerprint=ClientDetectionService._generate_device_fingerprint(user_agent),
+                        is_trusted_client=True,
+                    )
 
         # 优先通过 client_id 判断客户端类型
         if client_id is not None:
             if client_id == settings.osu_client_id:
-                # osu! stable 客户端
+                # client_id = 5 是 osu!lazer 客户端
                 return ClientInfo(
-                    client_type="osu_stable",
+                    client_type="osu_lazer",
                     platform=ClientDetectionService._extract_platform(user_agent),
                     device_fingerprint=ClientDetectionService._generate_device_fingerprint(user_agent),
                     is_trusted_client=True,
                 )
             elif client_id == settings.osu_web_client_id:
-                # 检查 User-Agent 是否表明这是 Lazer 客户端
-                if user_agent and user_agent.strip() == "osu!":
-                    # Lazer 客户端使用 web client_id 但发送简单的 "osu!" User-Agent
-                    return ClientInfo(
-                        client_type="osu_lazer",
-                        platform=ClientDetectionService._extract_platform(user_agent),
-                        device_fingerprint=ClientDetectionService._generate_device_fingerprint(user_agent),
-                        is_trusted_client=True,
-                    )
-                else:
-                    # 真正的 web 客户端
-                    return ClientInfo(
-                        client_type="osu_web",
-                        platform=ClientDetectionService._extract_platform(user_agent),
-                        device_fingerprint=ClientDetectionService._generate_device_fingerprint(user_agent),
-                        is_trusted_client=False,
-                    )
+                # client_id = 6 是 osu_web 客户端
+                return ClientInfo(
+                    client_type="osu_web",
+                    platform=ClientDetectionService._extract_platform(user_agent),
+                    device_fingerprint=ClientDetectionService._generate_device_fingerprint(user_agent),
+                    is_trusted_client=False,
+                )
 
-        # 回退到基于 User-Agent 的检测
-        for client_type_str, patterns in ClientDetectionService.OSU_CLIENT_PATTERNS.items():
+        # 回退到基于 User-Agent 的检测，按优先级顺序检测
+
+        # 1. 首先检测浏览器（避免被osu!模式误匹配）
+        if any(browser in user_agent.lower() for browser in ["chrome", "firefox", "safari", "edge", "mozilla"]):
+            return ClientInfo(
+                client_type="osu_web",
+                platform=ClientDetectionService._extract_platform(user_agent),
+                device_fingerprint=ClientDetectionService._generate_device_fingerprint(user_agent),
+                is_trusted_client=False,
+            )
+
+        # 2. 按特定顺序检测osu!客户端（从最具体到最通用）
+        detection_order = [
+            ("osu_stable", ClientDetectionService.OSU_CLIENT_PATTERNS["osu_stable"]),
+            ("osu_lazer", ClientDetectionService.OSU_CLIENT_PATTERNS["osu_lazer"]),
+            ("mobile", ClientDetectionService.OSU_CLIENT_PATTERNS["mobile"]),
+        ]
+
+        for client_type_str, patterns in detection_order:
             for pattern in patterns:
                 match = re.search(pattern, user_agent, re.IGNORECASE)
                 if match:
@@ -138,15 +156,6 @@ class ClientDetectionService:
                         device_fingerprint=ClientDetectionService._generate_device_fingerprint(user_agent),
                         is_trusted_client=client_type in ClientDetectionService.TRUSTED_CLIENT_TYPES,
                     )
-
-        # 检测常见浏览器
-        if any(browser in user_agent.lower() for browser in ["chrome", "firefox", "safari", "edge"]):
-            return ClientInfo(
-                client_type="osu_web",
-                platform=ClientDetectionService._extract_platform(user_agent),
-                device_fingerprint=ClientDetectionService._generate_device_fingerprint(user_agent),
-                is_trusted_client=False,
-            )
 
         return ClientInfo(
             client_type="unknown",

@@ -8,6 +8,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from app.database.auth import OAuthToken
+from app.dependencies.geoip import get_geoip_helper
 from app.log import logger
 from app.service.client_detection_service import ClientDetectionService
 from app.utils import utcnow
@@ -24,7 +25,6 @@ class DeviceSession(BaseModel):
     device_type: str
     device_fingerprint: str | None
     user_agent: str | None
-    ip_address: str | None
     created_at: datetime
     last_used_at: datetime | None
     expires_at: datetime
@@ -65,18 +65,38 @@ class DeviceManagementService:
                 else:
                     client_display_name = token.device_type or "Unknown Device"
 
-                # 简单的位置信息（可以后续扩展）
+                # 获取地理位置信息
                 location = None
                 if token.ip_address:
-                    # 这里可以集成GeoIP服务获取位置信息
-                    location = f"IP: {token.ip_address}"
+                    try:
+                        geoip = get_geoip_helper()
+                        geo_info = geoip.lookup(token.ip_address)
+
+                        if geo_info:
+                            country_name = geo_info.get("country_name", "")
+                            country_iso = geo_info.get("country_iso", "")
+                            city_name = geo_info.get("city_name", "")
+
+                            if country_name:
+                                if city_name:
+                                    location = f"{city_name}, {country_name}"
+                                else:
+                                    location = country_name
+                            elif country_iso:
+                                location = country_iso
+                            else:
+                                location = "Unknown Location"
+                        else:
+                            location = "Unknown Location"
+                    except Exception as e:
+                        logger.warning(f"Failed to get geo info for IP {token.ip_address}: {e}")
+                        location = "Unknown Location"
 
                 session = DeviceSession(
                     id=token.id,
                     device_type=token.device_type or "unknown",
                     device_fingerprint=token.device_fingerprint,
                     user_agent=token.user_agent,
-                    ip_address=token.ip_address,
                     created_at=token.created_at,
                     last_used_at=token.last_used_at,
                     expires_at=token.expires_at,

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from app.dependencies.database import get_redis
+from app.dependencies.database import get_redis_binary
 from app.service.audio_proxy_service import AudioProxyService, get_audio_proxy_service
 
 from fastapi import APIRouter, Depends, HTTPException, Path
@@ -18,7 +18,9 @@ import redis.asyncio as redis
 router = APIRouter(prefix="/audio", tags=["Audio Proxy"])
 
 
-async def get_audio_proxy_dependency(redis_client: Annotated[redis.Redis, Depends(get_redis)]) -> AudioProxyService:
+async def get_audio_proxy_dependency(
+    redis_client: Annotated[redis.Redis, Depends(get_redis_binary)],
+) -> AudioProxyService:
     """音频代理服务依赖注入"""
     return get_audio_proxy_service(redis_client)
 
@@ -59,5 +61,5 @@ async def get_beatmapset_audio(
         # 重新抛出HTTP异常
         raise
     except Exception as e:
-        logger.error(f"Unexpected error getting beatmapset audio: {e}")
+        logger.error(f"Unexpected error getting beatmapset audio for ID {beatmapset_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error") from e

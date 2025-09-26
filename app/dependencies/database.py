@@ -39,6 +39,9 @@ engine = create_async_engine(
 # Redis 连接
 redis_client = redis.from_url(settings.redis_url, decode_responses=True)
 
+# Redis 二进制数据连接 (用于音频等二进制数据，不进行自动解码)
+redis_binary_client = redis.from_url(settings.redis_url, decode_responses=False)
+
 # Redis 消息缓存连接 (db1) - 使用同步客户端在线程池中执行
 redis_message_client = sync_redis.from_url(settings.redis_url, decode_responses=True, db=1)
 
@@ -80,6 +83,11 @@ async def get_db_factory() -> DBFactory:
 # Redis 依赖
 def get_redis():
     return redis_client
+
+
+def get_redis_binary():
+    """获取二进制数据专用的 Redis 客户端 (不进行自动解码)"""
+    return redis_binary_client
 
 
 def get_redis_message():
