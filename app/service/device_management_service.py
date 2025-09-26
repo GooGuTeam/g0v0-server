@@ -124,34 +124,6 @@ class DeviceManagementService:
             return False, "撤销会话时发生错误"
 
     @staticmethod
-    async def revoke_all_other_sessions(db: AsyncSession, user_id: int, current_token: str) -> tuple[bool, str, int]:
-        """撤销除当前会话外的所有其他会话"""
-        try:
-            # 查找要撤销的令牌（排除当前令牌）
-            statement = select(OAuthToken).where(
-                OAuthToken.user_id == user_id,
-                OAuthToken.access_token != current_token,
-                OAuthToken.expires_at > utcnow(),
-            )
-
-            tokens = (await db.exec(statement)).all()
-            revoked_count = len(tokens)
-
-            # 删除所有其他令牌
-            for token in tokens:
-                await db.delete(token)
-
-            await db.commit()
-
-            logger.info(f"[Device Management] User {user_id} revoked {revoked_count} other sessions")
-            return True, f"已成功撤销 {revoked_count} 个其他会话", revoked_count
-
-        except Exception as e:
-            logger.error(f"[Device Management] Error revoking other sessions: {e}")
-            await db.rollback()
-            return False, "撤销其他会话时发生错误", 0
-
-    @staticmethod
     async def get_device_type_summary(db: AsyncSession, user_id: int) -> dict[str, int]:
         """获取用户各设备类型的会话数量统计"""
         try:
@@ -169,33 +141,6 @@ class DeviceManagementService:
         except Exception as e:
             logger.error(f"[Device Management] Error getting device summary: {e}")
             return {}
-
-    @staticmethod
-    async def cleanup_expired_sessions(db: AsyncSession, user_id: int | None = None) -> int:
-        """清理过期的会话"""
-        try:
-            if user_id:
-                statement = select(OAuthToken).where(OAuthToken.user_id == user_id, OAuthToken.expires_at <= utcnow())
-            else:
-                statement = select(OAuthToken).where(OAuthToken.expires_at <= utcnow())
-
-            expired_tokens = (await db.exec(statement)).all()
-            cleanup_count = len(expired_tokens)
-
-            for token in expired_tokens:
-                await db.delete(token)
-
-            await db.commit()
-
-            if cleanup_count > 0:
-                logger.info(f"[Device Management] Cleaned up {cleanup_count} expired sessions")
-
-            return cleanup_count
-
-        except Exception as e:
-            logger.error(f"[Device Management] Error cleaning up expired sessions: {e}")
-            await db.rollback()
-            return 0
 
     @staticmethod
     async def get_session_activity_stats(db: AsyncSession, user_id: int, days: int = 30) -> dict:
