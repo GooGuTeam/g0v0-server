@@ -24,6 +24,7 @@ from app.models.score import GameMode
 from app.models.user import BeatmapsetType
 from app.service.asset_proxy_helper import process_response_assets
 from app.service.user_cache_service import get_user_cache_service
+from app.service.user_preferences_service import convert_mode_for_client
 from app.utils import utcnow
 
 from .router import router
@@ -59,16 +60,17 @@ async def get_users(
     cache_service = get_user_cache_service(redis)
 
     if user_ids:
-        # 先尝试从缓存获取
+        # 暂时禁用缓存以确保模式转换正确应用
+        # TODO: 重新启用缓存时需要考虑客户端类型
         cached_users = []
-        uncached_user_ids = []
+        uncached_user_ids = user_ids[:50]  # 限制50个
 
-        for user_id in user_ids[:50]:  # 限制50个
-            cached_user = await cache_service.get_user_from_cache(user_id)
-            if cached_user:
-                cached_users.append(cached_user)
-            else:
-                uncached_user_ids.append(user_id)
+        # for user_id in user_ids[:50]:  # 限制50个
+        #     cached_user = await cache_service.get_user_from_cache(user_id)
+        #     if cached_user:
+        #         cached_users.append(cached_user)
+        #     else:
+        #         uncached_user_ids.append(user_id)
 
         # 查询未缓存的用户
         if uncached_user_ids:
@@ -77,10 +79,12 @@ async def get_users(
             # 将查询到的用户添加到缓存并返回
             for searched_user in searched_users:
                 if searched_user.id != BANCHOBOT_ID:
+                    # 对于公开端点，使用 osu_lazer 客户端的转换逻辑以确保兼容性
                     user_resp = await UserResp.from_db(
                         searched_user,
                         session,
                         include=SEARCH_INCLUDED,
+                        client_type="osu_lazer",  # 强制使用 lazer 客户端转换逻辑
                     )
                     cached_users.append(user_resp)
                     # 异步缓存，不阻塞响应
@@ -95,10 +99,12 @@ async def get_users(
         users = []
         for searched_user in searched_users:
             if searched_user.id != BANCHOBOT_ID:
+                # 对于公开端点，使用 osu_lazer 客户端的转换逻辑以确保兼容性
                 user_resp = await UserResp.from_db(
                     searched_user,
                     session,
                     include=SEARCH_INCLUDED,
+                    client_type="osu_lazer",  # 强制使用 lazer 客户端转换逻辑
                 )
                 users.append(user_resp)
                 # 异步缓存
@@ -183,12 +189,13 @@ async def get_user_info_ruleset(
     redis = get_redis()
     cache_service = get_user_cache_service(redis)
 
-    # 如果是数字ID，先尝试从缓存获取
-    if user_id.isdigit():
-        user_id_int = int(user_id)
-        cached_user = await cache_service.get_user_from_cache(user_id_int, ruleset)
-        if cached_user:
-            return cached_user
+    # 暂时禁用缓存以确保模式转换正确应用
+    # TODO: 重新启用缓存时需要考虑客户端类型
+    # if user_id.isdigit():
+    #     user_id_int = int(user_id)
+    #     cached_user = await cache_service.get_user_from_cache(user_id_int, ruleset)
+    #     if cached_user:
+    #         return cached_user
 
     searched_user = (
         await session.exec(
@@ -200,11 +207,15 @@ async def get_user_info_ruleset(
     if not searched_user or searched_user.id == BANCHOBOT_ID:
         raise HTTPException(404, detail="User not found")
 
+    # 对于公开端点，将扩展模式转换为标准模式以确保客户端兼容性
+    # 这样 osu!lazer 客户端就不会收到它不认识的模式数据
+    converted_ruleset = convert_mode_for_client(ruleset, "osu_lazer") if ruleset else None
+
     user_resp = await UserResp.from_db(
         searched_user,
         session,
         include=SEARCH_INCLUDED,
-        ruleset=ruleset,
+        ruleset=converted_ruleset,
     )
 
     # 异步缓存结果
@@ -231,14 +242,15 @@ async def get_user_info(
     redis = get_redis()
     cache_service = get_user_cache_service(redis)
 
-    # 如果是数字ID，先尝试从缓存获取
-    if user_id.isdigit():
-        user_id_int = int(user_id)
-        cached_user = await cache_service.get_user_from_cache(user_id_int)
-        if cached_user:
-            # 处理资源代理
-            processed_user = await process_response_assets(cached_user, request)
-            return processed_user
+    # 暂时禁用缓存以确保模式转换正确应用
+    # TODO: 重新启用缓存时需要考虑客户端类型
+    # if user_id.isdigit():
+    #     user_id_int = int(user_id)
+    #     cached_user = await cache_service.get_user_from_cache(user_id_int)
+    #     if cached_user:
+    #         # 处理资源代理
+    #         processed_user = await process_response_assets(cached_user, request)
+    #         return processed_user
 
     searched_user = (
         await session.exec(
@@ -250,10 +262,12 @@ async def get_user_info(
     if not searched_user or searched_user.id == BANCHOBOT_ID:
         raise HTTPException(404, detail="User not found")
 
+    # 对于公开端点，使用 osu_lazer 客户端的转换逻辑以确保兼容性
     user_resp = await UserResp.from_db(
         searched_user,
         session,
         include=SEARCH_INCLUDED,
+        client_type="osu_lazer",  # 强制使用 lazer 客户端转换逻辑
     )
 
     # 异步缓存结果

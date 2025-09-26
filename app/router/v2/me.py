@@ -15,6 +15,7 @@ from app.models.userpage import (
     ValidateBBCodeResponse,
 )
 from app.service.bbcode_service import bbcode_service
+from app.service.user_preferences_service import get_client_type_from_token
 
 from .router import router
 
@@ -33,7 +34,12 @@ async def get_user_info_with_ruleset(
     ruleset: GameMode = Path(description="指定 ruleset"),
     user_and_token: UserAndToken = Security(get_current_user_and_token, scopes=["identify"]),
 ):
-    user_resp = await MeResp.from_db(user_and_token[0], session, ALL_INCLUDED, ruleset, token_id=user_and_token[1].id)
+    user, token = user_and_token
+
+    # 通过 token 获取客户端类型
+    client_type = await get_client_type_from_token(session, token.id)
+
+    user_resp = await MeResp.from_db(user, session, ALL_INCLUDED, ruleset, token_id=token.id, client_type=client_type)
     return user_resp
 
 
@@ -48,7 +54,12 @@ async def get_user_info_default(
     session: Database,
     user_and_token: UserAndToken = Security(get_current_user_and_token, scopes=["identify"]),
 ):
-    user_resp = await MeResp.from_db(user_and_token[0], session, ALL_INCLUDED, None, token_id=user_and_token[1].id)
+    user, token = user_and_token
+
+    # 通过 token 获取客户端类型
+    client_type = await get_client_type_from_token(session, token.id)
+
+    user_resp = await MeResp.from_db(user, session, ALL_INCLUDED, None, token_id=token.id, client_type=client_type)
     return user_resp
 
 

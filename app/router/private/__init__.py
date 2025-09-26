@@ -11,6 +11,7 @@ from . import (  # noqa: F401
     oauth,
     relationship,
     team,
+    user_preferences,
     username,
 )
 from .router import router as private_router

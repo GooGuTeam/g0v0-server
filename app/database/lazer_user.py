@@ -259,6 +259,7 @@ class UserResp(UserBase):
         ruleset: GameMode | None = None,
         *,
         token_id: int | None = None,
+        client_type: str | None = None,
     ) -> "UserResp":
         from app.dependencies.database import get_redis
 
@@ -273,6 +274,13 @@ class UserResp(UserBase):
         u = cls.model_validate(obj.model_dump())
         u.id = obj.id
         u.default_group = "bot" if u.is_bot else "default"
+
+        # 根据客户端类型转换默认游戏模式
+        if client_type == "osu_lazer":
+            u.playmode = _convert_mode_for_lazer_client(obj.playmode)
+        else:
+            # 对于未知客户端类型或公开查看，保持原始模式
+            u.playmode = obj.playmode
         u.country = Country(code=obj.country_code, name=COUNTRIES.get(obj.country_code, "Unknown"))
         u.follower_count = (
             await session.exec(
@@ -323,22 +331,71 @@ class UserResp(UserBase):
                 u.daily_challenge_user_stats = DailyChallengeStatsResp.from_db(daily_challenge_stats)
 
         if "statistics" in include:
+            # 将扩展模式转换为标准模式来查询统计数据
+            db_ruleset = _convert_extended_mode_to_standard(ruleset)
             current_stattistics = None
             for i in await obj.awaitable_attrs.statistics:
-                if i.mode == ruleset:
+                if i.mode == db_ruleset:
                     current_stattistics = i
                     break
-            u.statistics = (
-                await UserStatisticsResp.from_db(current_stattistics, session, obj.country_code)
-                if current_stattistics
-                else None
-            )
+            if current_stattistics:
+                u.statistics = await UserStatisticsResp.from_db(current_stattistics, session, obj.country_code)
+                # 根据客户端类型设置返回的模式
+                if client_type == "osu_lazer" and u.statistics:
+                    u.statistics.mode = db_ruleset
+                elif u.statistics:
+                    u.statistics.mode = ruleset
+            else:
+                u.statistics = None
 
         if "statistics_rulesets" in include:
-            u.statistics_rulesets = {
-                i.mode.value: await UserStatisticsResp.from_db(i, session, obj.country_code)
-                for i in await obj.awaitable_attrs.statistics
-            }
+            statistics_rulesets = {}
+
+            if client_type == "osu_lazer":
+                # osu_lazer 客户端：只返回标准模式的统计数据
+                standard_modes = {GameMode.OSU, GameMode.TAIKO, GameMode.FRUITS, GameMode.MANIA}
+                for i in await obj.awaitable_attrs.statistics:
+                    # 将扩展模式转换为对应的标准模式
+                    standard_mode = _convert_extended_mode_to_standard(i.mode)
+
+                    # 只处理标准模式，避免重复
+                    if standard_mode in standard_modes and standard_mode.value not in statistics_rulesets:
+                        stat_resp = await UserStatisticsResp.from_db(i, session, obj.country_code)
+                        stat_resp.mode = standard_mode
+                        statistics_rulesets[standard_mode.value] = stat_resp
+            else:
+                # osu_web 等其他客户端：返回所有模式的统计数据
+                processed_standard_modes = set()
+
+                for i in await obj.awaitable_attrs.statistics:
+                    stat_resp = await UserStatisticsResp.from_db(i, session, obj.country_code)
+                    statistics_rulesets[i.mode.value] = stat_resp
+
+                    # 为标准模式创建对应的扩展模式统计数据
+                    if i.mode == GameMode.OSU and GameMode.OSU not in processed_standard_modes:
+                        processed_standard_modes.add(GameMode.OSU)
+                        # 为 osurx 和 osuap 创建相同的统计数据
+                        osurx_resp = await UserStatisticsResp.from_db(i, session, obj.country_code)
+                        osurx_resp.mode = GameMode.OSURX
+                        statistics_rulesets[GameMode.OSURX.value] = osurx_resp
+
+                        osuap_resp = await UserStatisticsResp.from_db(i, session, obj.country_code)
+                        osuap_resp.mode = GameMode.OSUAP
+                        statistics_rulesets[GameMode.OSUAP.value] = osuap_resp
+                    elif i.mode == GameMode.TAIKO and GameMode.TAIKO not in processed_standard_modes:
+                        processed_standard_modes.add(GameMode.TAIKO)
+                        # 为 taikorx 创建相同的统计数据
+                        taikorx_resp = await UserStatisticsResp.from_db(i, session, obj.country_code)
+                        taikorx_resp.mode = GameMode.TAIKORX
+                        statistics_rulesets[GameMode.TAIKORX.value] = taikorx_resp
+                    elif i.mode == GameMode.FRUITS and GameMode.FRUITS not in processed_standard_modes:
+                        processed_standard_modes.add(GameMode.FRUITS)
+                        # 为 fruitsrx 创建相同的统计数据
+                        fruitsrx_resp = await UserStatisticsResp.from_db(i, session, obj.country_code)
+                        fruitsrx_resp.mode = GameMode.FRUITSRX
+                        statistics_rulesets[GameMode.FRUITSRX.value] = fruitsrx_resp
+
+            u.statistics_rulesets = statistics_rulesets
 
         if "monthly_playcounts" in include:
             u.monthly_playcounts = [CountResp.from_db(pc) for pc in await obj.awaitable_attrs.monthly_playcounts]
@@ -357,12 +414,21 @@ class UserResp(UserBase):
         if "achievements" in include:
             u.user_achievements = [UserAchievementResp.from_db(ua) for ua in await obj.awaitable_attrs.achievement]
         if "rank_history" in include:
-            rank_history = await RankHistoryResp.from_db(session, obj.id, ruleset)
+            # 将扩展模式转换为标准模式来查询数据库
+            db_ruleset = _convert_extended_mode_to_standard(ruleset)
+            rank_history = await RankHistoryResp.from_db(session, obj.id, db_ruleset)
             if len(rank_history.data) != 0:
+                # 根据客户端类型设置返回的模式
+                if client_type == "osu_lazer":
+                    # osu_lazer 客户端显示标准模式
+                    rank_history.mode = db_ruleset
+                else:
+                    # 其他客户端显示原始请求的模式
+                    rank_history.mode = ruleset
                 u.rank_history = rank_history
 
             rank_top = (
-                await session.exec(select(RankTop).where(RankTop.user_id == obj.id, RankTop.mode == ruleset))
+                await session.exec(select(RankTop).where(RankTop.user_id == obj.id, RankTop.mode == db_ruleset))
             ).first()
             if rank_top:
                 u.rank_highest = (
@@ -379,6 +445,8 @@ class UserResp(UserBase):
                 select(func.count()).select_from(FavouriteBeatmapset).where(FavouriteBeatmapset.user_id == obj.id)
             )
         ).one()
+        # 将扩展模式转换为标准模式来查询分数数据
+        db_ruleset = _convert_extended_mode_to_standard(ruleset)
         u.scores_pinned_count = (
             await session.exec(
                 select(func.count())
@@ -386,7 +454,7 @@ class UserResp(UserBase):
                 .where(
                     Score.user_id == obj.id,
                     Score.pinned_order > 0,
-                    Score.gamemode == ruleset,
+                    Score.gamemode == db_ruleset,
                     col(Score.passed).is_(True),
                 )
             )
@@ -397,7 +465,7 @@ class UserResp(UserBase):
                 .select_from(PPBestScore)
                 .where(
                     PPBestScore.user_id == obj.id,
-                    PPBestScore.gamemode == ruleset,
+                    PPBestScore.gamemode == db_ruleset,
                 )
                 .limit(200)
             )
@@ -408,13 +476,13 @@ class UserResp(UserBase):
                 .select_from(Score)
                 .where(
                     Score.user_id == obj.id,
-                    Score.gamemode == ruleset,
+                    Score.gamemode == db_ruleset,
                     col(Score.passed).is_(True),
                     Score.ended_at > utcnow() - timedelta(hours=24),
                 )
             )
         ).one()
-        u.scores_first_count = await get_user_first_score_count(session, obj.id, ruleset)
+        u.scores_first_count = await get_user_first_score_count(session, obj.id, db_ruleset)
         u.beatmap_playcounts_count = (
             await session.exec(
                 select(func.count())
@@ -449,11 +517,14 @@ class MeResp(UserResp):
         ruleset: GameMode | None = None,
         *,
         token_id: int | None = None,
+        client_type: str | None = None,
     ) -> "MeResp":
         from app.dependencies.database import get_redis
         from app.service.verification_service import LoginSessionService
 
-        u = await super().from_db(obj, session, ["session_verified", *include], ruleset, token_id=token_id)
+        u = await super().from_db(
+            obj, session, ["session_verified", *include], ruleset, token_id=token_id, client_type=client_type
+        )
         u = cls.model_validate(u.model_dump())
         if (settings.enable_totp_verification or settings.enable_email_verification) and token_id:
             redis = get_redis()
@@ -500,3 +571,42 @@ RANKING_INCLUDES = [
     "team",
     "statistics",
 ]
+
+
+def _convert_mode_for_lazer_client(mode: GameMode) -> GameMode:
+    """
+    为 osu_lazer 客户端转换游戏模式
+    将扩展模式转换为标准模式，因为 lazer 客户端不支持显示扩展模式
+
+    Args:
+        mode: 原始游戏模式
+
+    Returns:
+        GameMode: 转换后的游戏模式
+    """
+    conversion_map = {
+        GameMode.OSURX: GameMode.OSU,  # osurx -> osu
+        GameMode.OSUAP: GameMode.OSU,  # osuap -> osu
+        GameMode.TAIKORX: GameMode.TAIKO,  # taikorx -> taiko
+        GameMode.FRUITSRX: GameMode.FRUITS,  # fruitsrx -> fruits
+    }
+    return conversion_map.get(mode, mode)
+
+
+def _convert_extended_mode_to_standard(mode: GameMode) -> GameMode:
+    """
+    将扩展模式转换为对应的标准模式，用于数据库查询
+
+    Args:
+        mode: 游戏模式
+
+    Returns:
+        GameMode: 对应的标准模式
+    """
+    conversion_map = {
+        GameMode.OSURX: GameMode.OSU,  # osurx -> osu
+        GameMode.OSUAP: GameMode.OSU,  # osuap -> osu
+        GameMode.TAIKORX: GameMode.TAIKO,  # taikorx -> taiko
+        GameMode.FRUITSRX: GameMode.FRUITS,  # fruitsrx -> fruits
+    }
+    return conversion_map.get(mode, mode)

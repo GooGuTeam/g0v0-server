@@ -215,7 +215,7 @@ async def oauth_token(
     scopes = scope.split(" ")
 
     # 打印请求头
-    logger.info(f"Request headers: {request.headers}")
+    # logger.info(f"Request headers: {request.headers}")
 
     client = (
         await db.exec(
