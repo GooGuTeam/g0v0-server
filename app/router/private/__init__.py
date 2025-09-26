@@ -2,7 +2,17 @@ from __future__ import annotations
 
 from app.config import settings
 
-from . import audio_proxy, avatar, beatmapset_ratings, cover, oauth, relationship, team, username  # noqa: F401
+from . import (  # noqa: F401
+    audio_proxy,
+    avatar,
+    beatmapset_ratings,
+    cover,
+    device_management,
+    oauth,
+    relationship,
+    team,
+    username,
+)
 from .router import router as private_router
 
 if settings.enable_totp_verification:

@@ -298,6 +298,15 @@ async def oauth_token(
         access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
         access_token = create_access_token(data={"sub": str(user_id)}, expires_delta=access_token_expires)
         refresh_token_str = generate_refresh_token()
+
+        # 检测设备信息
+        from app.service.client_detection_service import ClientDetectionService
+
+        ip_address = get_client_ip(request)
+        user_agent = request.headers.get("User-Agent", "")
+        api_version = request.headers.get("x-api-version")
+        client_info = ClientDetectionService.detect_client(user_agent, client_id, api_version)
+
         token = await store_token(
             db,
             user_id,
@@ -307,11 +316,12 @@ async def oauth_token(
             refresh_token_str,
             settings.access_token_expire_minutes * 60,
             allow_multiple_devices=settings.enable_multi_device_login,  # 使用配置决定是否启用多设备支持
+            device_fingerprint=client_info.device_fingerprint,
+            device_type=client_info.client_type,
+            user_agent=user_agent,
+            ip_address=ip_address,
         )
         token_id = token.id
-
-        ip_address = get_client_ip(request)
-        user_agent = request.headers.get("User-Agent", "")
 
         # 获取国家代码
         geo_info = geoip.lookup(ip_address)
@@ -353,6 +363,7 @@ async def oauth_token(
                 client_id,
                 country_code,
                 is_new_location,
+                api_version,
             )
 
             # 记录需要二次验证的登录尝试
@@ -440,6 +451,14 @@ async def oauth_token(
         access_token = create_access_token(data={"sub": str(token_record.user_id)}, expires_delta=access_token_expires)
         new_refresh_token = generate_refresh_token()
 
+        # 检测设备信息
+        from app.service.client_detection_service import ClientDetectionService
+
+        ip_address = get_client_ip(request)
+        user_agent = request.headers.get("User-Agent", "")
+        api_version = request.headers.get("x-api-version")
+        client_info = ClientDetectionService.detect_client(user_agent, client_id, api_version)
+
         # 更新令牌
         await store_token(
             db,
@@ -450,6 +469,10 @@ async def oauth_token(
             new_refresh_token,
             settings.access_token_expire_minutes * 60,
             allow_multiple_devices=settings.enable_multi_device_login,  # 使用配置决定是否启用多设备支持
+            device_fingerprint=client_info.device_fingerprint,
+            device_type=client_info.client_type,
+            user_agent=user_agent,
+            ip_address=ip_address,
         )
         return TokenResponse(
             access_token=access_token,
@@ -505,6 +528,14 @@ async def oauth_token(
         access_token = create_access_token(data={"sub": str(user_id)}, expires_delta=access_token_expires)
         refresh_token_str = generate_refresh_token()
 
+        # 检测设备信息
+        from app.service.client_detection_service import ClientDetectionService
+
+        ip_address = get_client_ip(request)
+        user_agent = request.headers.get("User-Agent", "")
+        api_version = request.headers.get("x-api-version")
+        client_info = ClientDetectionService.detect_client(user_agent, client_id, api_version)
+
         # 存储令牌
         await store_token(
             db,
@@ -515,6 +546,10 @@ async def oauth_token(
             refresh_token_str,
             settings.access_token_expire_minutes * 60,
             allow_multiple_devices=settings.enable_multi_device_login,  # 使用配置决定是否启用多设备支持
+            device_fingerprint=client_info.device_fingerprint,
+            device_type=client_info.client_type,
+            user_agent=user_agent,
+            ip_address=ip_address,
         )
 
         # 打印jwt
@@ -552,6 +587,14 @@ async def oauth_token(
         access_token = create_access_token(data={"sub": "3"}, expires_delta=access_token_expires)
         refresh_token_str = generate_refresh_token()
 
+        # 检测设备信息（客户端凭证模式）
+        from app.service.client_detection_service import ClientDetectionService
+
+        ip_address = get_client_ip(request)
+        user_agent = request.headers.get("User-Agent", "")
+        api_version = request.headers.get("x-api-version")
+        client_info = ClientDetectionService.detect_client(user_agent, client_id, api_version)
+
         # 存储令牌
         await store_token(
             db,
@@ -562,6 +605,10 @@ async def oauth_token(
             refresh_token_str,
             settings.access_token_expire_minutes * 60,
             allow_multiple_devices=settings.enable_multi_device_login,  # 使用配置决定是否启用多设备支持
+            device_fingerprint=client_info.device_fingerprint,
+            device_type=client_info.client_type,
+            user_agent=user_agent,
+            ip_address=ip_address,
         )
 
         return TokenResponse(

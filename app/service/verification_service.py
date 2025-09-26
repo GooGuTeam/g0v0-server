@@ -7,11 +7,10 @@ from __future__ import annotations
 from datetime import timedelta
 import secrets
 import string
-from typing import Literal, Optional
+from typing import Literal
 
 from app.config import settings
 from app.database.verification import EmailVerification, LoginSession
-from app.interfaces.session_verification import SessionVerificationInterface
 from app.log import logger
 from app.service.client_detection_service import ClientDetectionService, ClientInfo
 from app.service.device_trust_service import DeviceTrustService
@@ -252,6 +251,7 @@ This email was sent automatically, please do not reply.
         user_agent: str | None = None,
         client_id: int | None = None,
         country_code: str | None = None,
+        api_version: str | None = None,
     ) -> bool:
         """发送验证邮件（带智能检测）"""
         try:
@@ -261,7 +261,7 @@ This email was sent automatically, please do not reply.
                 return True  # 返回成功，但不执行验证流程
 
             # 检测客户端信息
-            client_info = ClientDetectionService.detect_client(user_agent, client_id)
+            client_info = ClientDetectionService.detect_client(user_agent, client_id, api_version)
             logger.info(
                 f"[Email Verification] Detected client for user {user_id}: "
                 f"{ClientDetectionService.format_client_display_name(client_info)}"
@@ -317,6 +317,7 @@ This email was sent automatically, please do not reply.
         client_id: int | None = None,
         country_code: str | None = None,
         is_new_location: bool = False,
+        api_version: str | None = None,
     ) -> tuple[bool, str, ClientInfo | None]:
         """
         智能邮件验证发送
@@ -357,7 +358,7 @@ This email was sent automatically, please do not reply.
                 return success, "使用传统验证逻辑发送邮件" if success else "传统验证邮件发送失败", None
 
             # 检测客户端信息
-            client_info = ClientDetectionService.detect_client(user_agent, client_id)
+            client_info = ClientDetectionService.detect_client(user_agent, client_id, api_version)
             client_display_name = ClientDetectionService.format_client_display_name(client_info)
 
             logger.info(f"[Smart Verification] Detected client for user {user_id}: {client_display_name}")
@@ -416,6 +417,7 @@ This email was sent automatically, please do not reply.
         user_agent: str | None = None,
         client_id: int | None = None,
         country_code: str | None = None,
+        api_version: str | None = None,
     ) -> tuple[bool, str]:
         """验证邮箱验证码（带智能信任更新）"""
         try:
@@ -517,7 +519,7 @@ class LoginSessionService:
 
     # Session verification interface methods
     @staticmethod
-    async def find_for_verification(db: AsyncSession, session_id: str) -> Optional[LoginSession]:
+    async def find_for_verification(db: AsyncSession, session_id: str) -> LoginSession | None:
         """根据会话ID查找会话用于验证"""
         try:
             result = await db.exec(

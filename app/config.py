@@ -339,6 +339,21 @@ STORAGE_SETTINGS='{
         Field(default=10, description="每个用户每个客户端的最大令牌数量"),
         "验证服务设置",
     ]
+    enable_device_management: Annotated[
+        bool,
+        Field(default=True, description="是否启用设备管理功能"),
+        "验证服务设置",
+    ]
+    max_web_sessions: Annotated[
+        int,
+        Field(default=5, description="网页端最大同时会话数"),
+        "验证服务设置",
+    ]
+    max_client_sessions: Annotated[
+        int,
+        Field(default=2, description="客户端最大同时会话数"),
+        "验证服务设置",
+    ]
     device_trust_duration_days: Annotated[
         int,
         Field(default=30, description="设备信任持续天数"),

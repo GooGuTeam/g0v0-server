@@ -218,8 +218,12 @@ async def store_token(
     refresh_token: str,
     expires_in: int,
     allow_multiple_devices: bool = True,
+    device_fingerprint: str | None = None,
+    device_type: str | None = None,
+    user_agent: str | None = None,
+    ip_address: str | None = None,
 ) -> OAuthToken:
-    """存储令牌到数据库（支持多设备）"""
+    """存储令牌到数据库（支持设备感知的多设备管理）"""
     expires_at = utcnow() + timedelta(seconds=expires_in)
 
     if not allow_multiple_devices:
@@ -229,29 +233,82 @@ async def store_token(
         for token in old_tokens:
             await db.delete(token)
     else:
-        # 新的行为：只删除过期的令牌，保留有效的令牌（多设备模式）
-        statement = select(OAuthToken).where(
+        # 新的行为：设备感知的令牌管理
+
+        # 1. 首先删除过期的令牌
+        expired_statement = select(OAuthToken).where(
             OAuthToken.user_id == user_id, OAuthToken.client_id == client_id, OAuthToken.expires_at <= utcnow()
         )
-        expired_tokens = (await db.exec(statement)).all()
+        expired_tokens = (await db.exec(expired_statement)).all()
         for token in expired_tokens:
             await db.delete(token)
 
-        # 限制每个用户每个客户端的最大令牌数量（防止无限增长）
+        # 2. 如果有设备指纹，检查是否存在相同设备的令牌
+        if device_fingerprint and device_type:
+            # 查找相同设备指纹的令牌
+            same_device_statement = select(OAuthToken).where(
+                OAuthToken.user_id == user_id,
+                OAuthToken.client_id == client_id,
+                OAuthToken.device_fingerprint == device_fingerprint,
+                OAuthToken.expires_at > utcnow(),
+            )
+            same_device_tokens = (await db.exec(same_device_statement)).all()
+
+            # 对于同一设备，只保留最新的令牌（替换旧的）
+            for token in same_device_tokens:
+                await db.delete(token)
+                logger.info(f"[Auth] Replaced existing token for same device {device_fingerprint} (user {user_id})")
+
+        # 3. 按设备类型分组管理令牌数量限制
         max_tokens_per_client = settings.max_tokens_per_client
-        statement = (
+
+        if device_type:
+            # 为不同设备类型设置不同的令牌限制
+            device_type_limits = {
+                "osu_web": settings.max_web_sessions,  # 网页端允许更多会话（多个浏览器）
+                "osu_stable": settings.max_client_sessions,  # stable客户端会话数
+                "osu_lazer": settings.max_client_sessions,  # lazer客户端会话数
+                "mobile": settings.max_client_sessions,  # 移动端会话数
+                "unknown": 1,  # 未知设备类型限制最严格
+            }
+            device_limit = device_type_limits.get(device_type, 1)
+
+            # 查询当前设备类型的活跃令牌
+            from sqlalchemy import desc
+
+            device_type_statement = (
+                select(OAuthToken)
+                .where(
+                    OAuthToken.user_id == user_id,
+                    OAuthToken.client_id == client_id,
+                    OAuthToken.device_type == device_type,
+                    OAuthToken.expires_at > utcnow(),
+                )
+                .order_by(desc(OAuthToken.created_at))
+            )
+
+            device_type_tokens = (await db.exec(device_type_statement)).all()
+            if len(device_type_tokens) >= device_limit:
+                # 删除超出限制的旧令牌（同设备类型）
+                tokens_to_delete = device_type_tokens[device_limit - 1 :]
+                for token in tokens_to_delete:
+                    await db.delete(token)
+                logger.info(f"[Auth] Cleaned up {len(tokens_to_delete)} old {device_type} tokens for user {user_id}")
+
+        # 4. 全局令牌数量限制（防止无限增长）
+        all_active_statement = (
             select(OAuthToken)
             .where(OAuthToken.user_id == user_id, OAuthToken.client_id == client_id, OAuthToken.expires_at > utcnow())
-            .order_by(OAuthToken.created_at.desc())
+            .order_by(desc(OAuthToken.created_at))
         )
 
-        active_tokens = (await db.exec(statement)).all()
-        if len(active_tokens) >= max_tokens_per_client:
-            # 删除最旧的令牌
-            tokens_to_delete = active_tokens[max_tokens_per_client - 1 :]
+        all_active_tokens = (await db.exec(all_active_statement)).all()
+        if len(all_active_tokens) >= max_tokens_per_client:
+            # 删除最旧的令牌（跨设备类型）
+            tokens_to_delete = all_active_tokens[max_tokens_per_client - 1 :]
             for token in tokens_to_delete:
                 await db.delete(token)
-            logger.info(f"[Auth] Cleaned up {len(tokens_to_delete)} old tokens for user {user_id}")
+            logger.info(f"[Auth] Global cleanup: removed {len(tokens_to_delete)} old tokens for user {user_id}")
 
     # 检查是否有重复的 access_token
     duplicate_token = (await db.exec(select(OAuthToken).where(OAuthToken.access_token == access_token))).first()
@@ -266,6 +323,11 @@ async def store_token(
         scope=",".join(scopes),
         refresh_token=refresh_token,
         expires_at=expires_at,
+        device_fingerprint=device_fingerprint,
+        device_type=device_type,
+        user_agent=user_agent,
+        ip_address=ip_address,
+        last_used_at=utcnow(),
     )
     db.add(token_record)
     await db.commit()
@@ -283,7 +345,11 @@ async def get_token_by_access_token(db: AsyncSession, access_token: str) -> OAut
         OAuthToken.access_token == access_token,
         OAuthToken.expires_at > utcnow(),
     )
-    return (await db.exec(statement)).first()
+    token = (await db.exec(statement)).first()
+    if token:
+        # 确保对象与当前会话关联，避免 lazy loading 问题
+        await db.refresh(token)
+    return token
 
 
 async def get_token_by_refresh_token(db: AsyncSession, refresh_token: str) -> OAuthToken | None:
@@ -369,9 +435,7 @@ def verify_totp_key(secret: str, code: str) -> bool:
     return pyotp.TOTP(secret).verify(code, valid_window=1)
 
 
-async def verify_totp_key_with_replay_protection(
-    user_id: int, secret: str, code: str, redis: Redis
-) -> bool:
+async def verify_totp_key_with_replay_protection(user_id: int, secret: str, code: str, redis: Redis) -> bool:
     """验证TOTP密钥，并防止密钥重放攻击"""
     if not pyotp.TOTP(secret).verify(code, valid_window=1):
         return False

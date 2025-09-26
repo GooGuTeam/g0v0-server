@@ -35,6 +35,13 @@ class OAuthToken(UTCBaseModel, SQLModel, table=True):
     expires_at: datetime = Field(sa_column=Column(DateTime))
     created_at: datetime = Field(default_factory=utcnow, sa_column=Column(DateTime))
 
+    # 设备识别字段
+    device_fingerprint: str | None = Field(default=None, max_length=32, index=True, description="设备指纹")
+    device_type: str | None = Field(default=None, max_length=20, index=True, description="设备类型")
+    user_agent: str | None = Field(default=None, max_length=500, description="用户代理")
+    ip_address: str | None = Field(default=None, max_length=45, description="IP地址")
+    last_used_at: datetime | None = Field(default=None, sa_column=Column(DateTime), description="最后使用时间")
+
     user: "User" = Relationship()
     login_session: LoginSession | None = Relationship(back_populates="token", passive_deletes=True)
 

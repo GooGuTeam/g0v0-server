@@ -9,6 +9,7 @@ from app.dependencies.database import Database, engine, get_redis, redis_client
 from app.dependencies.fetcher import get_fetcher
 from app.dependencies.scheduler import start_scheduler, stop_scheduler
 from app.log import logger
+from app.middleware.verify_session import VerifySessionMiddleware
 from app.router import (
     api_v1_router,
     api_v2_router,
@@ -45,8 +46,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi_limiter import FastAPILimiter
 import sentry_sdk
-
-from app.middleware.verify_session import VerifySessionMiddleware
 
 
 @asynccontextmanager

@@ -80,7 +80,10 @@ class DatabaseCleanupScheduler:
                 # 只在有清理记录时输出总结
                 total_cleaned = expired_codes + expired_sessions + unverified_sessions
                 if total_cleaned > 0:
-                    logger.debug(f"Scheduled cleanup completed - codes: {expired_codes}, sessions: {expired_sessions}, unverified: {unverified_sessions}")
+                    logger.debug(
+                        f"Scheduled cleanup completed - codes: {expired_codes}, "
+                        f"sessions: {expired_sessions}, unverified: {unverified_sessions}"
+                    )
 
         except Exception as e:
             logger.error(f"Error during scheduled database cleanup: {e!s}")

@@ -51,13 +51,16 @@ class ClientDetectionService:
     TRUSTED_CLIENT_TYPES: ClassVar[set[str]] = {"osu_stable", "osu_lazer"}
 
     @staticmethod
-    def detect_client(user_agent: str | None, client_id: int | None = None) -> ClientInfo:
+    def detect_client(
+        user_agent: str | None, client_id: int | None = None, api_version: str | None = None
+    ) -> ClientInfo:
         """
         检测客户端类型和信息
 
         Args:
             user_agent: 用户代理字符串
             client_id: OAuth 客户端 ID
+            api_version: API版本号 (来自 x-api-version 请求头)
 
         Returns:
             ClientInfo: 客户端信息
@@ -66,6 +69,27 @@ class ClientDetectionService:
 
         if not user_agent:
             return ClientInfo(client_type="unknown")
+
+        # 首先检查 API 版本号来区分 stable 和 lazer
+        if api_version:
+            if api_version.startswith("b"):
+                # API版本号以 'b' 开头的是 osu!stable
+                return ClientInfo(
+                    client_type="osu_stable",
+                    version=api_version,
+                    platform=ClientDetectionService._extract_platform(user_agent),
+                    device_fingerprint=ClientDetectionService._generate_device_fingerprint(user_agent),
+                    is_trusted_client=True,
+                )
+            else:
+                # 其他版本号格式通常是 osu!lazer
+                return ClientInfo(
+                    client_type="osu_lazer",
+                    version=api_version,
+                    platform=ClientDetectionService._extract_platform(user_agent),
+                    device_fingerprint=ClientDetectionService._generate_device_fingerprint(user_agent),
+                    is_trusted_client=True,
+                )
 
         # 优先通过 client_id 判断客户端类型
         if client_id is not None:

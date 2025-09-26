@@ -107,7 +107,7 @@ class DatabaseCleanupService:
             # 查找指定天数前的已使用验证码记录
             cutoff_time = utcnow() - timedelta(days=days_old)
 
-            stmt = select(EmailVerification).where(EmailVerification.is_used == True)
+            stmt = select(EmailVerification).where(EmailVerification.is_used)
             result = await db.exec(stmt)
             all_used_codes = result.all()
 
@@ -151,10 +151,7 @@ class DatabaseCleanupService:
             cutoff_time = utcnow() - timedelta(hours=hours_old)
 
             # 查找指定时间前创建且仍未验证的会话记录
-            stmt = select(LoginSession).where(
-                LoginSession.is_verified == False,
-                LoginSession.created_at < cutoff_time
-            )
+            stmt = select(LoginSession).where(~LoginSession.is_verified, LoginSession.created_at < cutoff_time)
             result = await db.exec(stmt)
             unverified_sessions = result.all()
 
@@ -168,7 +165,8 @@ class DatabaseCleanupService:
 
             if deleted_count > 0:
                 logger.debug(
-                    f"[Cleanup Service] Cleaned up {deleted_count} unverified login sessions older than {hours_old} hour(s)"
+                    f"[Cleanup Service] Cleaned up {deleted_count} unverified login sessions "
+                    f"older than {hours_old} hour(s)"
                 )
 
             return deleted_count
@@ -194,7 +192,7 @@ class DatabaseCleanupService:
             # 查找指定天数前的已验证会话记录
             cutoff_time = utcnow() - timedelta(days=days_old)
 
-            stmt = select(LoginSession).where(LoginSession.is_verified == True)
+            stmt = select(LoginSession).where(LoginSession.is_verified)
             result = await db.exec(stmt)
             all_verified_sessions = result.all()
 
@@ -290,14 +288,13 @@ class DatabaseCleanupService:
 
             # 统计1小时前未验证的登录会话数量
             unverified_sessions_stmt = select(LoginSession).where(
-                LoginSession.is_verified == False,
-                LoginSession.created_at < cutoff_1_hour
+                ~LoginSession.is_verified, LoginSession.created_at < cutoff_1_hour
             )
             unverified_sessions_result = await db.exec(unverified_sessions_stmt)
             unverified_sessions_count = len(unverified_sessions_result.all())
 
             # 统计7天前的已使用验证码数量
-            old_used_codes_stmt = select(EmailVerification).where(EmailVerification.is_used == True)
+            old_used_codes_stmt = select(EmailVerification).where(EmailVerification.is_used)
             old_used_codes_result = await db.exec(old_used_codes_stmt)
             all_used_codes = old_used_codes_result.all()
             old_used_codes_count = len(
@@ -305,7 +302,7 @@ class DatabaseCleanupService:
             )
 
             # 统计30天前的已验证会话数量
-            old_verified_sessions_stmt = select(LoginSession).where(LoginSession.is_verified == True)
+            old_verified_sessions_stmt = select(LoginSession).where(LoginSession.is_verified)
             old_verified_sessions_result = await db.exec(old_verified_sessions_stmt)
             all_verified_sessions = old_verified_sessions_result.all()
             old_verified_sessions_count = len(

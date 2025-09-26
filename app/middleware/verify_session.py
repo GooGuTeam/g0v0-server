@@ -6,21 +6,22 @@ FastAPI会话验证中间件
 
 from __future__ import annotations
 
-from typing import Callable, Optional
+from collections.abc import Callable
+from typing import ClassVar
+
+from app.auth import get_token_by_access_token
+from app.database.lazer_user import User
+from app.database.verification import LoginSession
+from app.dependencies.database import get_redis, with_db
+from app.log import logger
+from app.service.verification_service import LoginSessionService
 
 from fastapi import Request, Response, status
 from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
+from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from starlette.middleware.base import BaseHTTPMiddleware
-
-from app.database.lazer_user import User
-from app.database.verification import LoginSession
-from app.dependencies.database import with_db, get_redis
-from app.auth import get_token_by_access_token
-from app.log import logger
-from app.service.verification_service import LoginSessionService
-from sqlmodel import select
 
 
 class VerifySessionMiddleware(BaseHTTPMiddleware):
@@ -30,7 +31,7 @@ class VerifySessionMiddleware(BaseHTTPMiddleware):
     """
 
     # 需要跳过验证的路由
-    SKIP_VERIFICATION_ROUTES = {
+    SKIP_VERIFICATION_ROUTES: ClassVar[set[str]] = {
         "/api/v2/session/verify",
         "/api/v2/session/verify/reissue",
         "/api/v2/me",
@@ -44,7 +45,7 @@ class VerifySessionMiddleware(BaseHTTPMiddleware):
     }
 
     # 需要强制验证的路由模式（敏感操作）
-    ALWAYS_VERIFY_PATTERNS = {
+    ALWAYS_VERIFY_PATTERNS: ClassVar[set[str]] = {
         "/api/v2/account/",
         "/api/v2/settings/",
         "/api/private/admin/",
@@ -110,9 +111,9 @@ class VerifySessionMiddleware(BaseHTTPMiddleware):
                 return True
 
         # 特权用户或非活跃用户需要验证
-        if hasattr(user, 'is_privileged') and user.is_privileged():
+        if hasattr(user, "is_privileged") and user.is_privileged():
             return True
-        if hasattr(user, 'is_inactive') and user.is_inactive():
+        if hasattr(user, "is_inactive") and user.is_inactive():
             return True
 
         # 安全方法（GET/HEAD/OPTIONS）一般不需要验证
@@ -123,7 +124,7 @@ class VerifySessionMiddleware(BaseHTTPMiddleware):
         # 修改操作（POST/PUT/DELETE/PATCH）需要验证
         return method in {"POST", "PUT", "DELETE", "PATCH"}
 
-    async def _get_current_user(self, request: Request) -> Optional[User]:
+    async def _get_current_user(self, request: Request) -> User | None:
         """获取当前用户"""
         try:
             # 从Authorization header提取token
@@ -151,7 +152,7 @@ class VerifySessionMiddleware(BaseHTTPMiddleware):
             logger.debug(f"[Verify Session Middleware] Error getting user: {e}")
             return None
 
-    async def _get_session_state(self, request: Request, user: User) -> Optional[SessionState]:
+    async def _get_session_state(self, request: Request, user: User) -> SessionState | None:
         """获取会话状态"""
         try:
             # 提取会话token（这里简化为使用相同的auth token）
@@ -191,17 +192,13 @@ class VerifySessionMiddleware(BaseHTTPMiddleware):
             # 返回验证要求响应
             return JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                content={
-                    "method": method,
-                    "message": "Session verification required"
-                }
+                content={"method": method, "message": "Session verification required"},
             )
 
         except Exception as e:
             logger.error(f"[Verify Session Middleware] Error initiating verification: {e}")
             return JSONResponse(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                content={"error": "Verification initiation failed"}
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"error": "Verification initiation failed"}
             )
 
 
@@ -216,7 +213,7 @@ class SessionState:
         self.user = user
         self.redis = redis
         self.db = db
-        self._verification_method: Optional[str] = None
+        self._verification_method: str | None = None
 
     def is_verified(self) -> bool:
         """检查会话是否已验证"""
@@ -236,8 +233,8 @@ class SessionState:
             if self._verification_method is None:
                 # 检查用户是否有TOTP密钥
                 await self.user.awaitable_attrs.totp_key  # 预加载
-                totp_key = getattr(self.user, 'totp_key', None)
-                self._verification_method = 'totp' if totp_key else 'mail'
+                totp_key = getattr(self.user, "totp_key", None)
+                self._verification_method = "totp" if totp_key else "mail"
 
                 # 保存选择的方法
                 token_id = self.session.token_id
@@ -253,9 +250,7 @@ class SessionState:
         try:
             token_id = self.session.token_id
             if token_id is not None:
-                await LoginSessionService.mark_session_verified(
-                    self.db, self.redis, self.user.id, token_id
-                )
+                await LoginSessionService.mark_session_verified(self.db, self.redis, self.user.id, token_id)
                 self.session.is_verified = True  # 更新本地状态
         except Exception as e:
             logger.error(f"[Session State] Error marking verified: {e}")
@@ -268,8 +263,7 @@ class SessionState:
 
                 # 这里可以触发邮件发送
                 await EmailVerificationService.send_verification_email(
-                    self.db, self.redis, self.user.id, self.user.username,
-                    self.user.email, None, None
+                    self.db, self.redis, self.user.id, self.user.username, self.user.email, None, None, None, None, None
                 )
         except Exception as e:
             logger.error(f"[Session State] Error issuing mail: {e}")

@@ -17,13 +17,14 @@ from app.models.totp import FinishStatus, StartCreateTotpKeyResp
 from .router import router
 
 from fastapi import Body, Depends, HTTPException, Security
-import pyotp
 from pydantic import BaseModel
+import pyotp
 from redis.asyncio import Redis
 
 
 class TotpStatusResp(BaseModel):
     """TOTP状态响应"""
+
     enabled: bool
     created_at: str | None = None
 
@@ -42,10 +43,7 @@ async def get_totp_status(
     totp_key = await current_user.awaitable_attrs.totp_key
 
     if totp_key:
-        return TotpStatusResp(
-            enabled=True,
-            created_at=totp_key.created_at.isoformat()
-        )
+        return TotpStatusResp(enabled=True, created_at=totp_key.created_at.isoformat())
     else:
         return TotpStatusResp(enabled=False)
 
