@@ -107,7 +107,9 @@ def _parse_room_enums(match_type: str, queue_mode: str) -> tuple[MatchType, Queu
     return match_type_enum, queue_mode_enum
 
 
-def _coerce_playlist_item(item_data: dict[str, Any], default_order: int, host_user_id: int) -> dict[str, Any]:
+def _coerce_playlist_item(
+    item_data: dict[str, Any], default_order: int, host_user_id: int, room_type: MatchType = MatchType.HEAD_TO_HEAD
+) -> dict[str, Any]:
     """
     Normalize playlist item data with default values.
 
@@ -115,14 +117,21 @@ def _coerce_playlist_item(item_data: dict[str, Any], default_order: int, host_us
         item_data: Raw playlist item data
         default_order: Default playlist order
         host_user_id: Host user ID for default owner
+        room_type: Room type to determine ownership logic
 
     Returns:
         Dict with normalized playlist item data
     """
-    # Use host_user_id if owner_id is 0 or not provided
-    owner_id = item_data.get("owner_id", host_user_id)
-    if owner_id == 0:
-        owner_id = host_user_id
+    # For matchmaking rooms, all playlist items should be owned by BanchoBot
+    if room_type == MatchType.MATCHMAKING:
+        # Use a system bot user ID for matchmaking rooms (e.g., BanchoBot)
+        # This should be configurable via settings
+        owner_id = 1  # TODO: Get this from config/settings
+    else:
+        # Use host_user_id if owner_id is 0 or not provided
+        owner_id = item_data.get("owner_id", host_user_id)
+        if owner_id == 0:
+            owner_id = host_user_id
 
     return {
         "owner_id": owner_id,
@@ -174,6 +183,13 @@ async def _create_room(db: Database, room_data: dict[str, Any]) -> tuple[Room, i
 
     match_type_enum, queue_mode_enum = _parse_room_enums(match_type, queue_mode)
 
+    # Check if user is trying to create a matchmaking room
+    # According to osu!web analysis, only system can create matchmaking rooms
+    if match_type_enum == MatchType.MATCHMAKING:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Matchmaking rooms can only be created by the system"
+        )
+
     # 创建房间
     room = Room(
         name=room_name,
@@ -195,7 +211,13 @@ async def _create_room(db: Database, room_data: dict[str, Any]) -> tuple[Room, i
     return room, host_user_id
 
 
-async def _add_playlist_items(db: Database, room_id: int, room_data: dict[str, Any], host_user_id: int) -> None:
+async def _add_playlist_items(
+    db: Database,
+    room_id: int,
+    room_data: dict[str, Any],
+    host_user_id: int,
+    room_type: MatchType = MatchType.HEAD_TO_HEAD,
+) -> None:
     """Add playlist items to the room."""
     initial_playlist = room_data.get("initial_playlist", [])
     legacy_playlist = room_data.get("playlist", [])
@@ -206,12 +228,12 @@ async def _add_playlist_items(db: Database, room_id: int, room_data: dict[str, A
     for i, item in enumerate(initial_playlist):
         if hasattr(item, "dict"):
             item = item.dict()
-        items_raw.append(_coerce_playlist_item(item, i, host_user_id))
+        items_raw.append(_coerce_playlist_item(item, i, host_user_id, room_type))
 
     # Process legacy playlist
     start_index = len(items_raw)
     for j, item in enumerate(legacy_playlist, start=start_index):
-        items_raw.append(_coerce_playlist_item(item, j, host_user_id))
+        items_raw.append(_coerce_playlist_item(item, j, host_user_id, room_type))
 
     # Validate playlist items
     _validate_playlist_items(items_raw)
@@ -451,7 +473,7 @@ async def create_multiplayer_room(
             if host_user:
                 await server.batch_join_channel([host_user], channel, db)
             # Add playlist items
-            await _add_playlist_items(db, room_id, room_data, host_user_id)
+            await _add_playlist_items(db, room_id, room_data, host_user_id, room.type)
 
             # Add host as participant
             # await _add_host_as_participant(db, room_id, host_user_id)
