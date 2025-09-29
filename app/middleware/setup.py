@@ -4,10 +4,12 @@
 展示如何将会话验证中间件集成到FastAPI应用中
 """
 
-from fastapi import FastAPI
+from __future__ import annotations
 
 from app.config import settings
 from app.middleware.verify_session import VerifySessionMiddleware
+
+from fastapi import FastAPI
 
 
 def setup_session_verification_middleware(app: FastAPI) -> None:
@@ -22,9 +24,11 @@ def setup_session_verification_middleware(app: FastAPI) -> None:
 
         # 可以在这里添加中间件配置日志
         from app.log import logger
+
         logger.info("[Middleware] Session verification middleware enabled")
     else:
         from app.log import logger
+
         logger.info("[Middleware] Session verification middleware disabled")
 
 
@@ -41,4 +45,5 @@ def setup_all_middlewares(app: FastAPI) -> None:
     # app.add_middleware(OtherMiddleware)
 
     from app.log import logger
+
     logger.info("[Middleware] All middlewares configured")

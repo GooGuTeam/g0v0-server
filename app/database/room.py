@@ -74,6 +74,15 @@ class Room(AsyncAttrs, RoomBase, table=True):
         }
     )
 
+    def is_matchmaking(self) -> bool:
+        """检查是否为匹配模式房间"""
+        return self.type == MatchType.MATCHMAKING
+
+    @property
+    def is_realtime_compatible(self) -> bool:
+        """检查是否兼容实时模式（包括匹配模式）"""
+        return self.type in {MatchType.HEAD_TO_HEAD, MatchType.TEAM_VERSUS, MatchType.MATCHMAKING}
+
 
 class RoomResp(RoomBase):
     id: int

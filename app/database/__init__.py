@@ -32,6 +32,18 @@ from .lazer_user import (
     User,
     UserResp,
 )
+from .matchmaking_pool_beatmaps import (
+    MatchmakingPoolBeatmaps,
+    MatchmakingPoolBeatmapsResp,
+)
+from .matchmaking_pools import (
+    MatchmakingPools,
+    MatchmakingPoolsResp,
+)
+from .matchmaking_user_stats import (
+    MatchmakingUserStats,
+    MatchmakingUserStatsResp,
+)
 from .multiplayer_event import MultiplayerEvent, MultiplayerEventResp
 from .notification import Notification, UserNotification
 from .password_reset import PasswordReset
@@ -94,6 +106,12 @@ __all__ = [
     "ItemAttemptsCount",
     "ItemAttemptsResp",
     "LoginSession",
+    "MatchmakingPoolBeatmaps",
+    "MatchmakingPoolBeatmapsResp",
+    "MatchmakingPools",
+    "MatchmakingPoolsResp",
+    "MatchmakingUserStats",
+    "MatchmakingUserStatsResp",
     "MeResp",
     "MonthlyPlaycounts",
     "MultiplayerEvent",

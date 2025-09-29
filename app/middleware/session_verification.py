@@ -7,18 +7,18 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Awaitable, Callable, Optional
+from collections.abc import Awaitable, Callable
+
+from app.database.lazer_user import User
+from app.database.verification import LoginSession
+from app.dependencies.database import get_redis, with_db
+from app.log import logger
+from app.service.verification_service import LoginSessionService
 
 from fastapi import HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
 from sqlmodel.ext.asyncio.session import AsyncSession
-
-from app.database.lazer_user import User
-from app.database.verification import LoginSession
-from app.dependencies.database import with_db, get_redis
-from app.log import logger
-from app.service.verification_service import LoginSessionService
 
 
 class SessionVerificationState:
@@ -39,7 +39,7 @@ class SessionVerificationState:
         db: AsyncSession,
         redis: Redis,
         user: User,
-    ) -> Optional[SessionVerificationState]:
+    ) -> SessionVerificationState | None:
         """获取当前会话验证状态"""
         try:
             # 从请求头或token中获取会话信息
@@ -58,7 +58,7 @@ class SessionVerificationState:
             return None
 
     @staticmethod
-    def _extract_session_token(request: Request) -> Optional[str]:
+    def _extract_session_token(request: Request) -> str | None:
         """从请求中提取会话token"""
         # 尝试从Authorization header提取
         auth_header = request.headers.get("Authorization", "")
@@ -79,8 +79,8 @@ class SessionVerificationState:
             # 智能选择验证方法
             # 参考osu-web: API版本 < 20250913 或用户没有TOTP时使用邮件验证
             # 这里简化为检查用户是否有TOTP
-            totp_key = getattr(self.user, 'totp_key', None)
-            current_method = 'totp' if totp_key else 'mail'
+            totp_key = getattr(self.user, "totp_key", None)
+            current_method = "totp" if totp_key else "mail"
 
             # 设置验证方法
             asyncio.create_task(self._set_verification_method(current_method))
@@ -91,11 +91,14 @@ class SessionVerificationState:
         """内部方法：设置验证方法"""
         try:
             token_id = self.session.token_id
-            if token_id is not None and method in ['totp', 'mail']:
+            if token_id is not None and method in ["totp", "mail"]:
                 # 类型检查确保method是正确的字面量类型
-                verification_method = method if method in ['totp', 'mail'] else 'totp'
+                verification_method = method if method in ["totp", "mail"] else "totp"
                 await LoginSessionService.set_login_method(
-                    self.user.id, token_id, verification_method, self.redis  # type: ignore
+                    self.user.id,
+                    token_id,
+                    verification_method,
+                    self.redis,  # type: ignore
                 )
         except Exception as e:
             logger.error(f"[Session Verification] Error setting verification method: {e}")
@@ -112,9 +115,7 @@ class SessionVerificationState:
             try:
                 token_id = self.session.token_id
                 if token_id is not None:
-                    await LoginSessionService.mark_session_verified(
-                        db, self.redis, self.user.id, token_id
-                    )
+                    await LoginSessionService.mark_session_verified(db, self.redis, self.user.id, token_id)
             finally:
                 await db.close()
         except Exception as e:
@@ -142,8 +143,7 @@ class SessionVerificationState:
                 db = with_db()
                 try:
                     await EmailVerificationService.send_verification_email(
-                        db, self.redis, self.user.id, self.user.username,
-                        self.user.email, None, None
+                        db, self.redis, self.user.id, self.user.username, self.user.email, None, None
                     )
                 finally:
                     await db.close()
@@ -190,26 +190,18 @@ class SessionVerificationController:
 
             # API请求返回JSON响应
             if request.url.path.startswith("/api/"):
-                return JSONResponse(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    content={"method": method}
-                )
+                return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content={"method": method})
 
             # 其他情况可以扩展支持HTML响应
             return JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                content={
-                    "authentication": "verify",
-                    "method": method,
-                    "message": "Session verification required"
-                }
+                content={"authentication": "verify", "method": method, "message": "Session verification required"},
             )
 
         except Exception as e:
             logger.error(f"[Session Verification] Error initiating verification: {e}")
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Verification initiation failed"
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Verification initiation failed"
             )
 
 
@@ -262,7 +254,7 @@ class SessionVerificationMiddleware:
             # 出错时允许请求继续，避免阻塞正常流程
             return await call_next(request)
 
-    async def _get_user(self, request: Request) -> Optional[User]:
+    async def _get_user(self, request: Request) -> User | None:
         """获取当前用户"""
         try:
             # 这里需要手动获取用户，因为在中间件中无法直接使用依赖注入

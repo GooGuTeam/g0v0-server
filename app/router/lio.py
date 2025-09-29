@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+from datetime import timedelta
 import json
 from typing import Any
 
@@ -30,6 +31,9 @@ from sqlalchemy import update
 from sqlmodel import col, select
 
 router = APIRouter(prefix="/_lio", include_in_schema=False)
+
+# Configuration constants
+BANCHO_BOT_USER_ID = 2  # BanchoBot user ID for matchmaking rooms
 
 
 async def _ensure_room_chat_channel(
@@ -94,20 +98,51 @@ async def _validate_user_exists(db: Database, user_id: int) -> User:
 
 def _parse_room_enums(match_type: str, queue_mode: str) -> tuple[MatchType, QueueMode]:
     """Parse and validate room type enums."""
+
+    # Convert camelCase/PascalCase to snake_case for proper enum matching
+    def to_snake_case(name: str) -> str:
+        import re
+
+        # Convert camelCase/PascalCase to snake_case
+        s1 = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
+        return re.sub("([a-z0-9])([A-Z])", r"\1_\2", s1).lower()
+
     try:
-        match_type_enum = MatchType(match_type.lower())
+        # Handle common type variations
+        if match_type.lower() in ["headtohead", "head_to_head"]:
+            match_type_enum = MatchType.HEAD_TO_HEAD
+        elif match_type.lower() in ["teamversus", "team_versus"]:
+            match_type_enum = MatchType.TEAM_VERSUS
+        elif match_type.lower() == "playlists":
+            match_type_enum = MatchType.PLAYLISTS
+        elif match_type.lower() == "matchmaking":
+            match_type_enum = MatchType.MATCHMAKING
+        else:
+            # Try direct enum lookup with snake_case conversion
+            match_type_enum = MatchType(to_snake_case(match_type))
     except ValueError:
         match_type_enum = MatchType.HEAD_TO_HEAD
 
     try:
-        queue_mode_enum = QueueMode(queue_mode.lower())
+        # Handle common queue mode variations
+        if queue_mode.lower() in ["hostonly", "host_only"]:
+            queue_mode_enum = QueueMode.HOST_ONLY
+        elif queue_mode.lower() in ["allplayers", "all_players"]:
+            queue_mode_enum = QueueMode.ALL_PLAYERS
+        elif queue_mode.lower() in ["allplayersroundrobin", "all_players_round_robin"]:
+            queue_mode_enum = QueueMode.ALL_PLAYERS_ROUND_ROBIN
+        else:
+            # Try direct enum lookup with snake_case conversion
+            queue_mode_enum = QueueMode(to_snake_case(queue_mode))
     except ValueError:
         queue_mode_enum = QueueMode.HOST_ONLY
 
     return match_type_enum, queue_mode_enum
 
 
-def _coerce_playlist_item(item_data: dict[str, Any], default_order: int, host_user_id: int) -> dict[str, Any]:
+def _coerce_playlist_item(
+    item_data: dict[str, Any], default_order: int, host_user_id: int, room_type: MatchType = MatchType.HEAD_TO_HEAD
+) -> dict[str, Any]:
     """
     Normalize playlist item data with default values.
 
@@ -115,14 +150,20 @@ def _coerce_playlist_item(item_data: dict[str, Any], default_order: int, host_us
         item_data: Raw playlist item data
         default_order: Default playlist order
         host_user_id: Host user ID for default owner
+        room_type: Room type to determine ownership logic
 
     Returns:
         Dict with normalized playlist item data
     """
-    # Use host_user_id if owner_id is 0 or not provided
-    owner_id = item_data.get("owner_id", host_user_id)
-    if owner_id == 0:
-        owner_id = host_user_id
+    # For matchmaking rooms, all playlist items should be owned by BanchoBot
+    if room_type == MatchType.MATCHMAKING:
+        # Use a system bot user ID for matchmaking rooms (BanchoBot)
+        owner_id = BANCHO_BOT_USER_ID
+    else:
+        # Use host_user_id if owner_id is 0 or not provided
+        owner_id = item_data.get("owner_id", host_user_id)
+        if owner_id == 0:
+            owner_id = host_user_id
 
     return {
         "owner_id": owner_id,
@@ -164,8 +205,14 @@ async def _create_room(db: Database, room_data: dict[str, Any]) -> tuple[Room, i
     host_user_id = room_data.get("user_id")
     room_name = room_data.get("name", "Unnamed Room")
     password = room_data.get("password")
-    match_type = room_data.get("match_type", "HeadToHead")
+    match_type = room_data.get("type", room_data.get("match_type", "HeadToHead"))
     queue_mode = room_data.get("queue_mode", "HostOnly")
+    category = room_data.get("category")
+    duration = room_data.get("duration")
+    ends_at = room_data.get("ends_at")
+    max_attempts = room_data.get("max_attempts")
+    auto_start_duration = room_data.get("auto_start_duration", 0)
+    auto_skip = room_data.get("auto_skip", False)
 
     if not host_user_id or not isinstance(host_user_id, int):
         raise HTTPException(status_code=400, detail="Missing or invalid user_id")
@@ -174,18 +221,64 @@ async def _create_room(db: Database, room_data: dict[str, Any]) -> tuple[Room, i
 
     match_type_enum, queue_mode_enum = _parse_room_enums(match_type, queue_mode)
 
+    # Follow PHP logic: TODO: remove category params support once client sends type parameter
+    is_realtime_request = (
+        match_type_enum in [MatchType.HEAD_TO_HEAD, MatchType.TEAM_VERSUS, MatchType.MATCHMAKING]
+        or category == "realtime"
+    )
+
+    if is_realtime_request:
+        # Realtime room logic from PHP
+        if match_type_enum not in [MatchType.HEAD_TO_HEAD, MatchType.TEAM_VERSUS, MatchType.MATCHMAKING]:
+            match_type_enum = MatchType.HEAD_TO_HEAD  # REALTIME_DEFAULT_TYPE
+        valid_realtime_queue_modes = [QueueMode.HOST_ONLY, QueueMode.ALL_PLAYERS, QueueMode.ALL_PLAYERS_ROUND_ROBIN]
+        if queue_mode_enum not in valid_realtime_queue_modes:
+            queue_mode_enum = QueueMode.HOST_ONLY  # REALTIME_DEFAULT_QUEUE_MODE
+        if auto_start_duration is None:
+            auto_start_duration = 0
+        room_category = RoomCategory.REALTIME
+        room_ends_at = utcnow() + timedelta(seconds=30)  # PHP: now()->addSeconds(30)
+        room_password = password
+    else:
+        # Playlist room logic from PHP
+        match_type_enum = MatchType.PLAYLISTS
+        queue_mode_enum = QueueMode.HOST_ONLY
+        auto_start_duration = 0
+        if category in ["normal", "spotlight", "featured_artist", "daily_challenge"]:
+            room_category = getattr(RoomCategory, category.upper(), RoomCategory.NORMAL)
+        else:
+            room_category = RoomCategory.NORMAL
+        room_password = None  # Playlists don't support passwords in PHP
+
+        # Handle ends_at for playlists
+        if ends_at is not None:
+            room_ends_at = ends_at
+        elif duration is not None:
+            room_ends_at = utcnow() + timedelta(minutes=duration)
+        else:
+            room_ends_at = None
+
+    # Check if user is trying to create a matchmaking room
+    # According to osu!web analysis, only system (BanchoBot) can create matchmaking rooms
+    if match_type_enum == MatchType.MATCHMAKING and host_user_id != BANCHO_BOT_USER_ID:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Matchmaking rooms can only be created by the system"
+        )
+
     # 创建房间
     room = Room(
         name=room_name,
-        category=RoomCategory.REALTIME,
+        category=room_category,
         host_id=host_user_id,
-        password=password if password else None,
+        password=room_password,
         type=match_type_enum,
         queue_mode=queue_mode_enum,
         status=RoomStatus.IDLE,
-        participant_count=1,
-        auto_skip=False,
-        auto_start_duration=0,
+        participant_count=0,  # PHP default is 0, not 1
+        auto_skip=auto_skip,
+        auto_start_duration=auto_start_duration,
+        max_attempts=max_attempts,
+        ends_at=room_ends_at,
     )
 
     db.add(room)
@@ -195,10 +288,21 @@ async def _create_room(db: Database, room_data: dict[str, Any]) -> tuple[Room, i
     return room, host_user_id
 
 
-async def _add_playlist_items(db: Database, room_id: int, room_data: dict[str, Any], host_user_id: int) -> None:
+async def _add_playlist_items(
+    db: Database,
+    room_id: int,
+    room_data: dict[str, Any],
+    host_user_id: int,
+    room_type: MatchType = MatchType.HEAD_TO_HEAD,
+) -> None:
     """Add playlist items to the room."""
     initial_playlist = room_data.get("initial_playlist", [])
     legacy_playlist = room_data.get("playlist", [])
+
+    # Debug logging
+    logger.debug(
+        f"Room {room_id} playlist data - initial_playlist: {initial_playlist}, legacy_playlist: {legacy_playlist}"
+    )
 
     items_raw: list[dict[str, Any]] = []
 
@@ -206,15 +310,35 @@ async def _add_playlist_items(db: Database, room_id: int, room_data: dict[str, A
     for i, item in enumerate(initial_playlist):
         if hasattr(item, "dict"):
             item = item.dict()
-        items_raw.append(_coerce_playlist_item(item, i, host_user_id))
+        items_raw.append(_coerce_playlist_item(item, i, host_user_id, room_type))
 
     # Process legacy playlist
     start_index = len(items_raw)
     for j, item in enumerate(legacy_playlist, start=start_index):
-        items_raw.append(_coerce_playlist_item(item, j, host_user_id))
+        items_raw.append(_coerce_playlist_item(item, j, host_user_id, room_type))
 
     # Validate playlist items
     _validate_playlist_items(items_raw)
+
+    # Additional PHP validations
+    playlist_count = len(items_raw)
+    logger.debug(f"Room {room_id} has {playlist_count} playlist items, room_type: {room_type}")
+
+    if playlist_count < 1:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="room must have at least one playlist item")
+
+    # Handle matchmaking room ownership first (PHP: if ($this->isMatchmaking()))
+    if room_type == MatchType.MATCHMAKING:
+        # BanchoBot user ID for matchmaking rooms
+        for item_data in items_raw:
+            item_data["owner_id"] = BANCHO_BOT_USER_ID
+    # PHP: elseif ($this->isRealtime() && $playlistItemsCount !== 1)
+    elif room_type in [MatchType.HEAD_TO_HEAD, MatchType.TEAM_VERSUS] and playlist_count != 1:
+        logger.debug(f"Realtime room validation failed: room_type={room_type}, playlist_count={playlist_count}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"realtime room must have exactly one playlist item (got {playlist_count})",
+        )
 
     # Insert playlist items
     for item_data in items_raw:
@@ -427,17 +551,27 @@ async def _transfer_ownership_or_end_room(db: Database, room_id: int, leaving_us
 
 
 @router.post("/multiplayer/rooms")
-async def create_multiplayer_room(
-    room_data: dict[str, Any],
+async def store_room(
+    request: Request,
     db: Database,
 ) -> int:
     """Create a new multiplayer room with initial playlist."""
     try:
-        # Parse room data if string
-        if isinstance(room_data, str):
-            room_data = json.loads(room_data)
+        # Get request body and parse room_data
+        body = await request.body()
+        if body:
+            try:
+                room_data = json.loads(body.decode("utf-8"))
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON in request body")
+        else:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Request body is required")
 
         logger.debug(f"Creating room with data: {room_data}")
+
+        # Log playlist data specifically
+        logger.debug(f"Playlist data - initial_playlist: {room_data.get('initial_playlist', [])}")
+        logger.debug(f"Playlist data - playlist: {room_data.get('playlist', [])}")
 
         # Create room
         room, host_user_id = await _create_room(db, room_data)
@@ -451,7 +585,7 @@ async def create_multiplayer_room(
             if host_user:
                 await server.batch_join_channel([host_user], channel, db)
             # Add playlist items
-            await _add_playlist_items(db, room_id, room_data, host_user_id)
+            await _add_playlist_items(db, room_id, room_data, host_user_id, room.type)
 
             # Add host as participant
             # await _add_host_as_participant(db, room_id, host_user_id)
@@ -470,11 +604,11 @@ async def create_multiplayer_room(
 
 
 @router.delete("/multiplayer/rooms/{room_id}/users/{user_id}")
-async def remove_user_from_room(
+async def part_room(
     room_id: int,
     user_id: int,
     db: Database,
-) -> dict[str, Any]:
+) -> None:
     """Remove a user from a multiplayer room."""
     try:
         now = utcnow()
@@ -493,7 +627,8 @@ async def remove_user_from_room(
         # 如果房间已经结束，直接返回
         if ends_at is not None:
             logger.debug(f"Room {room_id} is already ended")
-            return {"success": True, "room_ended": True}
+            # Return HTTP 204 No Content as per PHP implementation
+            return None
 
         # 检查用户是否在房间中
         participant_result = await db.execute(
@@ -518,7 +653,8 @@ async def remove_user_from_room(
             except Exception as e:
                 logger.debug(f"[warn] failed to leave user {user_id} from channel {channel_id}: {e}")
 
-            return {"success": True, "room_ended": room_ended}
+            # Return HTTP 204 No Content as per PHP implementation
+            return None
 
         # 标记用户离开房间
         await db.execute(
@@ -553,7 +689,8 @@ async def remove_user_from_room(
         except Exception as e:
             logger.debug(f"[warn] failed to leave user {user_id} from channel {channel_id}: {e}")
 
-        return {"success": True, "room_ended": room_ended}
+        # Return HTTP 204 No Content as per PHP implementation
+        return None
 
     except HTTPException:
         raise
@@ -564,12 +701,12 @@ async def remove_user_from_room(
 
 
 @router.put("/multiplayer/rooms/{room_id}/users/{user_id}")
-async def add_user_to_room(
+async def join_room(
     request: Request,
     room_id: int,
     user_id: int,
     db: Database,
-) -> dict[str, Any]:
+) -> None:
     """Add a user to a multiplayer room."""
     logger.debug(f"Adding user {user_id} to room {room_id}")
 
@@ -630,7 +767,8 @@ async def add_user_to_room(
         # 不影响加入房间主流程，仅记录
         logger.debug(f"[warn] failed to join user {user_id} to channel of room {room_id}: {e}")
 
-    return {"success": True}
+    # Return HTTP 204 No Content as per PHP implementation
+    return None
 
 
 @router.post("/beatmaps/ensure")
