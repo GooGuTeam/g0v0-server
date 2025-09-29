@@ -86,7 +86,7 @@ async def verify_session(
         if verify_method is None:
             # 智能选择验证方法（参考osu-web实现）
             # API版本较老或用户未设置TOTP时强制使用邮件验证
-            #print(api_version, totp_key)
+            # print(api_version, totp_key)
             if api_version < 20240101 or totp_key is None:
                 verify_method = "mail"
             else:
@@ -153,11 +153,11 @@ async def verify_session(
         }
 
         # 如果有具体的错误原因，添加到响应中
-        if hasattr(e, 'reason') and e.reason:
+        if hasattr(e, "reason") and e.reason:
             error_response["reason"] = e.reason
 
         # 如果需要重新发送邮件验证码
-        if hasattr(e, 'should_reissue') and e.should_reissue and verify_method == "mail":
+        if hasattr(e, "should_reissue") and e.should_reissue and verify_method == "mail":
             try:
                 await EmailVerificationService.send_verification_email(
                     db, redis, user_id, current_user.username, current_user.email, ip_address, user_agent

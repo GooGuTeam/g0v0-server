@@ -151,10 +151,7 @@ class DatabaseCleanupService:
             cutoff_time = utcnow() - timedelta(hours=hours_old)
 
             # 查找指定时间前创建且仍未验证的会话记录
-            stmt = select(LoginSession).where(
-                LoginSession.is_verified == False,
-                LoginSession.created_at < cutoff_time
-            )
+            stmt = select(LoginSession).where(LoginSession.is_verified == False, LoginSession.created_at < cutoff_time)
             result = await db.exec(stmt)
             unverified_sessions = result.all()
 
@@ -290,8 +287,7 @@ class DatabaseCleanupService:
 
             # 统计1小时前未验证的登录会话数量
             unverified_sessions_stmt = select(LoginSession).where(
-                LoginSession.is_verified == False,
-                LoginSession.created_at < cutoff_1_hour
+                LoginSession.is_verified == False, LoginSession.created_at < cutoff_1_hour
             )
             unverified_sessions_result = await db.exec(unverified_sessions_stmt)
             unverified_sessions_count = len(unverified_sessions_result.all())

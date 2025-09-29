@@ -8,7 +8,6 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Optional
 
 
 class SessionVerificationInterface(ABC):
@@ -19,7 +18,7 @@ class SessionVerificationInterface(ABC):
 
     @classmethod
     @abstractmethod
-    async def find_for_verification(cls, session_id: str) -> Optional[SessionVerificationInterface]:
+    async def find_for_verification(cls, session_id: str) -> SessionVerificationInterface | None:
         """根据会话ID查找会话用于验证
 
         Args:
@@ -41,7 +40,7 @@ class SessionVerificationInterface(ABC):
         pass
 
     @abstractmethod
-    def get_verification_method(self) -> Optional[str]:
+    def get_verification_method(self) -> str | None:
         """获取当前验证方法
 
         Returns:
@@ -69,6 +68,6 @@ class SessionVerificationInterface(ABC):
         pass
 
     @abstractmethod
-    def user_id(self) -> Optional[int]:
+    def user_id(self) -> int | None:
         """获取关联的用户ID"""
         pass

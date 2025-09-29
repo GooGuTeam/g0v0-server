@@ -369,9 +369,7 @@ def verify_totp_key(secret: str, code: str) -> bool:
     return pyotp.TOTP(secret).verify(code, valid_window=1)
 
 
-async def verify_totp_key_with_replay_protection(
-    user_id: int, secret: str, code: str, redis: Redis
-) -> bool:
+async def verify_totp_key_with_replay_protection(user_id: int, secret: str, code: str, redis: Redis) -> bool:
     """验证TOTP密钥，并防止密钥重放攻击"""
     if not pyotp.TOTP(secret).verify(code, valid_window=1):
         return False

@@ -7,11 +7,10 @@ from __future__ import annotations
 from datetime import timedelta
 import secrets
 import string
-from typing import Literal, Optional
+from typing import Literal
 
 from app.config import settings
 from app.database.verification import EmailVerification, LoginSession
-from app.interfaces.session_verification import SessionVerificationInterface
 from app.log import logger
 from app.service.client_detection_service import ClientDetectionService, ClientInfo
 from app.service.device_trust_service import DeviceTrustService
@@ -517,7 +516,7 @@ class LoginSessionService:
 
     # Session verification interface methods
     @staticmethod
-    async def find_for_verification(db: AsyncSession, session_id: str) -> Optional[LoginSession]:
+    async def find_for_verification(db: AsyncSession, session_id: str) -> LoginSession | None:
         """根据会话ID查找会话用于验证"""
         try:
             result = await db.exec(

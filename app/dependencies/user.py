@@ -12,7 +12,6 @@ from .api_version import APIVersion
 from .database import Database, get_redis
 
 from fastapi import Depends, HTTPException
-from redis.asyncio import Redis
 from fastapi.security import (
     APIKeyQuery,
     HTTPBearer,
@@ -20,6 +19,7 @@ from fastapi.security import (
     OAuth2PasswordBearer,
     SecurityScopes,
 )
+from redis.asyncio import Redis
 from sqlmodel import select
 
 security = HTTPBearer()
@@ -103,7 +103,7 @@ async def get_client_user(
     db: Database,
     redis: Annotated[Redis, Depends(get_redis)],
     api_version: APIVersion,
-    user_and_token: UserAndToken = Depends(get_client_user_and_token)
+    user_and_token: UserAndToken = Depends(get_client_user_and_token),
 ):
     from app.service.verification_service import LoginSessionService
 
@@ -128,10 +128,7 @@ async def get_client_user(
                 await LoginSessionService.set_login_method(user.id, token.id, verify_method, redis)
 
         # 返回符合 osu! API 标准的错误响应
-        error_response = {
-            "error": "User not verified",
-            "method": verify_method
-        }
+        error_response = {"error": "User not verified", "method": verify_method}
         raise HTTPException(status_code=401, detail=error_response)
     return user
 
