@@ -258,3 +258,33 @@ Route::group(['as' => 'multiplayer.', 'namespace' => 'Multiplayer', 'prefix' => 
 ---
 
 *本文档基于osu-web项目的源代码分析生成，版本日期：2025年9月*
+
+
+-- 第一步：创建osu模式的匹配池
+INSERT INTO matchmaking_pools (
+    ruleset_id, 
+    variant_id, 
+    name, 
+    active, 
+    created_at, 
+    updated_at
+) VALUES (
+    0,                              -- osu模式 (ruleset_id = 0)
+    0,                              -- 默认变体
+    'osu Standard Pool',            -- 匹配池名称 (你可以修改为任何你想要的名称)
+    true,                           -- 激活状态
+    NOW(),                          -- 创建时间
+    NOW()                           -- 更新时间
+);
+
+-- 第二步：将地图1618799添加到刚创建的匹配池中
+-- 注意：这里假设上面插入的匹配池ID为1，如果你的数据库中已有其他匹配池，需要调整pool_id
+INSERT INTO matchmaking_pool_beatmaps (
+    pool_id, 
+    beatmap_id, 
+    mods
+) VALUES (
+    (SELECT id FROM matchmaking_pools WHERE ruleset_id = 0 AND name = 'osu Standard Pool' ORDER BY created_at DESC LIMIT 1), -- 获取刚创建的匹配池ID
+    1618800,                        -- 地图ID
+    NULL                            -- MOD配置（NULL表示无特殊MOD）
+);
