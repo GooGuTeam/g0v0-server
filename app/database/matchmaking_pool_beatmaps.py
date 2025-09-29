@@ -1,19 +1,10 @@
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from app.models.model import UTCBaseModel
 
 from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlmodel import (
-    JSON,
-    Column,
-    Field,
-    ForeignKey,
-    Relationship,
-    SQLModel,
-    select,
-)
+from sqlalchemy.orm import Mapped
+from sqlmodel import JSON, Column, Field, Relationship, SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 if TYPE_CHECKING:
@@ -24,14 +15,22 @@ if TYPE_CHECKING:
 class MatchmakingPoolBeatmapsBase(SQLModel, UTCBaseModel):
     """匹配池谱面关联基础模型"""
 
+    # 建议用 SQLModel 原生 foreign_key 写法，简洁且兼容性好
     pool_id: int = Field(
-        sa_column=Column(ForeignKey("matchmaking_pools.id", ondelete="CASCADE"), primary_key=True),
+        foreign_key="matchmaking_pools.id",
+        primary_key=True,
         description="匹配池ID",
     )
     beatmap_id: int = Field(
-        sa_column=Column(ForeignKey("beatmaps.id", ondelete="CASCADE"), primary_key=True), description="谱面ID"
+        foreign_key="beatmaps.id",
+        primary_key=True,
+        description="谱面ID",
     )
-    mods: dict[str, Any] | None = Field(default=None, sa_column=Column(JSON), description="MOD配置 (JSON格式)")
+    mods: dict[str, Any] | None = Field(
+        default=None,
+        sa_column=Column(JSON),
+        description="MOD配置 (JSON格式)",
+    )
 
 
 class MatchmakingPoolBeatmaps(AsyncAttrs, MatchmakingPoolBeatmapsBase, table=True):
@@ -39,11 +38,15 @@ class MatchmakingPoolBeatmaps(AsyncAttrs, MatchmakingPoolBeatmapsBase, table=Tru
 
     __tablename__: str = "matchmaking_pool_beatmaps"
 
-    # 关联到匹配池表
-    pool: "MatchmakingPools" = Relationship(back_populates="pool_beatmaps", sa_relationship_kwargs={"lazy": "selectin"})
+    # 使用 SQLModel Relationship
+    pool: Mapped["MatchmakingPools"] = Relationship(
+        back_populates="pool_beatmaps",
+        sa_relationship_kwargs={"lazy": "selectin"},
+    )
 
-    # 关联到谱面表 (假设存在beatmap表)
-    beatmap: "Beatmap" = Relationship(sa_relationship_kwargs={"lazy": "selectin"})
+    beatmap: Mapped["Beatmap"] = Relationship(
+        sa_relationship_kwargs={"lazy": "selectin"},
+    )
 
     @classmethod
     async def get_pool_beatmaps(cls, session: AsyncSession, pool_id: int) -> list["MatchmakingPoolBeatmaps"]:

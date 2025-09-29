@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -7,17 +5,12 @@ from app.models.model import UTCBaseModel
 from app.utils import utcnow
 
 from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlmodel import (
-    Column,
-    DateTime,
-    Field,
-    Relationship,
-    SQLModel,
-    select,
-)
+from sqlalchemy.orm import Mapped
+from sqlmodel import Column, DateTime, Field, Relationship, SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 if TYPE_CHECKING:
+    # 仅用于类型检查，避免循环导入
     from .matchmaking_pool_beatmaps import MatchmakingPoolBeatmaps
 
 
@@ -41,10 +34,9 @@ class MatchmakingPools(AsyncAttrs, MatchmakingPoolsBase, table=True):
 
     __tablename__: str = "matchmaking_pools"
 
-    id: int = Field(default=None, primary_key=True, index=True)
+    id: int | None = Field(default=None, primary_key=True, index=True)
 
-    # 关联到匹配池谱面表
-    pool_beatmaps: list["MatchmakingPoolBeatmaps"] = Relationship(
+    pool_beatmaps: Mapped[list["MatchmakingPoolBeatmaps"]] = Relationship(
         back_populates="pool",
         sa_relationship_kwargs={
             "lazy": "selectin",
@@ -54,7 +46,10 @@ class MatchmakingPools(AsyncAttrs, MatchmakingPoolsBase, table=True):
 
     @classmethod
     async def get_active_pools(
-        cls, session: AsyncSession, ruleset_id: int | None = None, variant_id: int | None = None
+        cls,
+        session: AsyncSession,
+        ruleset_id: int | None = None,
+        variant_id: int | None = None,
     ) -> list["MatchmakingPools"]:
         """获取激活的匹配池"""
         stmt = select(cls).where(cls.active)
@@ -76,7 +71,12 @@ class MatchmakingPools(AsyncAttrs, MatchmakingPoolsBase, table=True):
 
     @classmethod
     async def create_pool(
-        cls, session: AsyncSession, name: str, ruleset_id: int, variant_id: int = 0, active: bool = True
+        cls,
+        session: AsyncSession,
+        name: str,
+        ruleset_id: int,
+        variant_id: int = 0,
+        active: bool = True,
     ) -> "MatchmakingPools":
         """创建新的匹配池"""
         pool = cls(name=name, ruleset_id=ruleset_id, variant_id=variant_id, active=active)
@@ -96,4 +96,4 @@ class MatchmakingPoolsResp(MatchmakingPoolsBase):
     """匹配池响应模型"""
 
     id: int
-    beatmap_count: int = 0  # 谱面数量，需要在服务层计算
+    beatmap_count: int = 0
