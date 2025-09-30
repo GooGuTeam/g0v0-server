@@ -27,6 +27,7 @@ services:
       - ./static:/app/static
       - ./logs:/app/logs
       - ./newrelic.ini:/app/newrelic.ini:ro
+      - ./config:/app/config
     restart: unless-stopped
     networks:
       - osu-network

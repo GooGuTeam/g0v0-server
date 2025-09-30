@@ -10,6 +10,7 @@ from app.dependencies.fetcher import get_fetcher
 from app.dependencies.scheduler import start_scheduler, stop_scheduler
 from app.log import logger
 from app.middleware.verify_session import VerifySessionMiddleware
+from app.models.mods import init_mods, init_ranked_mods
 from app.router import (
     api_v1_router,
     api_v2_router,
@@ -51,6 +52,8 @@ import sentry_sdk
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # on startup
+    init_mods()
+    init_ranked_mods()
     await FastAPILimiter.init(get_redis())
     await get_fetcher()  # 初始化 fetcher
     await init_geoip()  # 初始化 GeoIP 数据库

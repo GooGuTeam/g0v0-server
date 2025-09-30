@@ -433,11 +433,6 @@ STORAGE_SETTINGS='{
         ),
         "游戏设置",
     ]
-    enable_all_mods_pp: Annotated[
-        bool,
-        Field(default=False, description="启用所有 Mod 的 PP 计算"),
-        "游戏设置",
-    ]
     enable_supporter_for_all_users: Annotated[
         bool,
         Field(default=False, description="启用所有新注册用户的支持者状态"),

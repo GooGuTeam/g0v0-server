@@ -227,3 +227,6 @@ osu-web-master/*
 osu-web-master/.env.dusk.local.example
 osu-web-master/.env.example
 osu-web-master/.env.testing.example
+config/*
+!config/
+!config/.gitkeep
