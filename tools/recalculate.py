@@ -242,7 +242,7 @@ async def _recalculate_statistics(statistics: UserStatistics, session: AsyncSess
 
         for score in scores:
             beatmap: Beatmap = score.beatmap
-            ranked = beatmap.beatmap_status.has_pp() | settings.enable_all_mods_pp
+            ranked = beatmap.beatmap_status.has_pp() | settings.enable_all_beatmap_pp
 
             statistics.play_count += 1
             statistics.total_score += score.total_score
