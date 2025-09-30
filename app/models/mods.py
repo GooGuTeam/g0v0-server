@@ -255,13 +255,11 @@ def _get_mods_file_checksum() -> str:
     return hashlib.md5(current_mods_file.read_bytes()).hexdigest()
 
 
-def generate_ranked_mod_settings():
+def generate_ranked_mod_settings(enable_all: bool = False):
     ranked_mods_file = CONFIG_DIR / "ranked_mods.json"
-    if ranked_mods_file.exists():
-        return
     checksum = _get_mods_file_checksum()
     legacy_setting = _LegacyModSettings.model_validate(app_settings.model_dump())
-    if not legacy_setting.enable_all_mods_pp:
+    if not legacy_setting.enable_all_mods_pp and not enable_all:
         result = DEFAULT_RANKED_MODS
     else:
         result = {}
@@ -269,7 +267,8 @@ def generate_ranked_mod_settings():
             result[ruleset_id] = {}
             for mod_acronym in ruleset_mods:
                 result[ruleset_id][mod_acronym] = {}
-        logger.info("ENABLE_ALL_MODS_PP is deprecated, transformed to config/ranked_mods.json")
+        if not enable_all:
+            logger.info("ENABLE_ALL_MODS_PP is deprecated, transformed to config/ranked_mods.json")
     result["$mods_checksum"] = checksum  # pyright: ignore[reportArgumentType]
     ranked_mods_file.write_text(json.dumps(result, indent=4))
 
