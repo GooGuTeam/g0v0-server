@@ -37,7 +37,7 @@ from app.database.score import (
     process_user,
 )
 from app.dependencies.api_version import APIVersion
-from app.dependencies.database import Database, get_redis, with_db
+from app.dependencies.database import Database, get_redis
 from app.dependencies.fetcher import get_fetcher
 from app.dependencies.storage import get_storage_service
 from app.dependencies.user import get_client_user, get_current_user
@@ -50,7 +50,7 @@ from app.models.score import (
     Rank,
     SoloScoreSubmissionInfo,
 )
-from app.service.user_cache_service import get_user_cache_service
+from app.service.user_cache_service import refresh_user_cache_background
 from app.storage.base import StorageService
 from app.utils import utcnow
 
@@ -222,20 +222,9 @@ async def submit_score(
 
     await db.commit()
     if user_id is not None:
-        background_task.add_task(_refresh_user_cache_background, redis, user_id, score_gamemode)
+        background_task.add_task(refresh_user_cache_background, redis, user_id, score_gamemode)
     background_task.add_task(process_user_achievement, resp.id)
     return resp
-
-
-async def _refresh_user_cache_background(redis: Redis, user_id: int, mode: GameMode):
-    """后台任务：刷新用户缓存"""
-    try:
-        user_cache_service = get_user_cache_service(redis)
-        # 创建独立的数据库会话
-        async with with_db() as session:
-            await user_cache_service.refresh_user_cache_on_score_submit(session, user_id, mode)
-    except Exception as e:
-        logger.error(f"Failed to refresh user cache after score submit: {e}")
 
 
 async def _preload_beatmap_for_pp_calculation(beatmap_id: int) -> None:
@@ -949,7 +938,7 @@ async def download_score_replay(
     if not score:
         raise HTTPException(status_code=404, detail="Score not found")
 
-    filepath = f"replays/{score.id}_{score.beatmap_id}_{score.user_id}_lazer_replay.osr"
+    filepath = score.replay_filename
 
     if not await storage_service.is_exists(filepath):
         raise HTTPException(status_code=404, detail="Replay file not found")

@@ -134,7 +134,7 @@ async def save_replay(
     data.extend(compressed)
 
     storage_service = get_storage_service()
-    replay_path = f"replays/{score.id}_{score.beatmap_id}_{score.user_id}_lazer_replay.osr"
+    replay_path = score.replay_filename
     await storage_service.write_file(replay_path, bytes(data), "application/x-osu-replay")
 
 

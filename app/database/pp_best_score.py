@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING
 
+from app.database.statistics import UserStatistics
 from app.models.score import GameMode
 
 from .lazer_user import User
@@ -12,7 +13,9 @@ from sqlmodel import (
     ForeignKey,
     Relationship,
     SQLModel,
+    select,
 )
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 if TYPE_CHECKING:
     from .beatmap import Beatmap
@@ -33,5 +36,22 @@ class PPBestScore(SQLModel, table=True):
     )
 
     user: User = Relationship()
-    score: "Score" = Relationship()
+    score: "Score" = Relationship(
+        back_populates="ranked_score",
+    )
     beatmap: "Beatmap" = Relationship()
+
+    async def delete(self, session: AsyncSession):
+        from .score import calculate_user_pp
+
+        gamemode = self.gamemode
+        user_id = self.user_id
+        await session.delete(self)
+        await session.commit()
+
+        statistics = await session.exec(
+            select(UserStatistics).where(UserStatistics.user_id == user_id, UserStatistics.mode == gamemode)
+        )
+        statistics = statistics.first()
+        if statistics:
+            statistics.pp, statistics.hit_accuracy = await calculate_user_pp(session, statistics.user_id, gamemode)

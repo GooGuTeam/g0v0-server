@@ -32,6 +32,7 @@ from app.models.score import (
     ScoreStatistics,
     SoloScoreSubmissionInfo,
 )
+from app.storage import StorageService
 from app.utils import utcnow
 
 from .beatmap import Beatmap, BeatmapResp
@@ -40,6 +41,7 @@ from .beatmapset import BeatmapsetResp
 from .best_score import BestScore
 from .counts import MonthlyPlaycounts
 from .lazer_user import User, UserResp
+from .playlist_best_score import PlaylistBestScore
 from .pp_best_score import PPBestScore
 from .relationship import (
     Relationship as DBRelationship,
@@ -95,6 +97,7 @@ class ScoreBase(AsyncAttrs, SQLModel, UTCBaseModel):
     beatmap_id: int = Field(index=True, foreign_key="beatmaps.id")
     maximum_statistics: ScoreStatistics = Field(sa_column=Column(JSON), default_factory=dict)
     processed: bool = False  # solo_score
+    ranked: bool = False
 
     @field_validator("maximum_statistics", mode="before")
     @classmethod
@@ -189,15 +192,55 @@ class Score(ScoreBase, table=True):
     # optional
     beatmap: Mapped[Beatmap] = Relationship()
     user: Mapped[User] = Relationship(sa_relationship_kwargs={"lazy": "joined"})
+    best_score: Mapped[BestScore | None] = Relationship(
+        back_populates="score",
+        sa_relationship_kwargs={
+            "cascade": "all, delete-orphan",
+        },
+    )
+    ranked_score: Mapped[PPBestScore | None] = Relationship(
+        back_populates="score",
+        sa_relationship_kwargs={
+            "cascade": "all, delete-orphan",
+        },
+    )
+    playlist_item_score: Mapped[PlaylistBestScore | None] = Relationship(
+        back_populates="score",
+        sa_relationship_kwargs={
+            "cascade": "all, delete-orphan",
+        },
+    )
 
     @property
     def is_perfect_combo(self) -> bool:
         return self.max_combo == self.beatmap.max_combo
 
+    @property
+    def replay_filename(self) -> str:
+        return f"replays/{self.id}_{self.beatmap_id}_{self.user_id}_lazer_replay.osr"
+
     async def to_resp(self, session: AsyncSession, api_version: int) -> "ScoreResp | LegacyScoreResp":
         if api_version >= 20220705:
             return await ScoreResp.from_db(session, self)
         return await LegacyScoreResp.from_db(session, self)
+
+    async def delete(
+        self,
+        session: AsyncSession,
+        storage_service: StorageService,
+    ):
+        if await self.awaitable_attrs.best_score:
+            assert self.best_score is not None
+            await self.best_score.delete(session)
+            await session.refresh(self)
+        if await self.awaitable_attrs.ranked_score:
+            assert self.ranked_score is not None
+            await self.ranked_score.delete(session)
+            await session.refresh(self)
+
+        await storage_service.delete_file(self.replay_filename)
+        await session.delete(self)
+        await session.commit()
 
 
 class ScoreResp(ScoreBase):
@@ -218,7 +261,6 @@ class ScoreResp(ScoreBase):
     rank_country: int | None = None
     position: int | None = None
     scores_around: "ScoreAround | None" = None
-    ranked: bool = False
     current_user_attributes: CurrentUserAttributes | None = None
 
     @field_validator(
@@ -335,7 +377,6 @@ class ScoreResp(ScoreBase):
         s.current_user_attributes = CurrentUserAttributes(
             pin=PinAttributes(is_pinned=bool(score.pinned_order), score_id=score.id)
         )
-        s.ranked = s.pp > 0
         return s
 
 
@@ -977,6 +1018,7 @@ async def process_score(
         room_id=room_id,
         maximum_statistics=info.maximum_statistics,
         processed=True,
+        ranked=ranked,
     )
     successed = True
     if can_get_pp:

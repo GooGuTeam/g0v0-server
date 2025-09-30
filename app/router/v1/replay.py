@@ -69,7 +69,7 @@ async def download_replay(
         except KeyError:
             raise HTTPException(status_code=400, detail="Invalid request")
 
-    filepath = f"replays/{score_record.id}_{score_record.beatmap_id}_{score_record.user_id}_lazer_replay.osr"
+    filepath = score_record.replay_filename
     if not await storage_service.is_exists(filepath):
         raise HTTPException(status_code=404, detail="Replay file not found")
 

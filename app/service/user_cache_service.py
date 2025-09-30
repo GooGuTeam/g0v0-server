@@ -14,6 +14,7 @@ from app.const import BANCHOBOT_ID
 from app.database import User, UserResp
 from app.database.lazer_user import SEARCH_INCLUDED
 from app.database.score import LegacyScoreResp, ScoreResp
+from app.dependencies.database import with_db
 from app.log import logger
 from app.models.score import GameMode
 from app.service.asset_proxy_service import get_asset_proxy_service
@@ -382,3 +383,14 @@ def get_user_cache_service(redis: Redis) -> UserCacheService:
     if _user_cache_service is None:
         _user_cache_service = UserCacheService(redis)
     return _user_cache_service
+
+
+async def refresh_user_cache_background(redis: Redis, user_id: int, mode: GameMode):
+    """后台任务：刷新用户缓存"""
+    try:
+        user_cache_service = get_user_cache_service(redis)
+        # 创建独立的数据库会话
+        async with with_db() as session:
+            await user_cache_service.refresh_user_cache_on_score_submit(session, user_id, mode)
+    except Exception as e:
+        logger.error(f"Failed to refresh user cache after score submit: {e}")
