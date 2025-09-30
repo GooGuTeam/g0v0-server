@@ -252,7 +252,7 @@ def _get_mods_file_checksum() -> str:
     current_mods_file = STATIC_DIR / "mods.json"
     if not current_mods_file.exists():
         return ""
-    return hashlib.md5(current_mods_file.read_bytes()).hexdigest()
+    return hashlib.md5(current_mods_file.read_bytes(), usedforsecurity=False).hexdigest()
 
 
 def generate_ranked_mod_settings(enable_all: bool = False):
