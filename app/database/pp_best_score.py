@@ -47,7 +47,7 @@ class PPBestScore(SQLModel, table=True):
         gamemode = self.gamemode
         user_id = self.user_id
         await session.delete(self)
-        await session.commit()
+        await session.flush()
 
         statistics = await session.exec(
             select(UserStatistics).where(UserStatistics.user_id == user_id, UserStatistics.mode == gamemode)

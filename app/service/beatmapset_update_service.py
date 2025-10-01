@@ -230,7 +230,7 @@ class BeatmapsetUpdateService:
                             f"<cyan>[BeatmapsetUpdateService]</cyan> [{record.beatmapset_id}] "
                             f"unexpected error: {e}, retrying later"
                         )
-                    record.next_sync_time = utcnow() + timedelta(minutes=MIN_DELTA)
+                    record.next_sync_time = utcnow() + timedelta(seconds=MIN_DELTA)
                     continue
                 processing = ProcessingBeatmapset(beatmapset, record)
                 changed_beatmaps = processing.changed_beatmaps
@@ -312,8 +312,8 @@ class BeatmapsetUpdateService:
                     try:
                         beatmap = await self.fetcher.get_beatmap(change.beatmap_id)
                     except Exception as e:
-                        logger.error(
-                            f"<cyan>[BeatmapsetUpdateService]</cyan> [beatmapset: {change.beatmap_id}] "
+                        logger.opt(colors=True).error(
+                            f"<cyan>[BeatmapsetUpdateService]</cyan> [beatmap: {change.beatmap_id}] "
                             f"failed to fetch added beatmap: {e}, skipping"
                         )
                         continue
@@ -325,8 +325,8 @@ class BeatmapsetUpdateService:
                     try:
                         beatmap = await self.fetcher.get_beatmap(change.beatmap_id)
                     except Exception as e:
-                        logger.error(
-                            f"<cyan>[BeatmapsetUpdateService]</cyan> [beatmapset: {change.beatmap_id}] "
+                        logger.opt(colors=True).error(
+                            f"<cyan>[BeatmapsetUpdateService]</cyan> [beatmap: {change.beatmap_id}] "
                             f"failed to fetch changed beatmap: {e}, skipping"
                         )
                         continue

@@ -242,7 +242,6 @@ class Score(ScoreBase, table=True):
 
         await storage_service.delete_file(self.replay_filename)
         await session.delete(self)
-        await session.commit()
 
 
 class ScoreResp(ScoreBase):

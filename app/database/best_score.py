@@ -81,4 +81,3 @@ class BestScore(SQLModel, table=True):
             statistics.maximum_combo = max(0, max_combo or 0)
 
         await session.delete(self)
-        await session.commit()
