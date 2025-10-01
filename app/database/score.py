@@ -237,6 +237,8 @@ class Score(ScoreBase, table=True):
             assert self.ranked_score is not None
             await self.ranked_score.delete(session)
             await session.refresh(self)
+        if await self.awaitable_attrs.playlist_item_score:
+            await session.delete(self.playlist_item_score)
 
         await storage_service.delete_file(self.replay_filename)
         await session.delete(self)
