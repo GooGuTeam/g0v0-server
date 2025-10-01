@@ -122,6 +122,17 @@ class BeatmapsetUpdateService:
     def __init__(self, fetcher: "Fetcher"):
         self.fetcher = fetcher
 
+    async def add_missing_beatmapset(self, beatmapset_id: int) -> bool:
+        beatmapset = await self.fetcher.get_beatmapset(beatmapset_id)
+        await self.add(beatmapset)
+        status = BeatmapRankStatus(beatmapset.ranked)
+        if status.has_pp() or status == BeatmapRankStatus.LOVED:
+            return False
+        logger.opt(colors=True).debug(
+            f"<cyan>[BeatmapsetUpdateService]</cyan> added missing beatmapset {beatmapset_id} "
+        )
+        return True
+
     async def add_missing_beatmapsets(self):
         async with with_db() as session:
             missings = await session.exec(
@@ -139,15 +150,8 @@ class BeatmapsetUpdateService:
             )
             total = 0
             for missing in missings:
-                beatmapset = await self.fetcher.get_beatmapset(missing)
-                await self.add(beatmapset)
-                status = BeatmapRankStatus(beatmapset.ranked)
-                if status.has_pp() or status == BeatmapRankStatus.LOVED:
-                    continue
-                logger.opt(colors=True).debug(
-                    f"<cyan>[BeatmapsetUpdateService]</cyan> added missing beatmapset {missing} "
-                )
-                total += 1
+                if await self.add_missing_beatmapset(missing):
+                    total += 1
             if total > 0:
                 logger.opt(colors=True).info(f"<cyan>[BeatmapsetUpdateService]</cyan> added {total} missing beatmapset")
 

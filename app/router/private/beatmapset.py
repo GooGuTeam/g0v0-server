@@ -7,10 +7,12 @@ from app.database.lazer_user import User
 from app.database.score import Score
 from app.dependencies.database import Database
 from app.dependencies.user import get_client_user
+from app.service.beatmapset_update_service import get_beatmapset_update_service
 
 from .router import router
 
-from fastapi import Body, HTTPException, Security
+from fastapi import Body, Depends, HTTPException, Security
+from fastapi_limiter.depends import RateLimiter
 from sqlmodel import col, exists, select
 
 
@@ -82,3 +84,36 @@ async def rate_beatmaps(
     new_rating: BeatmapRating = BeatmapRating(beatmapset_id=beatmapset_id, user_id=user_id, rating=rating)
     session.add(new_rating)
     await session.commit()
+
+
+@router.post(
+    "/beatmapsets/{beatmapset_id}/sync",
+    name="请求同步谱面集",
+    status_code=202,
+    tags=["谱面集", "g0v0 API"],
+    dependencies=[Depends(RateLimiter(times=50, hours=1))],
+)
+async def sync_beatmapset(
+    beatmapset_id: int,
+    session: Database,
+    current_user: User = Security(get_client_user),
+):
+    """请求同步谱面集
+
+    请求将指定的谱面集从 Bancho 同步到服务器
+
+    请求发送后会加入同步队列，等待自动同步
+
+    速率限制:
+    - 每个用户每小时最多50次请求
+
+    参数:
+    - beatmapset_id: 谱面集ID
+
+    错误情况:
+    - 404: 找不到指定谱面集
+    """
+    current_beatmapset = (await session.exec(select(exists()).where(Beatmapset.id == beatmapset_id))).first()
+    if not current_beatmapset:
+        raise HTTPException(404, "Beatmapset Not Found")
+    await get_beatmapset_update_service().add_missing_beatmapset(beatmapset_id)
