@@ -38,6 +38,11 @@ class StorageServiceType(str, Enum):
     AWS_S3 = "s3"
 
 
+class OldScoreProcessingMode(str, Enum):
+    STRICT = "strict"
+    NORMAL = "normal"
+
+
 SPECTATOR_DOC = """
 ## 旁观服务器设置
 | 变量名 | 描述 | 类型 | 默认值 |
@@ -461,6 +466,16 @@ STORAGE_SETTINGS='{
     beatmap_tag_top_count: Annotated[
         int,
         Field(default=2, description="显示在结算列表的标签所需的最低票数"),
+        "游戏设置",
+    ]
+    old_score_processing_mode: Annotated[
+        OldScoreProcessingMode,
+        Field(
+            default=OldScoreProcessingMode.NORMAL,
+            description=(
+                "旧成绩处理模式<br/>strict: 删除所有相关的成绩、pp、统计信息、回放<br/>normal: 删除 pp 和排行榜成绩"
+            ),
+        ),
         "游戏设置",
     ]
 

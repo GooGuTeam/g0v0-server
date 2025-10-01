@@ -29,6 +29,7 @@ from app.scheduler.database_cleanup_scheduler import (
     stop_database_cleanup_scheduler,
 )
 from app.service.beatmap_download_service import download_service
+from app.service.beatmapset_update_service import init_beatmapset_update_service
 from app.service.calculate_all_user_rank import calculate_user_rank
 from app.service.create_banchobot import create_banchobot
 from app.service.daily_challenge import daily_challenge_job, process_daily_challenge_top
@@ -52,7 +53,7 @@ import sentry_sdk
 async def lifespan(app: FastAPI):
     # on startup
     await FastAPILimiter.init(get_redis())
-    await get_fetcher()  # 初始化 fetcher
+    fetcher = await get_fetcher()  # 初始化 fetcher
     await init_geoip()  # 初始化 GeoIP 数据库
     await create_rx_statistics()
     await calculate_user_rank(True)
@@ -65,6 +66,7 @@ async def lifespan(app: FastAPI):
     await download_service.start_health_check()  # 启动下载服务健康检查
     await start_cache_scheduler()  # 启动缓存调度器
     await start_database_cleanup_scheduler()  # 启动数据库清理调度器
+    init_beatmapset_update_service(fetcher)  # 初始化谱面集更新服务
     redis_message_system.start()  # 启动 Redis 消息系统
     load_achievements()
 

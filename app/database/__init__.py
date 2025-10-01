@@ -5,6 +5,7 @@ from .beatmap import (
     BeatmapResp,
 )
 from .beatmap_playcounts import BeatmapPlaycounts, BeatmapPlaycountsResp
+from .beatmap_sync import BeatmapSync
 from .beatmap_tags import BeatmapTagVote
 from .beatmapset import (
     Beatmapset,
@@ -76,6 +77,7 @@ __all__ = [
     "BeatmapPlaycountsResp",
     "BeatmapRating",
     "BeatmapResp",
+    "BeatmapSync",
     "BeatmapTagVote",
     "Beatmapset",
     "BeatmapsetResp",

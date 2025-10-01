@@ -130,9 +130,7 @@ class Beatmapset(AsyncAttrs, BeatmapsetBase, table=True):
     favourites: list["FavouriteBeatmapset"] = Relationship(back_populates="beatmapset")
 
     @classmethod
-    async def from_resp(cls, session: AsyncSession, resp: "BeatmapsetResp", from_: int = 0) -> "Beatmapset":
-        from .beatmap import Beatmap
-
+    async def from_resp_no_save(cls, session: AsyncSession, resp: "BeatmapsetResp", from_: int = 0) -> "Beatmapset":
         d = resp.model_dump()
         update = {}
         if resp.nominations:
@@ -158,6 +156,13 @@ class Beatmapset(AsyncAttrs, BeatmapsetBase, table=True):
                 "download_disabled": resp.availability.download_disabled or False,
             }
         )
+        return beatmapset
+
+    @classmethod
+    async def from_resp(cls, session: AsyncSession, resp: "BeatmapsetResp", from_: int = 0) -> "Beatmapset":
+        from .beatmap import Beatmap
+
+        beatmapset = await cls.from_resp_no_save(session, resp, from_=from_)
         if not (await session.exec(select(exists()).where(Beatmapset.id == resp.id))).first():
             session.add(beatmapset)
             await session.commit()
@@ -166,10 +171,13 @@ class Beatmapset(AsyncAttrs, BeatmapsetBase, table=True):
 
     @classmethod
     async def get_or_fetch(cls, session: AsyncSession, fetcher: "Fetcher", sid: int) -> "Beatmapset":
+        from app.service.beatmapset_update_service import get_beatmapset_update_service
+
         beatmapset = await session.get(Beatmapset, sid)
         if not beatmapset:
             resp = await fetcher.get_beatmapset(sid)
             beatmapset = await cls.from_resp(session, resp)
+            await get_beatmapset_update_service().add(resp)
         return beatmapset
 
 

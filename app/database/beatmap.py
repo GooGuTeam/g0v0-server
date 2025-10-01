@@ -71,7 +71,7 @@ class Beatmap(BeatmapBase, table=True):
     failtimes: FailTime | None = Relationship(back_populates="beatmap", sa_relationship_kwargs={"lazy": "joined"})
 
     @classmethod
-    async def from_resp(cls, session: AsyncSession, resp: "BeatmapResp") -> "Beatmap":
+    async def from_resp_no_save(cls, session: AsyncSession, resp: "BeatmapResp") -> "Beatmap":
         d = resp.model_dump()
         del d["beatmapset"]
         beatmap = Beatmap.model_validate(
@@ -82,11 +82,16 @@ class Beatmap(BeatmapBase, table=True):
                 "beatmap_status": BeatmapRankStatus(resp.ranked),
             }
         )
+        return beatmap
+
+    @classmethod
+    async def from_resp(cls, session: AsyncSession, resp: "BeatmapResp") -> "Beatmap":
+        beatmap = await cls.from_resp_no_save(session, resp)
         if not (await session.exec(select(exists()).where(Beatmap.id == resp.id))).first():
             session.add(beatmap)
             await session.commit()
-        beatmap = (await session.exec(select(Beatmap).where(Beatmap.id == resp.id))).first()
-        assert beatmap is not None, "Beatmap should not be None after commit"
+            beatmap = (await session.exec(select(Beatmap).where(Beatmap.id == resp.id))).first()
+            assert beatmap is not None, "Beatmap should not be None after commit"
         return beatmap
 
     @classmethod
