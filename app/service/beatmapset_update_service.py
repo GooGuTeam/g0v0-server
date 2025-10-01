@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from enum import Enum
 import math
 import random
@@ -45,9 +45,11 @@ class ChangedBeatmap(NamedTuple):
     type: BeatmapChangeType
 
 
-BASE = 600
+BASE = 1200
 TAU = 3600
-MIN_DELTA = 600
+JITTER_MIN = -30
+JITTER_MAX = 30
+MIN_DELTA = 1200
 GROWTH = 2.0
 GRAVEYARD_DOUBLING_PERIOD_DAYS = 30
 GRAVEYARD_MAX_DAYS = 365
@@ -56,7 +58,7 @@ STATUS_FACTOR: dict[BeatmapRankStatus, float] = {
     BeatmapRankStatus.PENDING: 0.5,
     BeatmapRankStatus.GRAVEYARD: 1,
 }
-SCHEDULER_INTERVAL_MINUTES = 5
+SCHEDULER_INTERVAL_MINUTES = 2
 
 
 class ProcessingBeatmapset:
@@ -92,7 +94,7 @@ class ProcessingBeatmapset:
             next_delta = min(max_seconds, delta)
         else:
             next_delta = MIN_DELTA
-        jitter = timedelta(minutes=random.randint(-30, 30))
+        jitter = timedelta(minutes=random.randint(JITTER_MIN, JITTER_MAX))
         return timedelta(seconds=next_delta) + jitter
 
     @property
@@ -208,6 +210,7 @@ class BeatmapsetUpdateService:
 
     async def _update_beatmaps(self):
         async with with_db() as session:
+            logger.opt(colors=True).info("<cyan>[BeatmapsetUpdateService]</cyan> checking for beatmapset updates...")
             now = utcnow()
             records = await session.exec(select(BeatmapSync).where(BeatmapSync.next_sync_time <= now))
             for record in records:
@@ -356,7 +359,12 @@ def get_beatmapset_update_service() -> BeatmapsetUpdateService:
     return service
 
 
-@get_scheduler().scheduled_job("interval", id="update_beatmaps", seconds=SCHEDULER_INTERVAL_MINUTES)
+@get_scheduler().scheduled_job(
+    "interval",
+    id="update_beatmaps",
+    minutes=SCHEDULER_INTERVAL_MINUTES,
+    next_run_time=datetime.now() + timedelta(minutes=1),
+)
 async def beatmapset_update_job():
     if service is not None:
         bg_tasks.add_task(service.add_missing_beatmapsets)
