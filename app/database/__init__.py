@@ -68,7 +68,7 @@ from .user_account_history import (
     UserAccountHistoryType,
 )
 from .user_login_log import UserLoginLog
-from .verification import EmailVerification, LoginSession
+from .verification import EmailVerification, LoginSession, TrustedDevice
 
 __all__ = [
     "APIUploadedRoom",
@@ -131,6 +131,7 @@ __all__ = [
     "TeamMember",
     "TeamRequest",
     "TotpKeys",
+    "TrustedDevice",
     "User",
     "UserAccountHistory",
     "UserAccountHistoryResp",

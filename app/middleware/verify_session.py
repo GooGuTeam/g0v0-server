@@ -10,11 +10,13 @@ from collections.abc import Callable
 from typing import ClassVar
 
 from app.auth import get_token_by_access_token
+from app.const import SUPPORT_TOTP_VERIFICATION_VER
 from app.database.lazer_user import User
 from app.database.verification import LoginSession
 from app.dependencies.database import get_redis, with_db
 from app.log import logger
 from app.service.verification_service import LoginSessionService
+from app.utils import extract_user_agent
 
 from fastapi import Request, Response, status
 from fastapi.responses import JSONResponse
@@ -34,6 +36,7 @@ class VerifySessionMiddleware(BaseHTTPMiddleware):
     SKIP_VERIFICATION_ROUTES: ClassVar[set[str]] = {
         "/api/v2/session/verify",
         "/api/v2/session/verify/reissue",
+        "/api/v2/session/verify/mail-fallback",
         "/api/v2/me",
         "/api/v2/logout",
         "/oauth/token",
@@ -44,10 +47,8 @@ class VerifySessionMiddleware(BaseHTTPMiddleware):
         "/redoc",
     }
 
-    # 需要强制验证的路由模式（敏感操作）
+    # 总是需要验证的路由前缀
     ALWAYS_VERIFY_PATTERNS: ClassVar[set[str]] = {
-        "/api/v2/account/",
-        "/api/v2/settings/",
         "/api/private/admin/",
     }
 
@@ -110,9 +111,6 @@ class VerifySessionMiddleware(BaseHTTPMiddleware):
             if path.startswith(pattern):
                 return True
 
-        # 特权用户或非活跃用户需要验证
-        # if hasattr(user, 'is_privileged') and user.is_privileged():
-        #     return True
         if not user.is_active:
             return True
 
@@ -157,6 +155,14 @@ class VerifySessionMiddleware(BaseHTTPMiddleware):
         try:
             # 提取会话token（这里简化为使用相同的auth token）
             auth_header = request.headers.get("Authorization", "")
+            api_version = 0
+            raw_api_version = request.headers.get("x-api-version")
+            if raw_api_version is not None:
+                try:
+                    api_version = int(raw_api_version)
+                except ValueError:
+                    api_version = 0
+
             if not auth_header.startswith("Bearer "):
                 return None
 
@@ -172,7 +178,7 @@ class VerifySessionMiddleware(BaseHTTPMiddleware):
                 if not session or session.user_id != user.id:
                     return None
 
-                return SessionState(session, user, redis, db)
+                return SessionState(session, user, redis, db, api_version)
             finally:
                 await db.close()
 
@@ -184,8 +190,6 @@ class VerifySessionMiddleware(BaseHTTPMiddleware):
         """启动验证流程"""
         try:
             method = await state.get_method()
-
-            # 如果是邮件验证，可以在这里触发发送邮件
             if method == "mail":
                 await state.issue_mail_if_needed()
 
@@ -208,11 +212,12 @@ class SessionState:
     简化版本的会话状态管理
     """
 
-    def __init__(self, session: LoginSession, user: User, redis: Redis, db: AsyncSession):
+    def __init__(self, session: LoginSession, user: User, redis: Redis, db: AsyncSession, api_version: int = 0) -> None:
         self.session = session
         self.user = user
         self.redis = redis
         self.db = db
+        self.api_version = api_version
         self._verification_method: str | None = None
 
     def is_verified(self) -> bool:
@@ -229,14 +234,15 @@ class SessionState:
                     self.user.id, token_id, self.redis
                 )
 
-            # 如果没有设置，智能选择
             if self._verification_method is None:
-                # 检查用户是否有TOTP密钥
-                await self.user.awaitable_attrs.totp_key  # 预加载
-                totp_key = getattr(self.user, "totp_key", None)
+                if not self.api_version < SUPPORT_TOTP_VERIFICATION_VER:
+                    self._verification_method = "mail"
+                    return self._verification_method
+
+                await self.user.awaitable_attrs.totp_key
+                totp_key = self.user.totp_key
                 self._verification_method = "totp" if totp_key else "mail"
 
-                # 保存选择的方法
                 token_id = self.session.token_id
                 if token_id is not None:
                     await LoginSessionService.set_login_method(
@@ -250,8 +256,15 @@ class SessionState:
         try:
             token_id = self.session.token_id
             if token_id is not None:
-                await LoginSessionService.mark_session_verified(self.db, self.redis, self.user.id, token_id)
-                self.session.is_verified = True  # 更新本地状态
+                await LoginSessionService.mark_session_verified(
+                    self.db,
+                    self.redis,
+                    self.user.id,
+                    token_id,
+                    self.session.ip_address,
+                    extract_user_agent(self.session.user_agent),
+                    self.session.web_uuid,
+                )
         except Exception as e:
             logger.error(f"[Session State] Error marking verified: {e}")
 
@@ -272,10 +285,12 @@ class SessionState:
         """获取会话密钥"""
         return str(self.session.id) if self.session.id else ""
 
-    def get_key_for_event(self) -> str:
+    @property
+    def key_for_event(self) -> str:
         """获取用于事件广播的会话密钥"""
         return LoginSessionService.get_key_for_event(self.get_key())
 
+    @property
     def user_id(self) -> int:
         """获取用户ID"""
         return self.user.id

@@ -21,6 +21,7 @@ from app.database.auth import TotpKeys
 from app.database.statistics import UserStatistics
 from app.dependencies.database import Database, get_redis
 from app.dependencies.geoip import get_client_ip, get_geoip_helper
+from app.dependencies.user_agent import UserAgentInfo
 from app.helpers.geoip_helper import GeoIPHelper
 from app.log import logger
 from app.models.extended_auth import ExtendedTokenResponse
@@ -39,7 +40,7 @@ from app.service.verification_service import (
 )
 from app.utils import utcnow
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, Header, Request
 from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
 from sqlalchemy import text
@@ -199,6 +200,7 @@ async def register_user(
 async def oauth_token(
     db: Database,
     request: Request,
+    user_agent: UserAgentInfo,
     grant_type: Literal["authorization_code", "refresh_token", "password", "client_credentials"] = Form(
         ..., description="授权类型：密码/刷新令牌/授权码/客户端凭证"
     ),
@@ -211,11 +213,9 @@ async def oauth_token(
     refresh_token: str | None = Form(None, description="刷新令牌（仅刷新令牌模式需要）"),
     redis: Redis = Depends(get_redis),
     geoip: GeoIPHelper = Depends(get_geoip_helper),
+    web_uuid: str | None = Header(None, include_in_schema=False, alias="X-UUID"),
 ):
     scopes = scope.split(" ")
-
-    # 打印请求头
-    # logger.info(f"Request headers: {request.headers}")
 
     client = (
         await db.exec(
@@ -311,14 +311,13 @@ async def oauth_token(
         token_id = token.id
 
         ip_address = get_client_ip(request)
-        user_agent = request.headers.get("User-Agent", "")
 
         # 获取国家代码
         geo_info = geoip.lookup(ip_address)
         country_code = geo_info.get("country_iso", "XX")
 
         # 检查是否为新位置登录
-        is_new_location = await LoginSessionService.check_new_location(db, user_id, ip_address, country_code)
+        trusted_device = await LoginSessionService.check_trusted_device(db, user_id, ip_address, user_agent, web_uuid)
 
         session_verification_method = None
         if settings.enable_totp_verification and totp_key is not None:
@@ -331,18 +330,12 @@ async def oauth_token(
                 login_method="password_pending_verification",
                 notes="需要 TOTP 验证",
             )
-        elif is_new_location and settings.enable_email_verification:
-            # 如果是新位置登录，需要邮件验证
+        elif not trusted_device and settings.enable_email_verification:
+            # 如果是新设备登录，需要邮件验证
             # 刷新用户对象以确保属性已加载
             await db.refresh(user)
             session_verification_method = "mail"
-
-            # 使用智能验证发送邮件
-            (
-                verification_sent,
-                verification_message,
-                client_info,
-            ) = await EmailVerificationService.send_smart_verification_email(
+            await EmailVerificationService.send_verification_email(
                 db,
                 redis,
                 user_id,
@@ -350,36 +343,30 @@ async def oauth_token(
                 user.email,
                 ip_address,
                 user_agent,
-                client_id,
-                country_code,
-                is_new_location,
             )
 
             # 记录需要二次验证的登录尝试
-            client_display_name = client_info.client_type if client_info else "unknown"
             await LoginLogService.record_login(
                 db=db,
                 user_id=user_id,
                 request=request,
                 login_success=True,
                 login_method="password_pending_verification",
-                notes=f"智能验证: {verification_message} - 客户端: {client_display_name}, "
-                f"IP: {ip_address}, 国家: {country_code}",
+                notes=(
+                    f"邮箱验证: User-Agent: {user_agent.raw_ua}, 客户端: {user_agent.displayed_name} "
+                    f"IP: {ip_address}, 国家: {country_code}"
+                ),
             )
-
-            if not verification_sent:
-                # 邮件发送失败，记录错误
-                logger.error(f"[Auth] Smart verification failed for user {user_id}: {verification_message}")
-            else:
-                logger.info(f"[Auth] Smart verification result for user {user_id}: {verification_message}")
-        elif is_new_location:
-            # 新位置登录但邮件验证功能被禁用，直接标记会话为已验证
-            await LoginSessionService.mark_session_verified(db, redis, user_id, token_id)
+        elif not trusted_device:
+            # 新设备登录但邮件验证功能被禁用，直接标记会话为已验证
+            await LoginSessionService.mark_session_verified(
+                db, redis, user_id, token_id, ip_address, user_agent, web_uuid
+            )
             logger.debug(
                 f"[Auth] New location login detected but email verification disabled, auto-verifying user {user_id}"
             )
         else:
-            # 不是新位置登录，正常登录
+            # 不是新设备登录，正常登录
             await LoginLogService.record_login(
                 db=db,
                 user_id=user_id,
@@ -391,12 +378,12 @@ async def oauth_token(
 
         if session_verification_method:
             await LoginSessionService.create_session(
-                db, redis, user_id, token_id, ip_address, user_agent, country_code, is_new_location, False
+                db, user_id, token_id, ip_address, user_agent.raw_ua, trusted_device, web_uuid, False
             )
             await LoginSessionService.set_login_method(user_id, token_id, session_verification_method, redis)
         else:
             await LoginSessionService.create_session(
-                db, redis, user_id, token_id, ip_address, user_agent, country_code, is_new_location, True
+                db, user_id, token_id, ip_address, user_agent.raw_ua, trusted_device, web_uuid, True
             )
 
         return TokenResponse(

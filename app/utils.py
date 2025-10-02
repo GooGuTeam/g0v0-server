@@ -6,10 +6,14 @@ from datetime import UTC, datetime
 import functools
 import inspect
 from io import BytesIO
-from typing import Any, ParamSpec, TypeVar
+import re
+from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
 
 from fastapi import HTTPException
 from PIL import Image
+
+if TYPE_CHECKING:
+    from app.models.model import UserAgentInfo
 
 
 def unix_timestamp_to_windows(timestamp: int) -> int:
@@ -154,81 +158,74 @@ def check_image(content: bytes, size: int, width: int, height: int) -> str:
         raise HTTPException(status_code=400, detail=f"Error processing image: {e}")
 
 
-def simplify_user_agent(user_agent: str | None, max_length: int = 200) -> str | None:
-    """
-    简化 User-Agent 字符串，只保留 osu! 和关键设备系统信息浏览器
+def extract_user_agent(user_agent: str | None) -> "UserAgentInfo":
+    from app.models.model import UserAgentInfo
 
-    Args:
-        user_agent: 原始 User-Agent 字符串
-        max_length: 最大长度限制
+    raw_ua = user_agent or ""
+    ua = raw_ua.strip()
+    lower_ua = ua.lower()
 
-    Returns:
-        简化后的 User-Agent 字符串，或 None
-    """
-    import re
+    info = UserAgentInfo(raw_ua=raw_ua)
 
-    if not user_agent:
-        return None
+    if not ua:
+        return info
 
-    # 如果长度在限制内，直接返回
-    if len(user_agent) <= max_length:
-        return user_agent
+    client_identifiers = ("osu!", "osu!lazer")
+    if any(identifier in lower_ua for identifier in client_identifiers):
+        info.browser = "osu!"
+        info.is_client = True
+        return info
 
-    # 提取操作系统信息
-    os_info = ""
-    os_patterns = [
-        r"(Windows[^;)]*)",
-        r"(Mac OS[^;)]*)",
-        r"(Linux[^;)]*)",
-        r"(Android[^;)]*)",
-        r"(iOS[^;)]*)",
-        r"(iPhone[^;)]*)",
-        r"(iPad[^;)]*)",
-    ]
+    browser_patterns: tuple[tuple[re.Pattern[str], str], ...] = (
+        (re.compile(r"OPR/(\d+[.\d+]*)"), "Opera"),
+        (re.compile(r"Edg/(\d+[.\d+]*)"), "Edge"),
+        (re.compile(r"Chrome/(\d+[.\d+]*)"), "Chrome"),
+        (re.compile(r"Firefox/(\d+[.\d+]*)"), "Firefox"),
+        (re.compile(r"Version/(\d+[.\d+]*).*Safari"), "Safari"),
+        (re.compile(r"Safari/(\d+[.\d+]*)"), "Safari"),
+        (re.compile(r"MSIE (\d+[.\d+]*)"), "Internet Explorer"),
+        (re.compile(r"Trident/.*rv:(\d+[.\d+]*)"), "Internet Explorer"),
+    )
 
-    for pattern in os_patterns:
-        match = re.search(pattern, user_agent, re.IGNORECASE)
+    for pattern, name in browser_patterns:
+        match = pattern.search(ua)
         if match:
-            os_info = match.group(1).strip()
+            info.browser = name
+            info.version = match.group(1)
             break
 
-    # 提取浏览器信息
-    browser_info = ""
-    browser_patterns = [
-        r"(osu![^)]*)",  # osu! 客户端
-        r"(Chrome/[\d.]+)",
-        r"(Firefox/[\d.]+)",
-        r"(Safari/[\d.]+)",
-        r"(Edge/[\d.]+)",
-        r"(Opera/[\d.]+)",
-    ]
+    os_patterns: tuple[tuple[re.Pattern[str], str], ...] = (
+        (re.compile(r"windows nt 10"), "Windows 10"),
+        (re.compile(r"windows nt 6\.3"), "Windows 8.1"),
+        (re.compile(r"windows nt 6\.2"), "Windows 8"),
+        (re.compile(r"windows nt 6\.1"), "Windows 7"),
+        (re.compile(r"windows nt 6\.0"), "Windows Vista"),
+        (re.compile(r"windows nt 5\.1"), "Windows XP"),
+        (re.compile(r"mac os x"), "macOS"),
+        (re.compile(r"iphone os"), "iOS"),
+        (re.compile(r"ipad;"), "iPadOS"),
+        (re.compile(r"android"), "Android"),
+        (re.compile(r"linux"), "Linux"),
+    )
 
-    for pattern in browser_patterns:
-        match = re.search(pattern, user_agent, re.IGNORECASE)
-        if match:
-            browser_info = match.group(1).strip()
-            # 如果找到了 osu! 客户端，优先使用
-            if "osu!" in browser_info.lower():
-                break
+    for pattern, name in os_patterns:
+        if pattern.search(lower_ua):
+            info.os = name
+            break
 
-    # 构建简化的 User-Agent
-    parts = []
-    if os_info:
-        parts.append(os_info)
-    if browser_info:
-        parts.append(browser_info)
+    info.is_mobile = any(keyword in lower_ua for keyword in ("mobile", "iphone", "android", "ipod"))
+    info.is_tablet = any(keyword in lower_ua for keyword in ("ipad", "tablet"))
+    if any(keyword in lower_ua for keyword in ("windows", "macintosh", "linux", "x11")) and not info.is_mobile:
+        info.is_pc = True
 
-    if parts:
-        simplified = "; ".join(parts)
-    else:
-        # 如果没有识别到关键信息，截断原始字符串
-        simplified = user_agent[: max_length - 3] + "..."
+    if info.is_tablet:
+        info.platform = "tablet"
+    elif info.is_mobile:
+        info.platform = "mobile"
+    elif info.is_pc:
+        info.platform = "pc"
 
-    # 确保不超过最大长度
-    if len(simplified) > max_length:
-        simplified = simplified[: max_length - 3] + "..."
-
-    return simplified
+    return info
 
 
 # https://github.com/encode/starlette/blob/master/starlette/_utils.py

@@ -3,12 +3,12 @@
 """
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Literal, Optional
 
 from app.utils import utcnow
 
 from sqlalchemy import BigInteger, Column, ForeignKey
-from sqlmodel import Field, Integer, Relationship, SQLModel
+from sqlmodel import VARCHAR, DateTime, Field, Integer, Relationship, SQLModel, Text
 
 if TYPE_CHECKING:
     from .auth import OAuthToken
@@ -41,15 +41,30 @@ class LoginSession(SQLModel, table=True):
     token_id: int | None = Field(
         sa_column=Column(Integer, ForeignKey("oauth_tokens.id", ondelete="SET NULL"), nullable=True, index=True)
     )
-    ip_address: str = Field()  # 登录IP
-    user_agent: str | None = Field(default=None, max_length=250)
-    country_code: str | None = Field(default=None)
+    ip_address: str = Field(sa_column=Column(VARCHAR(45), nullable=False), default="127.0.0.1")
+    user_agent: str | None = Field(default=None, sa_column=Column(Text))
     is_verified: bool = Field(default=False)  # 是否已验证
     created_at: datetime = Field(default_factory=lambda: utcnow())
     verified_at: datetime | None = Field(default=None)
     expires_at: datetime = Field()  # 会话过期时间
-    is_new_location: bool = Field(default=False)  # 是否新位置登录
-    session_token: str | None = Field(default=None, max_length=64, index=True)  # 会话令牌
+    is_new_device: bool = Field(default=False)  # 是否新位置登录
+    web_uuid: str | None = Field(sa_column=Column(VARCHAR(36), nullable=True), default=None)
     verification_method: str | None = Field(default=None, max_length=20)  # 验证方法 (totp/mail)
 
     token: Optional["OAuthToken"] = Relationship(back_populates="login_session")
+
+
+class TrustedDevice(SQLModel, table=True):
+    """受信任的设备记录"""
+
+    __tablename__: str = "trusted_devices"
+
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), nullable=False, index=True))
+    ip_address: str = Field(sa_column=Column(VARCHAR(45), nullable=False), default="127.0.0.1")
+    user_agent: str = Field(sa_column=Column(Text, nullable=False))
+    client_type: Literal["web", "client"] = Field(sa_column=Column(VARCHAR(10), nullable=False), default="web")
+    web_uuid: str | None = Field(sa_column=Column(VARCHAR(36), nullable=True), default=None)
+    created_at: datetime = Field(default_factory=utcnow)
+    last_used_at: datetime = Field(default_factory=utcnow)
+    expires_at: datetime = Field(sa_column=Column(DateTime))

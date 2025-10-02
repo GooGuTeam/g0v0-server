@@ -349,11 +349,6 @@ STORAGE_SETTINGS='{
         Field(default=30, description="设备信任持续天数"),
         "验证服务设置",
     ]
-    location_trust_duration_days: Annotated[
-        int,
-        Field(default=90, description="位置信任持续天数"),
-        "验证服务设置",
-    ]
     smtp_server: Annotated[
         str,
         Field(default="localhost", description="SMTP 服务器地址"),

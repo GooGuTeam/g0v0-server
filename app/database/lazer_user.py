@@ -243,7 +243,6 @@ class UserResp(UserBase):
     user_achievements: list[UserAchievementResp] = Field(default_factory=list)
     cover_url: str = ""  # deprecated
     team: Team | None = None
-    session_verified: bool = True
     daily_challenge_user_stats: DailyChallengeStatsResp | None = None
     default_group: str = ""
     is_deleted: bool = False  # TODO
@@ -425,27 +424,18 @@ class UserResp(UserBase):
             )
         ).one()
 
-        if "session_verified" in include:
-            from app.service.verification_service import LoginSessionService
-
-            u.session_verified = (
-                not await LoginSessionService.check_is_need_verification(session, user_id=obj.id, token_id=token_id)
-                if token_id
-                else True
-            )
-
         return u
 
 
 class MeResp(UserResp):
     session_verification_method: Literal["totp", "mail"] | None = None
+    session_verified: bool = True
 
     @classmethod
     async def from_db(
         cls,
         obj: User,
         session: AsyncSession,
-        include: list[str] = [],
         ruleset: GameMode | None = None,
         *,
         token_id: int | None = None,
@@ -453,7 +443,12 @@ class MeResp(UserResp):
         from app.dependencies.database import get_redis
         from app.service.verification_service import LoginSessionService
 
-        u = await super().from_db(obj, session, ["session_verified", *include], ruleset, token_id=token_id)
+        u = await super().from_db(obj, session, ALL_INCLUDED, ruleset, token_id=token_id)
+        u.session_verified = (
+            not await LoginSessionService.check_is_need_verification(session, user_id=obj.id, token_id=token_id)
+            if token_id
+            else True
+        )
         u = cls.model_validate(u.model_dump())
         if (settings.enable_totp_verification or settings.enable_email_verification) and token_id:
             redis = get_redis()

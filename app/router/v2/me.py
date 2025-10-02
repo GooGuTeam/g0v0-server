@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from app.database import MeResp, User
-from app.database.lazer_user import ALL_INCLUDED
 from app.dependencies import get_current_user
 from app.dependencies.database import Database
 from app.dependencies.user import UserAndToken, get_current_user_and_token
@@ -33,7 +32,7 @@ async def get_user_info_with_ruleset(
     ruleset: GameMode = Path(description="指定 ruleset"),
     user_and_token: UserAndToken = Security(get_current_user_and_token, scopes=["identify"]),
 ):
-    user_resp = await MeResp.from_db(user_and_token[0], session, ALL_INCLUDED, ruleset, token_id=user_and_token[1].id)
+    user_resp = await MeResp.from_db(user_and_token[0], session, ruleset, token_id=user_and_token[1].id)
     return user_resp
 
 
@@ -48,7 +47,7 @@ async def get_user_info_default(
     session: Database,
     user_and_token: UserAndToken = Security(get_current_user_and_token, scopes=["identify"]),
 ):
-    user_resp = await MeResp.from_db(user_and_token[0], session, ALL_INCLUDED, None, token_id=user_and_token[1].id)
+    user_resp = await MeResp.from_db(user_and_token[0], session, None, token_id=user_and_token[1].id)
     return user_resp
 
 

@@ -69,7 +69,9 @@ class DatabaseCleanupService:
             # 查找过期的登录会话记录
             current_time = utcnow()
 
-            stmt = select(LoginSession).where(LoginSession.expires_at < current_time)
+            stmt = select(LoginSession).where(
+                LoginSession.expires_at < current_time, col(LoginSession.is_verified).is_(False)
+            )
             result = await db.exec(stmt)
             expired_sessions = result.all()
 

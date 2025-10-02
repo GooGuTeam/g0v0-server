@@ -8,12 +8,13 @@ from typing import Annotated, Literal
 
 from app.auth import check_totp_backup_code, verify_totp_key_with_replay_protection
 from app.config import settings
-from app.const import BACKUP_CODE_LENGTH
+from app.const import BACKUP_CODE_LENGTH, SUPPORT_TOTP_VERIFICATION_VER
 from app.database.auth import TotpKeys
 from app.dependencies.api_version import APIVersion
 from app.dependencies.database import Database, get_redis
 from app.dependencies.geoip import get_client_ip
 from app.dependencies.user import UserAndToken, get_client_user_and_token
+from app.dependencies.user_agent import UserAgentInfo
 from app.log import logger
 from app.service.login_log_service import LoginLogService
 from app.service.verification_service import (
@@ -23,7 +24,7 @@ from app.service.verification_service import (
 
 from .router import router
 
-from fastapi import Depends, Form, HTTPException, Request, Security, status
+from fastapi import Depends, Form, Header, HTTPException, Request, Security, status
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 from redis.asyncio import Redis
@@ -62,9 +63,11 @@ async def verify_session(
     request: Request,
     db: Database,
     api_version: APIVersion,
+    user_agent: UserAgentInfo,
     redis: Annotated[Redis, Depends(get_redis)],
     verification_key: str = Form(..., description="8 位邮件验证码或者 6 位 TOTP 代码或 10 位备份码 （g0v0 扩展支持）"),
     user_and_token: UserAndToken = Security(get_client_user_and_token),
+    web_uuid: str | None = Header(None, include_in_schema=False, alias="X-UUID"),
 ) -> Response:
     current_user = user_and_token[0]
     token_id = user_and_token[1].id
@@ -74,11 +77,12 @@ async def verify_session(
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     verify_method: str | None = (
-        "mail" if api_version < 20250913 else await LoginSessionService.get_login_method(user_id, token_id, redis)
+        "mail"
+        if api_version < SUPPORT_TOTP_VERIFICATION_VER
+        else await LoginSessionService.get_login_method(user_id, token_id, redis)
     )
 
     ip_address = get_client_ip(request)
-    user_agent = request.headers.get("User-Agent", "Unknown")
     login_method = "password"
 
     try:
@@ -130,10 +134,11 @@ async def verify_session(
             user_id=user_id,
             request=request,
             login_method=login_method,
+            user_agent=user_agent.raw_ua,
             login_success=True,
             notes=f"{login_method} 验证成功",
         )
-        await LoginSessionService.mark_session_verified(db, redis, user_id, token_id)
+        await LoginSessionService.mark_session_verified(db, redis, user_id, token_id, ip_address, user_agent, web_uuid)
         await db.commit()
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -179,6 +184,7 @@ async def verify_session(
 async def reissue_verification_code(
     request: Request,
     db: Database,
+    user_agent: UserAgentInfo,
     api_version: APIVersion,
     redis: Annotated[Redis, Depends(get_redis)],
     user_and_token: UserAndToken = Security(get_client_user_and_token),
@@ -198,7 +204,6 @@ async def reissue_verification_code(
 
     try:
         ip_address = get_client_ip(request)
-        user_agent = request.headers.get("User-Agent", "Unknown")
         user_id = current_user.id
         success, message = await EmailVerificationService.resend_verification_code(
             db,
@@ -227,6 +232,7 @@ async def reissue_verification_code(
 )
 async def fallback_email(
     db: Database,
+    user_agent: UserAgentInfo,
     request: Request,
     redis: Annotated[Redis, Depends(get_redis)],
     user_and_token: UserAndToken = Security(get_client_user_and_token),
@@ -237,7 +243,6 @@ async def fallback_email(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前会话不需要回退")
 
     ip_address = get_client_ip(request)
-    user_agent = request.headers.get("User-Agent", "Unknown")
 
     await LoginSessionService.set_login_method(current_user.id, token_id, "mail", redis)
     success, message = await EmailVerificationService.resend_verification_code(

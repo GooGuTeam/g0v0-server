@@ -9,7 +9,7 @@ import asyncio
 from app.database.user_login_log import UserLoginLog
 from app.dependencies.geoip import get_client_ip, get_geoip_helper, normalize_ip
 from app.log import logger
-from app.utils import simplify_user_agent, utcnow
+from app.utils import utcnow
 
 from fastapi import Request
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -23,6 +23,7 @@ class LoginLogService:
         db: AsyncSession,
         user_id: int,
         request: Request,
+        user_agent: str | None = None,
         login_success: bool = True,
         login_method: str = "password",
         notes: str | None = None,
@@ -44,9 +45,6 @@ class LoginLogService:
         # 获取客户端IP并标准化格式
         raw_ip = get_client_ip(request)
         ip_address = normalize_ip(raw_ip)
-
-        raw_user_agent = request.headers.get("User-Agent", "")
-        user_agent = simplify_user_agent(raw_user_agent, max_length=500)
 
         # 创建基本的登录记录
         login_log = UserLoginLog(
@@ -107,6 +105,7 @@ class LoginLogService:
         attempted_username: str | None = None,
         login_method: str = "password",
         notes: str | None = None,
+        user_agent: str | None = None,
     ) -> UserLoginLog:
         """
         记录失败的登录尝试
@@ -128,6 +127,7 @@ class LoginLogService:
             request=request,
             login_success=False,
             login_method=login_method,
+            user_agent=user_agent,
             notes=f"Failed login attempt: {attempted_username}" if attempted_username else "Failed login attempt",
         )
 
