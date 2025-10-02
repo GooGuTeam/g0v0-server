@@ -293,7 +293,7 @@ async def get_token_by_refresh_token(db: AsyncSession, refresh_token: str) -> OA
     """根据刷新令牌获取令牌记录"""
     statement = select(OAuthToken).where(
         OAuthToken.refresh_token == refresh_token,
-        OAuthToken.expires_at > utcnow(),
+        OAuthToken.refresh_token_expires_at > utcnow(),
     )
     return (await db.exec(statement)).first()
 
