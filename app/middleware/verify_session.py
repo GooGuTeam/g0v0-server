@@ -38,6 +38,7 @@ class VerifySessionMiddleware(BaseHTTPMiddleware):
         "/api/v2/session/verify/reissue",
         "/api/v2/session/verify/mail-fallback",
         "/api/v2/me",
+        "/api/v2/me/",
         "/api/v2/logout",
         "/oauth/token",
         "/health",
