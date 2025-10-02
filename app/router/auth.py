@@ -295,7 +295,7 @@ async def oauth_token(
         totp_key: TotpKeys | None = await user.awaitable_attrs.totp_key
 
         # 生成令牌
-        access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
+        access_token_expires = timedelta(minutes=settings.refresh_token_expire_minutes)
         access_token = create_access_token(data={"sub": str(user_id)}, expires_delta=access_token_expires)
         refresh_token_str = generate_refresh_token()
         token = await store_token(
@@ -306,6 +306,7 @@ async def oauth_token(
             access_token,
             refresh_token_str,
             settings.access_token_expire_minutes * 60,
+            settings.refresh_token_expire_minutes * 60,
             allow_multiple_devices=settings.enable_multi_device_login,  # 使用配置决定是否启用多设备支持
         )
         token_id = token.id
@@ -436,6 +437,7 @@ async def oauth_token(
             access_token,
             new_refresh_token,
             settings.access_token_expire_minutes * 60,
+            settings.refresh_token_expire_minutes * 60,
             allow_multiple_devices=settings.enable_multi_device_login,  # 使用配置决定是否启用多设备支持
         )
         return TokenResponse(
@@ -501,6 +503,7 @@ async def oauth_token(
             access_token,
             refresh_token_str,
             settings.access_token_expire_minutes * 60,
+            settings.refresh_token_expire_minutes * 60,
             allow_multiple_devices=settings.enable_multi_device_login,  # 使用配置决定是否启用多设备支持
         )
 
@@ -548,6 +551,7 @@ async def oauth_token(
             access_token,
             refresh_token_str,
             settings.access_token_expire_minutes * 60,
+            settings.refresh_token_expire_minutes * 60,
             allow_multiple_devices=settings.enable_multi_device_login,  # 使用配置决定是否启用多设备支持
         )
 

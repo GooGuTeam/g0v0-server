@@ -170,6 +170,11 @@ STORAGE_SETTINGS='{
         Field(default=1440, description="访问令牌过期时间（分钟）"),
         "JWT 设置",
     ]
+    refresh_token_expire_minutes: Annotated[
+        int,
+        Field(default=1440, description="刷新令牌过期时间（分钟）"),
+        "JWT 设置",
+    ]
     jwt_audience: Annotated[
         str,
         Field(default="5", description="JWT 受众"),

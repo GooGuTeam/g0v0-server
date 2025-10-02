@@ -33,6 +33,7 @@ class OAuthToken(UTCBaseModel, SQLModel, table=True):
     token_type: str = Field(default="Bearer", max_length=20)
     scope: str = Field(default="*", max_length=100)
     expires_at: datetime = Field(sa_column=Column(DateTime))
+    refresh_token_expires_at: datetime = Field(sa_column=Column(DateTime))
     created_at: datetime = Field(default_factory=utcnow, sa_column=Column(DateTime))
 
     user: "User" = Relationship()
