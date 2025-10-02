@@ -461,6 +461,8 @@ class LoginSessionService:
                 TrustedDevice.expires_at > utcnow(),
             )
         else:
+            if web_uuid is None:
+                return False
             query = select(exists()).where(
                 TrustedDevice.user_id == user_id,
                 TrustedDevice.client_type == "web",
