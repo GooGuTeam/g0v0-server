@@ -36,6 +36,7 @@ class ScoreToken(ScoreTokenBase, table=True):
     user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id")))
     beatmap_id: int = Field(foreign_key="beatmaps.id")
     user: Mapped[User] = Relationship()
+
     beatmap: Mapped[Beatmap] = Relationship()
 
 

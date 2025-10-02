@@ -94,7 +94,12 @@ class ProcessingBeatmapset:
             next_delta = min(max_seconds, delta)
         else:
             next_delta = MIN_DELTA
-        jitter = timedelta(minutes=random.randint(JITTER_MIN, JITTER_MAX))
+
+        if next_delta > 86400:
+            minor = round(next_delta / 10)
+            jitter = timedelta(seconds=random.randint(-minor, minor))
+        else:
+            jitter = timedelta(minutes=random.randint(JITTER_MIN, JITTER_MAX))
         return timedelta(seconds=next_delta) + jitter
 
     @property
@@ -123,6 +128,7 @@ class ProcessingBeatmapset:
 class BeatmapsetUpdateService:
     def __init__(self, fetcher: "Fetcher"):
         self.fetcher = fetcher
+        self._adding_missing = False
 
     async def add_missing_beatmapset(self, beatmapset_id: int) -> bool:
         beatmapset = await self.fetcher.get_beatmapset(beatmapset_id)
@@ -136,9 +142,13 @@ class BeatmapsetUpdateService:
         return True
 
     async def add_missing_beatmapsets(self):
+        if self._adding_missing:
+            return
+        self._adding_missing = True
         async with with_db() as session:
             missings = await session.exec(
-                select(Beatmapset.id).where(
+                select(Beatmapset.id)
+                .where(
                     col(Beatmapset.beatmap_status).in_(
                         [
                             BeatmapRankStatus.WIP,
@@ -149,13 +159,20 @@ class BeatmapsetUpdateService:
                     ),
                     col(Beatmapset.id).notin_(select(BeatmapSync.beatmapset_id)),
                 )
+                .order_by(col(Beatmapset.last_updated).desc())
             )
             total = 0
             for missing in missings:
-                if await self.add_missing_beatmapset(missing):
-                    total += 1
+                try:
+                    if await self.add_missing_beatmapset(missing):
+                        total += 1
+                except Exception as e:
+                    logger.opt(colors=True).error(
+                        f"<cyan>[BeatmapsetUpdateService]</cyan> failed to add missing beatmapset {missing}: {e}"
+                    )
             if total > 0:
                 logger.opt(colors=True).info(f"<cyan>[BeatmapsetUpdateService]</cyan> added {total} missing beatmapset")
+        self._adding_missing = False
 
     async def add(self, beatmapset: BeatmapsetResp):
         if (
@@ -212,7 +229,11 @@ class BeatmapsetUpdateService:
         async with with_db() as session:
             logger.opt(colors=True).info("<cyan>[BeatmapsetUpdateService]</cyan> checking for beatmapset updates...")
             now = utcnow()
-            records = await session.exec(select(BeatmapSync).where(BeatmapSync.next_sync_time <= now))
+            records = await session.exec(
+                select(BeatmapSync)
+                .where(BeatmapSync.next_sync_time <= now)
+                .order_by(col(BeatmapSync.next_sync_time).desc())
+            )
             for record in records:
                 logger.opt(colors=True).info(
                     f"<cyan>[BeatmapsetUpdateService]</cyan> [{record.beatmapset_id}] syncing..."
@@ -221,12 +242,12 @@ class BeatmapsetUpdateService:
                     beatmapset = await self.fetcher.get_beatmapset(record.beatmapset_id)
                 except Exception as e:
                     if isinstance(e, HTTPError):
-                        logger.warning(
+                        logger.opt(colors=True).warning(
                             f"<cyan>[BeatmapsetUpdateService]</cyan> [{record.beatmapset_id}] "
-                            f"failed to fetch beatmapset: {e}, retrying later"
+                            f"failed to fetch beatmapset: [{e.__class__.__name__}] {e}, retrying later"
                         )
                     else:
-                        logger.exception(
+                        logger.opt(colors=True).exception(
                             f"<cyan>[BeatmapsetUpdateService]</cyan> [{record.beatmapset_id}] "
                             f"unexpected error: {e}, retrying later"
                         )

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from datetime import datetime
 import json
@@ -64,8 +65,13 @@ async def get_db():
         yield session
 
 
-def with_db():
-    return AsyncSession(engine)
+@asynccontextmanager
+async def with_db():
+    async with AsyncSession(engine) as session:
+        try:
+            yield session
+        finally:
+            await session.close()
 
 
 DBFactory = Callable[[], AsyncIterator[AsyncSession]]

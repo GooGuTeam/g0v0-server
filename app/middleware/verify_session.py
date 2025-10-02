@@ -134,8 +134,7 @@ class VerifySessionMiddleware(BaseHTTPMiddleware):
             token = auth_header[7:]  # 移除"Bearer "前缀
 
             # 创建专用数据库会话
-            db = with_db()
-            try:
+            async with with_db() as db:
                 # 获取token记录
                 token_record = await get_token_by_access_token(db, token)
                 if not token_record:
@@ -144,8 +143,6 @@ class VerifySessionMiddleware(BaseHTTPMiddleware):
                 # 获取用户
                 user = (await db.exec(select(User).where(User.id == token_record.user_id))).first()
                 return user
-            finally:
-                await db.close()
 
         except Exception as e:
             logger.debug(f"[Verify Session Middleware] Error getting user: {e}")
@@ -170,8 +167,7 @@ class VerifySessionMiddleware(BaseHTTPMiddleware):
             session_token = auth_header[7:]
 
             # 获取数据库和Redis连接
-            db = with_db()
-            try:
+            async with with_db() as db:
                 redis = get_redis()
 
                 # 查找会话
@@ -180,8 +176,6 @@ class VerifySessionMiddleware(BaseHTTPMiddleware):
                     return None
 
                 return SessionState(session, user, redis, db, api_version)
-            finally:
-                await db.close()
 
         except Exception as e:
             logger.error(f"[Verify Session Middleware] Error getting session state: {e}")

@@ -55,21 +55,30 @@ class BeatmapDownloadService:
         # 国外区域端点
         self.international_endpoints = [
             DownloadEndpoint(
+                name="Catboy",
+                base_url="https://catboy.best",
+                health_check_url="https://catboy.best/api",
+                url_template="https://catboy.best/d/{sid}",
+                is_china=False,
+                priority=0,
+                timeout=10,
+            ),
+            DownloadEndpoint(
                 name="Nerinyan",
                 base_url="https://api.nerinyan.moe",
                 health_check_url="https://api.nerinyan.moe/health",
                 url_template="https://api.nerinyan.moe/d/{sid}?noVideo={no_video}",
                 is_china=False,
-                priority=0,
+                priority=1,
                 timeout=10,
             ),
             DownloadEndpoint(
                 name="OsuDirect",
                 base_url="https://osu.direct",
                 health_check_url="https://osu.direct/api/status",
-                url_template="https://osu.direct/api/d/{sid}",
+                url_template="https://osu.direct/api/d/{sid}?noVideo={no_video}",
                 is_china=False,
-                priority=1,
+                priority=2,
                 timeout=10,
             ),
         ]
@@ -211,11 +220,10 @@ class BeatmapDownloadService:
         if endpoint.name == "Sayobot":
             video_type = "novideo" if no_video else "full"
             return endpoint.url_template.format(type=video_type, sid=beatmapset_id)
-        elif endpoint.name == "Nerinyan":
+        elif endpoint.name == "Nerinyan" or endpoint.name == "OsuDirect":
             return endpoint.url_template.format(sid=beatmapset_id, no_video="true" if no_video else "false")
-        elif endpoint.name == "OsuDirect":
-            # osu.direct 似乎没有no_video参数，直接使用基础URL
-            return endpoint.url_template.format(sid=beatmapset_id)
+        elif endpoint.name == "Catboy":
+            return endpoint.url_template.format(sid=f"{beatmapset_id}n" if no_video else beatmapset_id)
         else:
             # 默认处理
             return endpoint.url_template.format(sid=beatmapset_id)

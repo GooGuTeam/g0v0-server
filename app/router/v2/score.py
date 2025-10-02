@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import UTC, date
-import math
 import time
 
 from app.calculator import clamp
@@ -17,10 +16,8 @@ from app.database import (
     User,
 )
 from app.database.achievement import process_achievements
-from app.database.best_score import BestScore
 from app.database.counts import ReplayWatchedCount
 from app.database.daily_challenge import process_daily_challenge_score
-from app.database.events import Event, EventType
 from app.database.playlist_attempts import ItemAttemptsCount
 from app.database.playlist_best_score import (
     PlaylistBestScore,
@@ -37,12 +34,13 @@ from app.database.score import (
     process_user,
 )
 from app.dependencies.api_version import APIVersion
-from app.dependencies.database import Database, get_redis
+from app.dependencies.database import Database, get_redis, with_db
 from app.dependencies.fetcher import get_fetcher
 from app.dependencies.storage import get_storage_service
 from app.dependencies.user import get_client_user, get_current_user
 from app.fetcher import Fetcher
 from app.log import logger
+from app.models.beatmap import BeatmapRankStatus
 from app.models.room import RoomCategory
 from app.models.score import (
     GameMode,
@@ -50,6 +48,7 @@ from app.models.score import (
     Rank,
     SoloScoreSubmissionInfo,
 )
+from app.service.beatmap_cache_service import get_beatmap_cache_service
 from app.service.user_cache_service import refresh_user_cache_background
 from app.storage.base import StorageService
 from app.utils import utcnow
@@ -78,16 +77,47 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 READ_SCORE_TIMEOUT = 10
 
 
-async def process_user_achievement(score_id: int):
-    from app.dependencies.database import engine
-
-    from sqlmodel.ext.asyncio.session import AsyncSession
-
-    session = AsyncSession(engine)
-    try:
+async def _process_user_achievement(score_id: int):
+    async with with_db() as session:
         await process_achievements(session, get_redis(), score_id)
-    finally:
-        await session.close()
+
+
+async def _process_user(score_id: int, user_id: int, redis: Redis, fetcher: Fetcher):
+    async with with_db() as session:
+        user = await session.get(User, user_id)
+        if not user:
+            logger.warning(
+                "User {user_id} not found when processing score {score_id}", user_id=user_id, score_id=score_id
+            )
+            return
+        score = await session.get(Score, score_id)
+        if not score:
+            logger.warning(
+                "Score {score_id} not found when processing user {user_id}", score_id=score_id, user_id=user_id
+            )
+            return
+        score_token = (await session.exec(select(ScoreToken.id).where(ScoreToken.score_id == score_id))).first()
+        if not score_token:
+            logger.warning(
+                "ScoreToken for score {score_id} not found when processing user {user_id}",
+                score_id=score_id,
+                user_id=user_id,
+            )
+            return
+        beatmap = (
+            await session.exec(
+                select(Beatmap.total_length, Beatmap.beatmap_status).where(Beatmap.id == score.beatmap_id)
+            )
+        ).first()
+        if not beatmap:
+            logger.warning(
+                "Beatmap {beatmap_id} not found when processing user {user_id} for score {score_id}",
+                beatmap_id=score.beatmap_id,
+                user_id=user_id,
+                score_id=score_id,
+            )
+            return
+        await process_user(session, redis, fetcher, user, score, score_token, beatmap[0], BeatmapRankStatus(beatmap[1]))
 
 
 async def submit_score(
@@ -124,10 +154,7 @@ async def submit_score(
         if not score:
             raise HTTPException(status_code=404, detail="Score not found")
     else:
-        # 智能预取beatmap缓存（异步进行，不阻塞主流程）
         try:
-            from app.service.beatmap_cache_service import get_beatmap_cache_service
-
             cache_service = get_beatmap_cache_service(redis, fetcher)
             await cache_service.smart_preload_for_score(beatmap)
         except Exception as e:
@@ -138,92 +165,30 @@ async def submit_score(
         except HTTPError:
             raise HTTPException(status_code=404, detail="Beatmap not found")
         status = db_beatmap.beatmap_status
-        beatmap_length = db_beatmap.total_length
         score = await process_score(
             current_user,
             beatmap,
             status.has_pp() or settings.enable_all_beatmap_pp,
             score_token,
             info,
-            fetcher,
             db,
-            redis,
             item_id,
             room_id,
         )
-        await db.refresh(current_user)
+        await db.refresh(score_token)
         score_id = score.id
         score_token.score_id = score_id
-        await process_user(db, current_user, score, token, beatmap_length, status)
-        score = (await db.exec(select(Score).options(joinedload(Score.user)).where(Score.id == score_id))).one()
+        await db.commit()
+        await db.refresh(score)
 
+        background_task.add_task(_process_user, score_id, user_id, redis, fetcher)
     resp: ScoreResp = await ScoreResp.from_db(db, score)
     score_gamemode = score.gamemode
-    total_users = (await db.exec(select(func.count()).select_from(User))).one()
-    if resp.rank_global is not None and resp.rank_global <= min(math.ceil(float(total_users) * 0.01), 50):
-        rank_event = Event(
-            created_at=utcnow(),
-            type=EventType.RANK,
-            user_id=score.user_id,
-            user=score.user,
-        )
-        rank_event.event_payload = {
-            "scorerank": score.rank.value,
-            "rank": resp.rank_global,
-            "mode": score.gamemode.readable(),
-            "beatmap": {
-                "title": (
-                    f"{score.beatmap.beatmapset.artist} - {score.beatmap.beatmapset.title} [{score.beatmap.version}]"
-                ),
-                "url": score.beatmap.url.replace("https://osu.ppy.sh/", settings.web_url),
-            },
-            "user": {
-                "username": score.user.username,
-                "url": settings.web_url + "users/" + str(score.user.id),
-            },
-        }
-        db.add(rank_event)
-    if resp.rank_global is not None and resp.rank_global == 1:
-        displaced_score = (
-            await db.exec(
-                select(BestScore)
-                .where(
-                    BestScore.beatmap_id == score.beatmap_id,
-                    BestScore.gamemode == score.gamemode,
-                )
-                .order_by(col(BestScore.total_score).desc())
-                .limit(1)
-                .offset(1)
-            )
-        ).first()
-        if displaced_score and displaced_score.user_id != resp.user_id:
-            username = (await db.exec(select(User.username).where(User.id == displaced_score.user_id))).one()
-
-            rank_lost_event = Event(
-                created_at=utcnow(),
-                type=EventType.RANK_LOST,
-                user_id=displaced_score.user_id,
-            )
-            rank_lost_event.event_payload = {
-                "mode": score.gamemode.readable(),
-                "beatmap": {
-                    "title": (
-                        f"{score.beatmap.beatmapset.artist} - {score.beatmap.beatmapset.title} "
-                        f"[{score.beatmap.version}]"
-                    ),
-                    "url": score.beatmap.url.replace("https://osu.ppy.sh/", settings.web_url),
-                },
-                "user": {
-                    "username": username,
-                    "url": settings.web_url + "users/" + str(displaced_score.user.id),
-                },
-            }
-            db.add(rank_lost_event)
 
     await db.commit()
     if user_id is not None:
         background_task.add_task(refresh_user_cache_background, redis, user_id, score_gamemode)
-    background_task.add_task(process_user_achievement, resp.id)
+    background_task.add_task(_process_user_achievement, resp.id)
     return resp
 
 
