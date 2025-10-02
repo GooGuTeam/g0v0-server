@@ -3,11 +3,13 @@ from __future__ import annotations
 from app.database.auth import OAuthToken
 from app.database.verification import LoginSession, LoginSessionResp, TrustedDevice, TrustedDeviceResp
 from app.dependencies.database import Database
+from app.dependencies.geoip import get_geoip_helper
 from app.dependencies.user import UserAndToken, get_client_user_and_token
+from app.helpers.geoip_helper import GeoIPHelper
 
 from .router import router
 
-from fastapi import HTTPException, Security
+from fastapi import Depends, HTTPException, Security
 from pydantic import BaseModel
 from sqlmodel import col, select
 
@@ -27,6 +29,7 @@ class SessionsResp(BaseModel):
 async def get_sessions(
     session: Database,
     user_and_token: UserAndToken = Security(get_client_user_and_token),
+    geoip: GeoIPHelper = Depends(get_geoip_helper),
 ):
     current_user, token = user_and_token
     sessions = (
@@ -41,7 +44,7 @@ async def get_sessions(
     return SessionsResp(
         total=len(sessions),
         current=token.id,
-        sessions=[LoginSessionResp.from_db(s) for s in sessions],
+        sessions=[LoginSessionResp.from_db(s, geoip) for s in sessions],
     )
 
 
@@ -89,6 +92,7 @@ class TrustedDevicesResp(BaseModel):
 async def get_trusted_devices(
     session: Database,
     user_and_token: UserAndToken = Security(get_client_user_and_token),
+    geoip: GeoIPHelper = Depends(get_geoip_helper),
 ):
     current_user, token = user_and_token
     devices = (
@@ -114,7 +118,7 @@ async def get_trusted_devices(
     return TrustedDevicesResp(
         total=len(devices),
         current=current_device_id or 0,
-        devices=[TrustedDeviceResp.from_db(device) for device in devices],
+        devices=[TrustedDeviceResp.from_db(device, geoip) for device in devices],
     )
 
 
