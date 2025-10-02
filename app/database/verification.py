@@ -72,7 +72,7 @@ class LoginSession(LoginSessionBase, table=True):
 
 
 class LoginSessionResp(UTCBaseModel, LoginSessionBase):
-    user_agent_info: UserAgentInfo
+    user_agent_info: UserAgentInfo | None = None
     location: Location | None = None
 
     @classmethod
@@ -110,7 +110,7 @@ class TrustedDevice(TrustedDeviceBase, table=True):
 
 
 class TrustedDeviceResp(UTCBaseModel, TrustedDeviceBase):
-    user_agent_info: UserAgentInfo
+    user_agent_info: UserAgentInfo | None = None
     location: Location | None = None
 
     @classmethod
