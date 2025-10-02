@@ -295,7 +295,7 @@ async def oauth_token(
         totp_key: TotpKeys | None = await user.awaitable_attrs.totp_key
 
         # 生成令牌
-        access_token_expires = timedelta(minutes=settings.refresh_token_expire_minutes)
+        access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
         access_token = create_access_token(data={"sub": str(user_id)}, expires_delta=access_token_expires)
         refresh_token_str = generate_refresh_token()
         token = await store_token(

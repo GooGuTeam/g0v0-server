@@ -548,7 +548,7 @@ class LoginSessionService:
                 await db.exec(
                     select(exists()).where(
                         LoginSession.user_id == user_id,
-                        col(LoginSession.is_verified).is_(True),
+                        col(LoginSession.is_verified).is_(False),
                         LoginSession.expires_at > utcnow(),
                         LoginSession.token_id == token_id,
                     )

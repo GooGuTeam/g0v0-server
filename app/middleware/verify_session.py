@@ -236,7 +236,7 @@ class SessionState:
                 )
 
             if self._verification_method is None:
-                if not self.api_version < SUPPORT_TOTP_VERIFICATION_VER:
+                if self.api_version < SUPPORT_TOTP_VERIFICATION_VER:
                     self._verification_method = "mail"
                     return self._verification_method
 
