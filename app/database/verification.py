@@ -5,7 +5,8 @@
 from datetime import datetime
 from typing import TYPE_CHECKING, Literal, Optional
 
-from app.utils import utcnow
+from app.models.model import UTCBaseModel
+from app.utils import extract_user_agent, utcnow
 
 from sqlalchemy import BigInteger, Column, ForeignKey
 from sqlmodel import VARCHAR, DateTime, Field, Integer, Relationship, SQLModel, Text
@@ -31,40 +32,60 @@ class EmailVerification(SQLModel, table=True):
     user_agent: str | None = Field(default=None)  # 用户代理
 
 
-class LoginSession(SQLModel, table=True):
+class LoginSessionBase(SQLModel):
     """登录会话记录"""
 
-    __tablename__: str = "login_sessions"
-
-    id: int | None = Field(default=None, primary_key=True)
+    id: int = Field(default=None, primary_key=True)
     user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), nullable=False, index=True))
-    token_id: int | None = Field(
-        sa_column=Column(Integer, ForeignKey("oauth_tokens.id", ondelete="SET NULL"), nullable=True, index=True)
-    )
     ip_address: str = Field(sa_column=Column(VARCHAR(45), nullable=False), default="127.0.0.1")
     user_agent: str | None = Field(default=None, sa_column=Column(Text))
     is_verified: bool = Field(default=False)  # 是否已验证
     created_at: datetime = Field(default_factory=lambda: utcnow())
     verified_at: datetime | None = Field(default=None)
     expires_at: datetime = Field()  # 会话过期时间
-    is_new_device: bool = Field(default=False)  # 是否新位置登录
-    web_uuid: str | None = Field(sa_column=Column(VARCHAR(36), nullable=True), default=None)
-    verification_method: str | None = Field(default=None, max_length=20)  # 验证方法 (totp/mail)
+
+
+class LoginSession(LoginSessionBase, table=True):
+    __tablename__: str = "login_sessions"
+    token_id: int | None = Field(
+        sa_column=Column(Integer, ForeignKey("oauth_tokens.id", ondelete="SET NULL"), nullable=True, index=True),
+        exclude=True,
+    )
+    is_new_device: bool = Field(default=False, exclude=True)  # 是否新位置登录
+    web_uuid: str | None = Field(sa_column=Column(VARCHAR(36), nullable=True), default=None, exclude=True)
+    verification_method: str | None = Field(default=None, max_length=20, exclude=True)  # 验证方法 (totp/mail)
 
     token: Optional["OAuthToken"] = Relationship(back_populates="login_session")
 
 
-class TrustedDevice(SQLModel, table=True):
-    """受信任的设备记录"""
+class LoginSessionResp(UTCBaseModel, LoginSessionBase):
+    is_client: bool = False
 
-    __tablename__: str = "trusted_devices"
+    @classmethod
+    def from_db(cls, obj: LoginSession) -> "LoginSessionResp":
+        session = cls.model_validate(obj.model_dump())
+        ua = extract_user_agent(session.user_agent)
+        session.is_client = ua.is_client
+        return session
 
+
+class TrustedDeviceBase(SQLModel):
     id: int | None = Field(default=None, primary_key=True)
     user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), nullable=False, index=True))
     ip_address: str = Field(sa_column=Column(VARCHAR(45), nullable=False), default="127.0.0.1")
     user_agent: str = Field(sa_column=Column(Text, nullable=False))
     client_type: Literal["web", "client"] = Field(sa_column=Column(VARCHAR(10), nullable=False), default="web")
-    web_uuid: str | None = Field(sa_column=Column(VARCHAR(36), nullable=True), default=None)
     created_at: datetime = Field(default_factory=utcnow)
     last_used_at: datetime = Field(default_factory=utcnow)
     expires_at: datetime = Field(sa_column=Column(DateTime))
+
+
+class TrustedDevice(TrustedDeviceBase, table=True):
+    __tablename__: str = "trusted_devices"
+    web_uuid: str | None = Field(sa_column=Column(VARCHAR(36), nullable=True), default=None)
+
+
+class TrustedDeviceResp(UTCBaseModel, TrustedDeviceBase):
+    @classmethod
+    def from_db(cls, device: TrustedDevice) -> "TrustedDeviceResp":
+        return cls.model_validate(device.model_dump())
