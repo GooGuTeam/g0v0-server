@@ -70,7 +70,7 @@ class LoginSessionResp(UTCBaseModel, LoginSessionBase):
 
 
 class TrustedDeviceBase(SQLModel):
-    id: int | None = Field(default=None, primary_key=True)
+    id: int = Field(default=None, primary_key=True)
     user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), nullable=False, index=True))
     ip_address: str = Field(sa_column=Column(VARCHAR(45), nullable=False), default="127.0.0.1")
     user_agent: str = Field(sa_column=Column(Text, nullable=False))

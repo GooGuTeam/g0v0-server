@@ -177,14 +177,14 @@ def extract_user_agent(user_agent: str | None) -> "UserAgentInfo":
         return info
 
     browser_patterns: tuple[tuple[re.Pattern[str], str], ...] = (
-        (re.compile(r"OPR/(\d+[.\d+]*)"), "Opera"),
-        (re.compile(r"Edg/(\d+[.\d+]*)"), "Edge"),
-        (re.compile(r"Chrome/(\d+[.\d+]*)"), "Chrome"),
-        (re.compile(r"Firefox/(\d+[.\d+]*)"), "Firefox"),
-        (re.compile(r"Version/(\d+[.\d+]*).*Safari"), "Safari"),
-        (re.compile(r"Safari/(\d+[.\d+]*)"), "Safari"),
-        (re.compile(r"MSIE (\d+[.\d+]*)"), "Internet Explorer"),
-        (re.compile(r"Trident/.*rv:(\d+[.\d+]*)"), "Internet Explorer"),
+        (re.compile(r"OPR/(\d+(?:\.\d+)*)"), "Opera"),
+        (re.compile(r"Edg/(\d+(?:\.\d+)*)"), "Edge"),
+        (re.compile(r"Chrome/(\d+(?:\.\d+)*)"), "Chrome"),
+        (re.compile(r"Firefox/(\d+(?:\.\d+)*)"), "Firefox"),
+        (re.compile(r"Version/(\d+(?:\.\d+)*).*Safari"), "Safari"),
+        (re.compile(r"Safari/(\d+(?:\.\d+)*)"), "Safari"),
+        (re.compile(r"MSIE (\d+(?:\.\d+)*)"), "Internet Explorer"),
+        (re.compile(r"Trident/.*rv:(\d+(?:\.\d+)*)"), "Internet Explorer"),
     )
 
     for pattern, name in browser_patterns:
