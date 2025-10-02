@@ -74,7 +74,9 @@ class BestScore(SQLModel, table=True):
             max_combo = (
                 await session.exec(
                     select(func.max(Score.max_combo)).where(
-                        Score.user_id == self.user_id, col(Score.id).in_(select(BestScore.score_id))
+                        Score.user_id == self.user_id,
+                        col(Score.id).in_(select(BestScore.score_id)),
+                        Score.gamemode == self.gamemode,
                     )
                 )
             ).first()

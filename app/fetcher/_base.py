@@ -118,8 +118,6 @@ class BaseFetcher:
         async with self._token_lock:
             if not force and not self.is_token_expired():
                 return
-            if force and self.access_token and not self.is_token_expired():
-                return
 
             if force:
                 await self._clear_access_token()
