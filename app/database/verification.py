@@ -43,6 +43,10 @@ class LoginSessionBase(SQLModel):
     created_at: datetime = Field(default_factory=lambda: utcnow())
     verified_at: datetime | None = Field(default=None)
     expires_at: datetime = Field()  # 会话过期时间
+    device_id: int | None = Field(
+        sa_column=Column(BigInteger, ForeignKey("trusted_devices.id", ondelete="SET NULL"), nullable=True, index=True),
+        default=None,
+    )
 
 
 class LoginSession(LoginSessionBase, table=True):
@@ -55,6 +59,7 @@ class LoginSession(LoginSessionBase, table=True):
     web_uuid: str | None = Field(sa_column=Column(VARCHAR(36), nullable=True), default=None, exclude=True)
     verification_method: str | None = Field(default=None, max_length=20, exclude=True)  # 验证方法 (totp/mail)
 
+    device: Optional["TrustedDevice"] = Relationship(back_populates="sessions")
     token: Optional["OAuthToken"] = Relationship(back_populates="login_session")
 
 
@@ -83,6 +88,8 @@ class TrustedDeviceBase(SQLModel):
 class TrustedDevice(TrustedDeviceBase, table=True):
     __tablename__: str = "trusted_devices"
     web_uuid: str | None = Field(sa_column=Column(VARCHAR(36), nullable=True), default=None)
+
+    sessions: list["LoginSession"] = Relationship(back_populates="device", passive_deletes=True)
 
 
 class TrustedDeviceResp(UTCBaseModel, TrustedDeviceBase):

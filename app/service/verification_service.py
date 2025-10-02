@@ -492,19 +492,7 @@ class LoginSessionService:
                     LoginSession.token_id == token_id,
                 )
             )
-
-            sessions = result.all()
-
-            # 标记所有会话为已验证
-            for session in sessions:
-                session.is_verified = True
-                session.verified_at = utcnow()
-
-            if sessions:
-                logger.info(f"[Login Session] Marked {len(sessions)} session(s) as verified for user {user_id}")
-
-            await LoginSessionService.clear_login_method(user_id, token_id, redis)
-
+            device_info: TrustedDevice | None = None
             if user_agent.is_client or web_uuid:
                 if user_agent.is_client:
                     query = select(TrustedDevice).where(
@@ -532,7 +520,20 @@ class LoginSessionService:
                     db.add(device_info)
                 device_info.last_used_at = utcnow()
                 device_info.expires_at = utcnow() + timedelta(days=settings.device_trust_duration_days)
-                await db.commit()
+            sessions = result.all()
+
+            # 标记所有会话为已验证
+            for session in sessions:
+                session.is_verified = True
+                session.verified_at = utcnow()
+                if device_info:
+                    session.device_id = device_info.id
+
+            if sessions:
+                logger.info(f"[Login Session] Marked {len(sessions)} session(s) as verified for user {user_id}")
+
+            await LoginSessionService.clear_login_method(user_id, token_id, redis)
+            await db.commit()
 
             return len(sessions) > 0
 

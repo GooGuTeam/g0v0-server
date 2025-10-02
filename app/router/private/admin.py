@@ -76,6 +76,7 @@ async def delete_session(
 
 class TrustedDevicesResp(BaseModel):
     total: int
+    current: int = 0
     devices: list[TrustedDeviceResp]
 
 
@@ -89,7 +90,7 @@ async def get_trusted_devices(
     session: Database,
     user_and_token: UserAndToken = Security(get_client_user_and_token),
 ):
-    current_user, _ = user_and_token
+    current_user, token = user_and_token
     devices = (
         await session.exec(
             select(TrustedDevice)
@@ -98,8 +99,21 @@ async def get_trusted_devices(
         )
     ).all()
 
+    current_device_id = (
+        await session.exec(
+            select(TrustedDevice.id)
+            .join(LoginSession, col(LoginSession.device_id) == TrustedDevice.id)
+            .where(
+                LoginSession.token_id == token.id,
+                TrustedDevice.user_id == current_user.id,
+            )
+            .limit(1)
+        )
+    ).first()
+
     return TrustedDevicesResp(
         total=len(devices),
+        current=current_device_id or 0,
         devices=[TrustedDeviceResp.from_db(device) for device in devices],
     )
 
@@ -115,8 +129,22 @@ async def delete_trusted_device(
     device_id: int,
     user_and_token: UserAndToken = Security(get_client_user_and_token),
 ):
-    current_user, _ = user_and_token
+    current_user, token = user_and_token
     device = await session.get(TrustedDevice, device_id)
+    current_device_id = (
+        await session.exec(
+            select(TrustedDevice.id)
+            .join(LoginSession)
+            .where(
+                LoginSession.token_id == token.id,
+                TrustedDevice.user_id == current_user.id,
+            )
+            .limit(1)
+        )
+    ).first()
+    if device_id == current_device_id:
+        raise HTTPException(status_code=400, detail="Cannot delete the current trusted device")
+
     if not device or device.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Trusted device not found")
 
