@@ -138,7 +138,7 @@ async def delete_trusted_device(
     current_device_id = (
         await session.exec(
             select(TrustedDevice.id)
-            .join(LoginSession)
+            .join(LoginSession, col(LoginSession.device_id) == TrustedDevice.id)
             .where(
                 LoginSession.token_id == token.id,
                 TrustedDevice.user_id == current_user.id,

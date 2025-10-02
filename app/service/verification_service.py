@@ -472,6 +472,60 @@ class LoginSessionService:
         return (await db.exec(query)).first() or False
 
     @staticmethod
+    async def create_trusted_device(
+        db: AsyncSession,
+        user_id: int,
+        ip_address: str,
+        user_agent: UserAgentInfo,
+        web_uuid: str | None = None,
+    ) -> TrustedDevice:
+        device = TrustedDevice(
+            user_id=user_id,
+            ip_address=ip_address,
+            user_agent=user_agent.raw_ua,
+            client_type="client" if user_agent.is_client else "web",
+            web_uuid=web_uuid if not user_agent.is_client else None,
+            expires_at=utcnow() + timedelta(days=settings.device_trust_duration_days),
+        )
+        db.add(device)
+        await db.commit()
+        await db.refresh(device)
+        return device
+
+    @staticmethod
+    async def get_or_create_trusted_device(
+        db: AsyncSession,
+        user_id: int,
+        ip_address: str,
+        user_agent: UserAgentInfo,
+        web_uuid: str | None = None,
+    ) -> TrustedDevice:
+        if user_agent.is_client:
+            query = select(TrustedDevice).where(
+                TrustedDevice.user_id == user_id,
+                TrustedDevice.client_type == "client",
+                TrustedDevice.ip_address == ip_address,
+            )
+        else:
+            if web_uuid is None:
+                raise ValueError("web_uuid is required for web clients")
+            query = select(TrustedDevice).where(
+                TrustedDevice.user_id == user_id,
+                TrustedDevice.client_type == "web",
+                TrustedDevice.web_uuid == web_uuid,
+            )
+
+        device = (await db.exec(query)).first()
+        if device is None:
+            device = await LoginSessionService.create_trusted_device(db, user_id, ip_address, user_agent, web_uuid)
+        else:
+            device.last_used_at = utcnow()
+            device.expires_at = utcnow() + timedelta(days=settings.device_trust_duration_days)
+            await db.commit()
+            await db.refresh(device)
+        return device
+
+    @staticmethod
     async def mark_session_verified(
         db: AsyncSession,
         redis: Redis,
@@ -482,6 +536,12 @@ class LoginSessionService:
         web_uuid: str | None = None,
     ) -> bool:
         """标记用户的未验证会话为已验证"""
+        device_info: TrustedDevice | None = None
+        if user_agent.is_client or web_uuid:
+            device_info = await LoginSessionService.get_or_create_trusted_device(
+                db, user_id, ip_address, user_agent, web_uuid
+            )
+
         try:
             # 查找用户所有未验证且未过期的会话
             result = await db.exec(
@@ -492,34 +552,6 @@ class LoginSessionService:
                     LoginSession.token_id == token_id,
                 )
             )
-            device_info: TrustedDevice | None = None
-            if user_agent.is_client or web_uuid:
-                if user_agent.is_client:
-                    query = select(TrustedDevice).where(
-                        TrustedDevice.user_id == user_id,
-                        TrustedDevice.client_type == "client",
-                        TrustedDevice.ip_address == ip_address,
-                    )
-                else:
-                    query = select(TrustedDevice).where(
-                        TrustedDevice.user_id == user_id,
-                        TrustedDevice.client_type == "web",
-                        TrustedDevice.web_uuid == web_uuid,
-                    )
-
-                device_info = (await db.exec(query)).first()
-                if device_info is None:
-                    device_info = TrustedDevice(
-                        user_id=user_id,
-                        ip_address=ip_address,
-                        user_agent=user_agent.raw_ua,
-                        client_type="client" if user_agent.is_client else "web",
-                        web_uuid=web_uuid if not user_agent.is_client else None,
-                        expires_at=utcnow() + timedelta(days=settings.device_trust_duration_days),
-                    )
-                    db.add(device_info)
-                device_info.last_used_at = utcnow()
-                device_info.expires_at = utcnow() + timedelta(days=settings.device_trust_duration_days)
             sessions = result.all()
 
             # 标记所有会话为已验证
