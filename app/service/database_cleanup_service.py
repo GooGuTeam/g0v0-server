@@ -182,50 +182,37 @@ class DatabaseCleanupService:
             return 0
 
     @staticmethod
-    async def cleanup_old_verified_sessions(db: AsyncSession, days_old: int = 30) -> int:
+    async def cleanup_outdated_verified_sessions(db: AsyncSession) -> int:
         """
-        清理旧的已验证会话记录
+        清理过期会话记录
 
         Args:
             db: 数据库会话
-            days_old: 清理多少天前的已验证记录，默认30天
 
         Returns:
             int: 清理的记录数
         """
         try:
-            # 查找指定天数前的已验证会话记录
-            cutoff_time = utcnow() - timedelta(days=days_old)
-
-            stmt = select(LoginSession).where(col(LoginSession.is_verified).is_(True))
+            stmt = select(LoginSession).where(
+                col(LoginSession.is_verified).is_(True), col(LoginSession.token_id).is_(None)
+            )
             result = await db.exec(stmt)
-            all_verified_sessions = result.all()
-
-            # 筛选出过期的记录
-            old_verified_sessions = [
-                session
-                for session in all_verified_sessions
-                if session.verified_at and session.verified_at < cutoff_time
-            ]
-
             # 删除旧的已验证记录
             deleted_count = 0
-            for session in old_verified_sessions:
+            for session in result.all():
                 await db.delete(session)
                 deleted_count += 1
 
             await db.commit()
 
             if deleted_count > 0:
-                logger.debug(
-                    f"[Cleanup Service] Cleaned up {deleted_count} verified sessions older than {days_old} days"
-                )
+                logger.debug(f"[Cleanup Service] Cleaned up {deleted_count} outdated verified sessions")
 
             return deleted_count
 
         except Exception as e:
             await db.rollback()
-            logger.error(f"[Cleanup Service] Error cleaning old verified sessions: {e!s}")
+            logger.error(f"[Cleanup Service] Error cleaning outdated verified sessions: {e!s}")
             return 0
 
     @staticmethod
@@ -325,14 +312,14 @@ class DatabaseCleanupService:
         # 清理7天前的已使用验证码
         results["old_used_verification_codes"] = await DatabaseCleanupService.cleanup_old_used_verification_codes(db, 7)
 
-        # 清理30天前的已验证会话
-        results["old_verified_sessions"] = await DatabaseCleanupService.cleanup_old_verified_sessions(db, 30)
-
         # 清理过期的受信任设备
         results["outdated_trusted_devices"] = await DatabaseCleanupService.cleanup_outdated_trusted_devices(db)
 
         # 清理过期的 OAuth 令牌
         results["outdated_oauth_tokens"] = await DatabaseCleanupService.cleanup_outdated_tokens(db)
+
+        # 清理过期（token 过期）的已验证会话
+        results["outdated_verified_sessions"] = await DatabaseCleanupService.cleanup_outdated_verified_sessions(db)
 
         total_cleaned = sum(results.values())
         if total_cleaned > 0:
@@ -391,10 +378,10 @@ class DatabaseCleanupService:
             )
 
             # 统计30天前的已验证会话数量
-            old_verified_sessions_stmt = select(LoginSession).where(col(LoginSession.is_verified).is_(True))
-            old_verified_sessions_result = await db.exec(old_verified_sessions_stmt)
-            all_verified_sessions = old_verified_sessions_result.all()
-            old_verified_sessions_count = len(
+            outdated_verified_sessions_stmt = select(LoginSession).where(col(LoginSession.is_verified).is_(True))
+            outdated_verified_sessions_result = await db.exec(outdated_verified_sessions_stmt)
+            all_verified_sessions = outdated_verified_sessions_result.all()
+            outdated_verified_sessions_count = len(
                 [
                     session
                     for session in all_verified_sessions
@@ -421,14 +408,14 @@ class DatabaseCleanupService:
                 "expired_login_sessions": expired_sessions_count,
                 "unverified_login_sessions": unverified_sessions_count,
                 "old_used_verification_codes": old_used_codes_count,
-                "old_verified_sessions": old_verified_sessions_count,
+                "outdated_verified_sessions": outdated_verified_sessions_count,
                 "outdated_oauth_tokens": outdated_tokens_count,
                 "outdated_trusted_devices": outdated_devices_count,
                 "total_cleanable": expired_codes_count
                 + expired_sessions_count
                 + unverified_sessions_count
                 + old_used_codes_count
-                + old_verified_sessions_count
+                + outdated_verified_sessions_count
                 + outdated_tokens_count
                 + outdated_devices_count,
             }
@@ -440,7 +427,7 @@ class DatabaseCleanupService:
                 "expired_login_sessions": 0,
                 "unverified_login_sessions": 0,
                 "old_used_verification_codes": 0,
-                "old_verified_sessions": 0,
+                "outdated_verified_sessions": 0,
                 "outdated_oauth_tokens": 0,
                 "outdated_trusted_devices": 0,
                 "total_cleanable": 0,
