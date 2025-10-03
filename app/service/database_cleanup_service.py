@@ -8,6 +8,8 @@ from datetime import timedelta
 
 from app.database.auth import OAuthToken
 from app.database.verification import EmailVerification, LoginSession, TrustedDevice
+from app.dependencies.database import with_db
+from app.dependencies.scheduler import get_scheduler
 from app.log import logger
 from app.utils import utcnow
 
@@ -432,3 +434,18 @@ class DatabaseCleanupService:
                 "outdated_trusted_devices": 0,
                 "total_cleanable": 0,
             }
+
+
+@get_scheduler().scheduled_job(
+    "interval",
+    id="cleanup_database",
+    hours=1,
+)
+async def scheduled_cleanup_job():
+    async with with_db() as session:
+        logger.debug("Starting database cleanup...")
+        results = await DatabaseCleanupService.run_full_cleanup(session)
+        total = sum(results.values())
+        if total > 0:
+            logger.debug(f"Cleanup completed, total records cleaned: {total}")
+        return results
