@@ -216,7 +216,11 @@ def extract_user_agent(user_agent: str | None) -> "UserAgentInfo":
     info.is_mobile = any(keyword in lower_ua for keyword in ("mobile", "iphone", "android", "ipod"))
     info.is_tablet = any(keyword in lower_ua for keyword in ("ipad", "tablet"))
     # Only classify as PC if not mobile or tablet
-    if not info.is_mobile and not info.is_tablet and any(keyword in lower_ua for keyword in ("windows", "macintosh", "linux", "x11")):
+    if (
+        not info.is_mobile
+        and not info.is_tablet
+        and any(keyword in lower_ua for keyword in ("windows", "macintosh", "linux", "x11"))
+    ):
         info.is_pc = True
 
     if info.is_tablet:
