@@ -52,6 +52,14 @@ def _get_difficulty_reduction_mods() -> set[str]:
     return mods
 
 
+async def visible_to_current_user(user: User, current_user: User | None, session: Database) -> bool:
+    if user.id == BANCHOBOT_ID:
+        return False
+    if current_user and current_user.id == user.id:
+        return True
+    return not await user.is_restricted(session)
+
+
 @router.get(
     "/users/",
     response_model=BatchUserResponse,
@@ -111,7 +119,9 @@ async def get_users(
         response = BatchUserResponse(users=cached_users)
         return response
     else:
-        searched_users = (await session.exec(select(User).limit(50))).all()
+        searched_users = (
+            await session.exec(select(User).limit(50).where(~User.is_restricted_query(col(User.id))))
+        ).all()
         users = []
         for searched_user in searched_users:
             if searched_user.id == BANCHOBOT_ID:
@@ -143,7 +153,7 @@ async def get_user_events(
     offset: Annotated[int | None, Query(description="活动日志的偏移量")] = None,
 ):
     db_user = await session.get(User, user_id)
-    if db_user is None or db_user.id == BANCHOBOT_ID or await db_user.is_restricted(session):
+    if db_user is None or not await visible_to_current_user(db_user, None, session):
         raise HTTPException(404, "User Not found")
     events = (
         await session.exec(
@@ -178,7 +188,7 @@ async def get_user_kudosu(
     """
     # 验证用户是否存在
     db_user = await session.get(User, user_id)
-    if db_user is None or db_user.id == BANCHOBOT_ID or await db_user.is_restricted(session):
+    if db_user is None or not await visible_to_current_user(db_user, None, session):
         raise HTTPException(404, "User not found")
 
     # TODO: 实现 kudosu 记录获取逻辑
@@ -218,7 +228,7 @@ async def get_user_beatmaps_passed(
         raise HTTPException(status_code=413, detail="beatmapset_ids cannot exceed 50 items")
 
     user = await session.get(User, user_id)
-    if not user or user.id == BANCHOBOT_ID or await user.is_restricted(session):
+    if user is None or not await visible_to_current_user(user, current_user, session):
         raise HTTPException(404, detail="User not found")
 
     allowed_mode: GameMode | None = None
@@ -429,7 +439,7 @@ async def get_user_beatmapsets(
 
     elif type == BeatmapsetType.FAVOURITE:
         user = await session.get(User, user_id)
-        if not user or user.id == BANCHOBOT_ID or await user.is_restricted(session):
+        if user is None or not await visible_to_current_user(user, current_user, session):
             raise HTTPException(404, detail="User not found")
         favourites = await user.awaitable_attrs.favourite_beatmapsets
         resp = [
@@ -437,9 +447,13 @@ async def get_user_beatmapsets(
         ]
 
     elif type == BeatmapsetType.MOST_PLAYED:
+        user = await session.get(User, user_id)
+        if user is None or not await visible_to_current_user(user, current_user, session):
+            raise HTTPException(404, detail="User not found")
+
         most_played = await session.exec(
             select(BeatmapPlaycounts)
-            .where(BeatmapPlaycounts.user_id == user_id, ~User.is_restricted_query(col(BeatmapPlaycounts.user_id)))
+            .where(BeatmapPlaycounts.user_id == user_id)
             .order_by(col(BeatmapPlaycounts.playcount).desc())
             .limit(limit)
             .offset(offset)
@@ -502,7 +516,7 @@ async def get_user_scores(
         return cached_scores
 
     db_user = await session.get(User, user_id)
-    if not db_user or db_user.id == BANCHOBOT_ID or await db_user.is_restricted(session):
+    if db_user is None or not await visible_to_current_user(db_user, current_user, session):
         raise HTTPException(404, detail="User not found")
 
     gamemode = mode or db_user.playmode
