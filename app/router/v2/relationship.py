@@ -114,7 +114,7 @@ async def add_relationship(
     if await current_user.is_restricted(db):
         raise HTTPException(403, "Your account is restricted and cannot perform this action.")
     if not (
-        await db.exec(select(exists()).where((User.id == target) | User.is_restricted_query(col(User.id))))
+        await db.exec(select(exists()).where((User.id == target) & ~User.is_restricted_query(col(User.id))))
     ).first():
         raise HTTPException(404, "Target user not found")
 
@@ -187,7 +187,7 @@ async def delete_relationship(
     if await current_user.is_restricted(db):
         raise HTTPException(403, "Your account is restricted and cannot perform this action.")
     if not (
-        await db.exec(select(exists()).where((User.id == target) | User.is_restricted_query(col(User.id))))
+        await db.exec(select(exists()).where((User.id == target) & ~User.is_restricted_query(col(User.id))))
     ).first():
         raise HTTPException(404, "Target user not found")
 

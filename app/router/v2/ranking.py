@@ -366,13 +366,13 @@ async def get_user_ranking(
 
     statistics_list = await session.exec(
         select(UserStatistics)
-        .where(*wheres)
+        .where(
+            *wheres,
+            ~User.is_restricted_query(col(UserStatistics.user_id)),
+        )
         .order_by(order_by)
         .limit(50)
         .offset(50 * (page - 1))
-        .where(
-            ~User.is_restricted_query(col(UserStatistics.user_id)),
-        )
     )
 
     # 转换为响应格式
