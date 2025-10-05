@@ -99,6 +99,7 @@ async def get_team_ranking(
                     UserStatistics.mode == ruleset,
                     UserStatistics.pp > 0,
                     col(UserStatistics.user).has(col(User.team_membership).has(col(TeamMember.team_id) == team.id)),
+                    ~User.is_restricted_query(col(UserStatistics.user_id)),
                 )
             )
         ).all()
@@ -249,6 +250,7 @@ async def get_country_ranking(
                     UserStatistics.pp > 0,
                     col(UserStatistics.user).has(country_code=country),
                     col(UserStatistics.user).has(is_active=True),
+                    ~User.is_restricted_query(col(UserStatistics.user_id)),
                 )
             )
         ).all()
@@ -363,7 +365,14 @@ async def get_user_ranking(
     total_count = total_count_result.one()
 
     statistics_list = await session.exec(
-        select(UserStatistics).where(*wheres).order_by(order_by).limit(50).offset(50 * (page - 1))
+        select(UserStatistics)
+        .where(*wheres)
+        .order_by(order_by)
+        .limit(50)
+        .offset(50 * (page - 1))
+        .where(
+            ~User.is_restricted_query(col(UserStatistics.user_id)),
+        )
     )
 
     # 转换为响应格式
