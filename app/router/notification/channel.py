@@ -90,6 +90,9 @@ async def join_channel(
     user: Annotated[str, Path(..., description="用户 ID")],
     current_user: Annotated[User, Security(get_current_user, scopes=["chat.write_manage"])],
 ):
+    if await current_user.is_restricted(session):
+        raise HTTPException(status_code=403, detail="You are restricted from sending messages")
+
     # 使用明确的查询避免延迟加载
     if channel.isdigit():
         db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.channel_id == int(channel)))).first()
@@ -114,6 +117,9 @@ async def leave_channel(
     user: Annotated[str, Path(..., description="用户 ID")],
     current_user: Annotated[User, Security(get_current_user, scopes=["chat.write_manage"])],
 ):
+    if await current_user.is_restricted(session):
+        raise HTTPException(status_code=403, detail="You are restricted from sending messages")
+
     # 使用明确的查询避免延迟加载
     if channel.isdigit():
         db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.channel_id == int(channel)))).first()
@@ -198,7 +204,7 @@ async def get_channel(
             if int(id_) == current_user.id:
                 continue
             target_user = await session.get(User, int(id_))
-            if target_user is None:
+            if target_user is None or await target_user.is_restricted(session):
                 raise HTTPException(status_code=404, detail="Target user not found")
             users.extend([target_user, current_user])
             break
@@ -249,9 +255,12 @@ async def create_channel(
     current_user: Annotated[User, Security(get_current_user, scopes=["chat.write_manage"])],
     redis: Redis,
 ):
+    if await current_user.is_restricted(session):
+        raise HTTPException(status_code=403, detail="You are restricted from sending messages")
+
     if req.type == "PM":
         target = await session.get(User, req.target_id)
-        if not target:
+        if not target or await target.is_restricted(session):
             raise HTTPException(status_code=404, detail="Target user not found")
         is_can_pm, block = await target.is_user_can_pm(current_user, session)
         if not is_can_pm:

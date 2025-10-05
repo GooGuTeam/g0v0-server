@@ -40,9 +40,13 @@ async def user_rename(
     返回:
     - 成功: None
     """
+    if await current_user.is_restricted(session):
+        # https://github.com/ppy/osu-web/blob/cae2fdf03cfb8c30c8e332cfb142e03188ceffef/app/Libraries/ChangeUsername.php#L48-L49
+        raise HTTPException(403, "Your account is restricted and cannot perform this action.")
+
     samename_user = (await session.exec(select(exists()).where(User.username == new_name))).first()
     if samename_user:
-        raise HTTPException(409, "Username Exisits")
+        raise HTTPException(409, "Username Exists")
     errors = validate_username(new_name)
     if errors:
         raise HTTPException(403, "\n".join(errors))
@@ -80,6 +84,8 @@ async def update_userpage(
     current_user: ClientUser,
 ):
     """更新用户页面内容"""
+    if await current_user.is_restricted(session):
+        raise HTTPException(403, "Your account is restricted and cannot perform this action.")
 
     try:
         # 处理BBCode内容

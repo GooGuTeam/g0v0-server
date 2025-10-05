@@ -38,6 +38,9 @@ async def can_rate_beatmapset(
     返回:
     - bool: 用户是否可以评价谱面集
     """
+    if await current_user.is_restricted(session):
+        return False
+
     user_id = current_user.id
     prev_ratings = (await session.exec(select(BeatmapRating).where(BeatmapRating.user_id == user_id))).first()
     if prev_ratings is not None:
@@ -73,6 +76,9 @@ async def rate_beatmaps(
     返回:
     - 成功: None
     """
+    if await current_user.is_restricted(session):
+        raise HTTPException(status_code=403, detail="Your account is restricted and cannot perform this action.")
+
     user_id = current_user.id
     current_beatmapset = (await session.exec(select(exists()).where(Beatmapset.id == beatmapset_id))).first()
     if not current_beatmapset:

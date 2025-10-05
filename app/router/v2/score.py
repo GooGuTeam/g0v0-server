@@ -255,9 +255,6 @@ async def get_beatmap_scores(
     ] = LeaderboardType.GLOBAL,
     limit: Annotated[int, Query(ge=1, le=200, description="返回条数 (1-200)")] = 50,
 ):
-    if legacy_only:
-        raise HTTPException(status_code=404, detail="this server only contains lazer scores")
-
     all_scores, user_score, count = await get_leaderboard(
         db,
         beatmap_id,
@@ -355,6 +352,7 @@ async def get_user_all_beatmap_scores(
                 Score.beatmap_id == beatmap_id,
                 Score.user_id == user_id,
                 col(Score.passed).is_(True),
+                ~User.is_restricted_query(col(Score.user_id)),
             )
             .order_by(col(Score.total_score).desc())
         )
@@ -433,7 +431,9 @@ async def create_playlist_score(
     current_user: ClientUser,
     version_hash: Annotated[str, Form(description="谱面版本哈希")] = "",
 ):
-    # 立即获取用户ID，避免懒加载问题
+    if await current_user.is_restricted(session):
+        raise HTTPException(status_code=403, detail="You are restricted from submitting multiplayer scores")
+
     user_id = current_user.id
 
     room = await session.get(Room, room_id)
@@ -499,7 +499,9 @@ async def submit_playlist_score(
     redis: Redis,
     fetcher: Fetcher,
 ):
-    # 立即获取用户ID，避免懒加载问题
+    if await current_user.is_restricted(session):
+        raise HTTPException(status_code=403, detail="You are restricted from submitting multiplayer scores")
+
     user_id = current_user.id
 
     item = (await session.exec(select(Playlist).where(Playlist.id == playlist_id, Playlist.room_id == room_id))).first()
@@ -574,6 +576,7 @@ async def index_playlist_scores(
                 PlaylistBestScore.playlist_id == playlist_id,
                 PlaylistBestScore.room_id == room_id,
                 PlaylistBestScore.total_score < cursor,
+                ~User.is_restricted_query(col(PlaylistBestScore.user_id)),
             )
             .order_by(col(PlaylistBestScore.total_score).desc())
             .limit(limit + 1)
@@ -641,6 +644,7 @@ async def show_playlist_score(
                         PlaylistBestScore.score_id == score_id,
                         PlaylistBestScore.playlist_id == playlist_id,
                         PlaylistBestScore.room_id == room_id,
+                        ~User.is_restricted_query(col(PlaylistBestScore.user_id)),
                     )
                 )
             ).first()
@@ -658,6 +662,7 @@ async def show_playlist_score(
                 select(PlaylistBestScore).where(
                     PlaylistBestScore.playlist_id == playlist_id,
                     PlaylistBestScore.room_id == room_id,
+                    ~User.is_restricted_query(col(PlaylistBestScore.user_id)),
                 )
             )
         ).all()
@@ -702,6 +707,7 @@ async def get_user_playlist_score(
                     PlaylistBestScore.user_id == user_id,
                     PlaylistBestScore.playlist_id == playlist_id,
                     PlaylistBestScore.room_id == room_id,
+                    ~User.is_restricted_query(col(PlaylistBestScore.user_id)),
                 )
             )
         ).first()

@@ -30,6 +30,7 @@ oauth2_password = OAuth2PasswordBearer(
     scopes={"*": "允许访问全部 API。"},
     description="osu!lazer 或网页客户端密码登录认证，具有全部权限",
     scheme_name="Password Grant",
+    auto_error=False,
 )
 
 oauth2_code = OAuth2AuthorizationCodeBearer(
@@ -48,6 +49,7 @@ oauth2_code = OAuth2AuthorizationCodeBearer(
     },
     description="osu! OAuth 认证 （授权码认证）",
     scheme_name="Authorization Code Grant",
+    auto_error=False,
 )
 
 oauth2_client_credentials = OAuth2ClientCredentialsBearer(
@@ -58,6 +60,7 @@ oauth2_client_credentials = OAuth2ClientCredentialsBearer(
     },
     description="osu! OAuth 认证 （客户端凭证流）",
     scheme_name="Client Credentials Grant",
+    auto_error=False,
 )
 
 v1_api_key = APIKeyQuery(name="k", scheme_name="V1 API Key", description="v1 API 密钥")
@@ -78,8 +81,11 @@ async def v1_authorize(
 
 async def get_client_user_and_token(
     db: Database,
-    token: Annotated[str, Depends(oauth2_password)],
+    token: Annotated[str | None, Depends(oauth2_password)],
 ) -> tuple[User, OAuthToken]:
+    if token is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
     token_record = await get_token_by_access_token(db, token)
     if not token_record:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
@@ -129,18 +135,11 @@ async def get_client_user(
     return user
 
 
-async def get_current_user_and_token(
+async def _validate_token(
     db: Database,
+    token: str,
     security_scopes: SecurityScopes,
-    token_pw: Annotated[str | None, Depends(oauth2_password)] = None,
-    token_code: Annotated[str | None, Depends(oauth2_code)] = None,
-    token_client_credentials: Annotated[str | None, Depends(oauth2_client_credentials)] = None,
 ) -> UserAndToken:
-    """获取当前认证用户"""
-    token = token_pw or token_code or token_client_credentials
-    if not token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
     token_record = await get_token_by_access_token(db, token)
     if not token_record:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
@@ -161,10 +160,39 @@ async def get_current_user_and_token(
     return user, token_record
 
 
+async def get_current_user_and_token(
+    db: Database,
+    security_scopes: SecurityScopes,
+    token_pw: Annotated[str | None, Depends(oauth2_password)] = None,
+    token_code: Annotated[str | None, Depends(oauth2_code)] = None,
+    token_client_credentials: Annotated[str | None, Depends(oauth2_client_credentials)] = None,
+) -> UserAndToken:
+    """获取当前认证用户"""
+    token = token_pw or token_code or token_client_credentials
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    return await _validate_token(db, token, security_scopes)
+
+
 async def get_current_user(
     user_and_token: UserAndToken = Depends(get_current_user_and_token),
 ) -> User:
     return user_and_token[0]
+
+
+async def get_optional_user(
+    db: Database,
+    security_scopes: SecurityScopes,
+    token_pw: Annotated[str | None, Depends(oauth2_password)] = None,
+    token_code: Annotated[str | None, Depends(oauth2_code)] = None,
+    token_client_credentials: Annotated[str | None, Depends(oauth2_client_credentials)] = None,
+) -> User | None:
+    token = token_pw or token_code or token_client_credentials
+    if not token:
+        return None
+
+    return (await _validate_token(db, token, security_scopes))[0]
 
 
 ClientUser = Annotated[User, Security(get_client_user, scopes=["*"])]

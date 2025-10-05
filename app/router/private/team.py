@@ -19,7 +19,7 @@ from .router import router
 
 from fastapi import File, Form, HTTPException, Path, Request
 from pydantic import BaseModel
-from sqlmodel import exists, select
+from sqlmodel import col, exists, select
 
 
 @router.post("/team", name="创建战队", response_model=Team, tags=["战队", "g0v0 API"])
@@ -38,6 +38,9 @@ async def create_team(
     flag 限制 240x120, 2MB; cover 限制 3000x2000, 10MB
     支持的图片格式: PNG、JPEG、GIF
     """
+    if await current_user.is_restricted(session):
+        raise HTTPException(status_code=403, detail="Your account is restricted and cannot perform this action.")
+
     user_id = current_user.id
     if (await current_user.awaitable_attrs.team_membership) is not None:
         raise HTTPException(status_code=403, detail="You are already in a team")
@@ -98,6 +101,9 @@ async def update_team(
     flag 限制 240x120, 2MB; cover 限制 3000x2000, 10MB
     支持的图片格式: PNG、JPEG、GIF
     """
+    if await current_user.is_restricted(session):
+        raise HTTPException(status_code=403, detail="Your account is restricted and cannot perform this action.")
+
     team = await session.get(Team, team_id)
     user_id = current_user.id
     if not team:
@@ -162,6 +168,9 @@ async def delete_team(
     current_user: ClientUser,
     redis: Redis,
 ):
+    if await current_user.is_restricted(session):
+        raise HTTPException(status_code=403, detail="Your account is restricted and cannot perform this action.")
+
     team = await session.get(Team, team_id)
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
@@ -190,7 +199,14 @@ async def get_team(
     session: Database,
     team_id: Annotated[int, Path(..., description="战队 ID")],
 ):
-    members = (await session.exec(select(TeamMember).where(TeamMember.team_id == team_id))).all()
+    members = (
+        await session.exec(
+            select(TeamMember).where(
+                TeamMember.team_id == team_id,
+                ~User.is_restricted_query(col(TeamMember.user_id)),
+            )
+        )
+    ).all()
     return TeamQueryResp(
         team=members[0].team,
         members=[await UserResp.from_db(m.user, session, include=BASE_INCLUDES) for m in members],
@@ -203,6 +219,9 @@ async def request_join_team(
     team_id: Annotated[int, Path(..., description="战队 ID")],
     current_user: ClientUser,
 ):
+    if await current_user.is_restricted(session):
+        raise HTTPException(status_code=403, detail="Your account is restricted and cannot perform this action.")
+
     team = await session.get(Team, team_id)
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
@@ -233,6 +252,9 @@ async def handle_request(
     current_user: ClientUser,
     redis: Redis,
 ):
+    if await current_user.is_restricted(session):
+        raise HTTPException(status_code=403, detail="Your account is restricted and cannot perform this action.")
+
     team = await session.get(Team, team_id)
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
@@ -274,6 +296,9 @@ async def kick_member(
     current_user: ClientUser,
     redis: Redis,
 ):
+    if await current_user.is_restricted(session):
+        raise HTTPException(status_code=403, detail="Your account is restricted and cannot perform this action.")
+
     team = await session.get(Team, team_id)
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")

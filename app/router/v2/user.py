@@ -15,10 +15,10 @@ from app.database import (
 from app.database.best_scores import BestScore
 from app.database.events import Event
 from app.database.score import LegacyScoreResp, Score, ScoreResp, get_user_first_scores
-from app.database.user import SEARCH_INCLUDED
+from app.database.user import ALL_INCLUDED, SEARCH_INCLUDED
 from app.dependencies.api_version import APIVersion
 from app.dependencies.database import Database, get_redis
-from app.dependencies.user import get_current_user
+from app.dependencies.user import get_current_user, get_optional_user
 from app.helpers.asset_proxy_helper import asset_proxy_response
 from app.log import log
 from app.models.mods import API_MODS
@@ -90,7 +90,11 @@ async def get_users(
 
         # 查询未缓存的用户
         if uncached_user_ids:
-            searched_users = (await session.exec(select(User).where(col(User.id).in_(uncached_user_ids)))).all()
+            searched_users = (
+                await session.exec(
+                    select(User).where(col(User.id).in_(uncached_user_ids), ~User.is_restricted_query(col(User.id)))
+                )
+            ).all()
 
             # 将查询到的用户添加到缓存并返回
             for searched_user in searched_users:
@@ -139,7 +143,7 @@ async def get_user_events(
     offset: Annotated[int | None, Query(description="活动日志的偏移量")] = None,
 ):
     db_user = await session.get(User, user_id)
-    if db_user is None or db_user.id == BANCHOBOT_ID:
+    if db_user is None or db_user.id == BANCHOBOT_ID or await db_user.is_restricted(session):
         raise HTTPException(404, "User Not found")
     events = (
         await session.exec(
@@ -174,7 +178,7 @@ async def get_user_kudosu(
     """
     # 验证用户是否存在
     db_user = await session.get(User, user_id)
-    if db_user is None or db_user.id == BANCHOBOT_ID:
+    if db_user is None or db_user.id == BANCHOBOT_ID or await db_user.is_restricted(session):
         raise HTTPException(404, "User not found")
 
     # TODO: 实现 kudosu 记录获取逻辑
@@ -214,7 +218,7 @@ async def get_user_beatmaps_passed(
         raise HTTPException(status_code=413, detail="beatmapset_ids cannot exceed 50 items")
 
     user = await session.get(User, user_id)
-    if not user or user.id == BANCHOBOT_ID:
+    if not user or user.id == BANCHOBOT_ID or await user.is_restricted(session):
         raise HTTPException(404, detail="User not found")
 
     allowed_mode: GameMode | None = None
@@ -282,7 +286,7 @@ async def get_user_info_ruleset(
     background_task: BackgroundTasks,
     user_id: Annotated[str, Path(description="用户 ID 或用户名")],
     ruleset: Annotated[GameMode | None, Path(description="指定 ruleset")],
-    # current_user: User = Security(get_current_user, scopes=["public"]),
+    current_user: User | None = Security(get_optional_user, scopes=["public"]),
 ):
     redis = get_redis()
     cache_service = get_user_cache_service(redis)
@@ -303,11 +307,18 @@ async def get_user_info_ruleset(
     ).first()
     if not searched_user or searched_user.id == BANCHOBOT_ID:
         raise HTTPException(404, detail="User not found")
+    searched_is_self = current_user is not None and current_user.id == searched_user.id
+    should_not_show = not searched_is_self and await searched_user.is_restricted(session)
+    if should_not_show:
+        raise HTTPException(404, detail="User not found")
 
+    include = SEARCH_INCLUDED
+    if searched_is_self:
+        include = ALL_INCLUDED
     user_resp = await UserResp.from_db(
         searched_user,
         session,
-        include=SEARCH_INCLUDED,
+        include=include,
         ruleset=ruleset,
     )
 
@@ -331,7 +342,7 @@ async def get_user_info(
     session: Database,
     request: Request,
     user_id: Annotated[str, Path(description="用户 ID 或用户名")],
-    # current_user: User = Security(get_current_user, scopes=["public"]),
+    current_user: User | None = Security(get_optional_user, scopes=["public"]),
 ):
     redis = get_redis()
     cache_service = get_user_cache_service(redis)
@@ -352,11 +363,18 @@ async def get_user_info(
     ).first()
     if not searched_user or searched_user.id == BANCHOBOT_ID:
         raise HTTPException(404, detail="User not found")
+    searched_is_self = current_user is not None and current_user.id == searched_user.id
+    should_not_show = not searched_is_self and await searched_user.is_restricted(session)
+    if should_not_show:
+        raise HTTPException(404, detail="User not found")
 
+    include = SEARCH_INCLUDED
+    if searched_is_self:
+        include = ALL_INCLUDED
     user_resp = await UserResp.from_db(
         searched_user,
         session,
-        include=SEARCH_INCLUDED,
+        include=include,
     )
 
     # 异步缓存结果
@@ -411,7 +429,7 @@ async def get_user_beatmapsets(
 
     elif type == BeatmapsetType.FAVOURITE:
         user = await session.get(User, user_id)
-        if not user:
+        if not user or user.id == BANCHOBOT_ID or await user.is_restricted(session):
             raise HTTPException(404, detail="User not found")
         favourites = await user.awaitable_attrs.favourite_beatmapsets
         resp = [
@@ -421,7 +439,7 @@ async def get_user_beatmapsets(
     elif type == BeatmapsetType.MOST_PLAYED:
         most_played = await session.exec(
             select(BeatmapPlaycounts)
-            .where(BeatmapPlaycounts.user_id == user_id)
+            .where(BeatmapPlaycounts.user_id == user_id, ~User.is_restricted_query(col(BeatmapPlaycounts.user_id)))
             .order_by(col(BeatmapPlaycounts.playcount).desc())
             .limit(limit)
             .offset(offset)
@@ -484,7 +502,7 @@ async def get_user_scores(
         return cached_scores
 
     db_user = await session.get(User, user_id)
-    if not db_user or db_user.id == BANCHOBOT_ID:
+    if not db_user or db_user.id == BANCHOBOT_ID or await db_user.is_restricted(session):
         raise HTTPException(404, detail="User not found")
 
     gamemode = mode or db_user.playmode

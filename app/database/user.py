@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 import json
-from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict
+from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict, overload
 
 from app.config import settings
 from app.database.auth import TotpKeys
@@ -18,10 +18,11 @@ from .events import Event
 from .rank_history import RankHistory, RankHistoryResp, RankTop
 from .statistics import UserStatistics, UserStatisticsResp
 from .team import Team, TeamMember
-from .user_account_history import UserAccountHistory, UserAccountHistoryResp
+from .user_account_history import UserAccountHistory, UserAccountHistoryResp, UserAccountHistoryType
 
 from pydantic import field_validator
 from sqlalchemy.ext.asyncio import AsyncAttrs
+from sqlalchemy.orm import Mapped
 from sqlmodel import (
     JSON,
     BigInteger,
@@ -31,8 +32,10 @@ from sqlmodel import (
     Relationship,
     SQLModel,
     col,
+    exists,
     func,
     select,
+    text,
 )
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -88,7 +91,6 @@ class UserBase(UTCBaseModel, SQLModel):
     badges: list[Badge] = Field(default_factory=list, sa_column=Column(JSON))
 
     # optional
-    is_restricted: bool = False
     # blocks
     cover: UserProfileCover = Field(
         default=UserProfileCover(url=""),
@@ -155,8 +157,8 @@ class User(AsyncAttrs, UserBase, table=True):
         default=None,
         sa_column=Column(BigInteger, primary_key=True, autoincrement=True, index=True),
     )
-    account_history: list[UserAccountHistory] = Relationship()
-    statistics: list[UserStatistics] = Relationship()
+    account_history: list[UserAccountHistory] = Relationship(back_populates="user")
+    statistics: list[UserStatistics] = Relationship(back_populates="user")
     achievement: list[UserAchievement] = Relationship(back_populates="user")
     team_membership: TeamMember | None = Relationship(back_populates="user")
     daily_challenge_stats: DailyChallengeStats | None = Relationship(back_populates="user")
@@ -206,7 +208,42 @@ class User(AsyncAttrs, UserBase, table=True):
             return False, "Target user has blocked you."
         if self.pm_friends_only and (not relationship or relationship.type != RelationshipType.FOLLOW):
             return False, "Target user has disabled non-friend communications"
+        if await self.is_restricted(session):
+            return False, "Target user is restricted"
         return True, ""
+
+    @classmethod
+    @overload
+    def is_restricted_query(cls, user_id: int): ...
+
+    @classmethod
+    @overload
+    def is_restricted_query(cls, user_id: Mapped[int]): ...
+
+    @classmethod
+    def is_restricted_query(cls, user_id: int | Mapped[int]):
+        return exists().where(
+            (col(UserAccountHistory.user_id) == user_id)
+            & (col(UserAccountHistory.type) == UserAccountHistoryType.RESTRICTION)
+            & (
+                (col(UserAccountHistory.permanent).is_(True))
+                | (
+                    (
+                        func.timestampadd(
+                            text("SECOND"),
+                            col(UserAccountHistory.length),
+                            col(UserAccountHistory.timestamp),
+                        )
+                        > func.now()
+                    )
+                    & (func.now() > col(UserAccountHistory.timestamp))
+                )
+            ),
+        )
+
+    async def is_restricted(self, session: AsyncSession) -> bool:
+        active_restrictions = (await session.exec(select(self.is_restricted_query(self.id)))).first()
+        return active_restrictions or False
 
 
 class UserResp(UserBase):
@@ -246,6 +283,7 @@ class UserResp(UserBase):
     daily_challenge_user_stats: DailyChallengeStatsResp | None = None
     default_group: str = ""
     is_deleted: bool = False  # TODO
+    is_restricted: bool = False
 
     # TODO: monthly_playcounts, unread_pm_count， rank_history, user_preferences
 
@@ -370,6 +408,8 @@ class UserResp(UserBase):
                     if rank_top
                     else None
                 )
+        if "is_restricted" in include:
+            u.is_restricted = await obj.is_restricted(session)
 
         u.favourite_beatmapset_count = (
             await session.exec(
@@ -468,6 +508,7 @@ ALL_INCLUDED = [
     "monthly_playcounts",
     "replays_watched_counts",
     "rank_history",
+    "is_restricted",
     "session_verified",
 ]
 

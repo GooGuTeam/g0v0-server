@@ -11,7 +11,7 @@ from app.database.chat import (
     UserSilenceResp,
 )
 from app.database.user import User
-from app.dependencies.database import Database, Redis
+from app.dependencies.database import Database, Redis, redis_message_client
 from app.dependencies.param import BodyOrForm
 from app.dependencies.user import get_current_user
 from app.log import log
@@ -79,6 +79,9 @@ async def send_message(
     req: Annotated[MessageReq, Depends(BodyOrForm(MessageReq))],
     current_user: Annotated[User, Security(get_current_user, scopes=["chat.write"])],
 ):
+    if await current_user.is_restricted(session):
+        raise HTTPException(status_code=403, detail="You are restricted from sending messages")
+
     # 使用明确的查询来获取 channel，避免延迟加载
     if channel.isdigit():
         db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.channel_id == int(channel)))).first()
@@ -97,9 +100,7 @@ async def send_message(
     # 对于多人游戏房间，在发送消息前进行Redis键检查
     if channel_type == ChannelType.MULTIPLAYER:
         try:
-            from app.dependencies.database import get_redis
-
-            redis = get_redis()
+            redis = redis_message_client
             key = f"channel:{channel_id}:messages"
             key_type = await redis.type(key)
             if key_type not in ["none", "zset"]:
@@ -265,9 +266,12 @@ async def create_new_pm(
     current_user: Annotated[User, Security(get_current_user, scopes=["chat.write"])],
     redis: Redis,
 ):
+    if await current_user.is_restricted(session):
+        raise HTTPException(status_code=403, detail="You are restricted from sending messages")
+
     user_id = current_user.id
     target = await session.get(User, req.target_id)
-    if target is None:
+    if target is None or await target.is_restricted(session):
         raise HTTPException(status_code=404, detail="Target user not found")
     is_can_pm, block = await target.is_user_can_pm(current_user, session)
     if not is_can_pm:

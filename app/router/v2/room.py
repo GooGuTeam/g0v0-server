@@ -143,6 +143,9 @@ async def create_room(
     current_user: ClientUser,
     redis: Redis,
 ):
+    if await current_user.is_restricted(db):
+        raise HTTPException(status_code=403, detail="Your account is restricted from multiplayer.")
+
     user_id = current_user.id
     db_room = await create_playlist_room_from_api(db, room, user_id)
     await _participate_room(db_room.id, user_id, db_room, db, redis)
@@ -189,6 +192,9 @@ async def delete_room(
     room_id: Annotated[int, Path(..., description="房间 ID")],
     current_user: ClientUser,
 ):
+    if await current_user.is_restricted(db):
+        raise HTTPException(status_code=403, detail="Your account is restricted from multiplayer.")
+
     db_room = (await db.exec(select(Room).where(Room.id == room_id))).first()
     if db_room is None:
         raise HTTPException(404, "Room not found")
@@ -211,6 +217,9 @@ async def add_user_to_room(
     redis: Redis,
     current_user: ClientUser,
 ):
+    if await current_user.is_restricted(db):
+        raise HTTPException(status_code=403, detail="Your account is restricted from multiplayer.")
+
     db_room = (await db.exec(select(Room).where(Room.id == room_id))).first()
     if db_room is not None:
         await _participate_room(room_id, user_id, db_room, db, redis)
@@ -235,6 +244,9 @@ async def remove_user_from_room(
     current_user: ClientUser,
     redis: Redis,
 ):
+    if await current_user.is_restricted(db):
+        raise HTTPException(status_code=403, detail="Your account is restricted from multiplayer.")
+
     db_room = (await db.exec(select(Room).where(Room.id == room_id))).first()
     if db_room is not None:
         participated_user = (

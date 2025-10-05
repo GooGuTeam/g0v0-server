@@ -10,7 +10,7 @@ from .router import router
 
 from fastapi import HTTPException, Path, Query, Request, Security
 from pydantic import BaseModel
-from sqlmodel import exists, select
+from sqlmodel import col, exists, select
 
 
 @router.get(
@@ -63,6 +63,7 @@ async def get_relationship(
         select(Relationship).where(
             Relationship.user_id == current_user.id,
             Relationship.type == relationship_type,
+            ~User.is_restricted_query(col(Relationship.target_id)),
         )
     )
     if api_version >= 20241022 or relationship_type == RelationshipType.BLOCK:
@@ -110,7 +111,11 @@ async def add_relationship(
     target: Annotated[int, Query(description="目标用户 ID")],
     current_user: ClientUser,
 ):
-    if not (await db.exec(select(exists()).where(User.id == target))).first():
+    if await current_user.is_restricted(db):
+        raise HTTPException(403, "Your account is restricted and cannot perform this action.")
+    if not (
+        await db.exec(select(exists()).where((User.id == target) | User.is_restricted_query(col(User.id))))
+    ).first():
         raise HTTPException(404, "Target user not found")
 
     relationship_type = RelationshipType.FOLLOW if request.url.path.endswith("/friends") else RelationshipType.BLOCK
@@ -179,7 +184,11 @@ async def delete_relationship(
     target: Annotated[int, Path(..., description="目标用户 ID")],
     current_user: ClientUser,
 ):
-    if not (await db.exec(select(exists()).where(User.id == target))).first():
+    if await current_user.is_restricted(db):
+        raise HTTPException(403, "Your account is restricted and cannot perform this action.")
+    if not (
+        await db.exec(select(exists()).where((User.id == target) | User.is_restricted_query(col(User.id))))
+    ).first():
         raise HTTPException(404, "Target user not found")
 
     relationship_type = RelationshipType.BLOCK if "/blocks/" in request.url.path else RelationshipType.FOLLOW

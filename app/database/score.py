@@ -501,6 +501,7 @@ async def _score_where(
     wheres: list[ColumnElement[bool] | TextClause] = [
         col(TotalScoreBestScore.beatmap_id) == beatmap,
         col(TotalScoreBestScore.gamemode) == mode,
+        ~User.is_restricted_query(col(TotalScoreBestScore.user_id)),
     ]
 
     if type == LeaderboardType.FRIENDS:

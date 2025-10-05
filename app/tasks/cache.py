@@ -6,7 +6,8 @@ from typing import Final
 
 from app.config import settings
 from app.database.score import Score
-from app.dependencies.database import get_redis
+from app.database.user import User
+from app.dependencies.database import get_redis, with_db
 from app.dependencies.fetcher import get_fetcher
 from app.dependencies.scheduler import get_scheduler
 from app.log import logger
@@ -107,9 +108,6 @@ async def schedule_user_cache_warmup_task() -> None:
 
         redis = get_redis()
         cache_service = get_user_cache_service(redis)
-
-        from app.dependencies.database import with_db
-
         async with with_db() as session:
             from app.database.statistics import UserStatistics
             from app.models.score import GameMode
@@ -119,7 +117,10 @@ async def schedule_user_cache_warmup_task() -> None:
                     top_users = (
                         await session.exec(
                             select(UserStatistics.user_id)
-                            .where(UserStatistics.mode == mode)
+                            .where(
+                                UserStatistics.mode == mode,
+                                ~User.is_restricted_query(col(UserStatistics.user_id)),
+                            )
                             .order_by(col(UserStatistics.pp).desc())
                             .limit(100)
                         )

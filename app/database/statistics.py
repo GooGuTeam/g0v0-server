@@ -77,7 +77,7 @@ class UserStatistics(AsyncAttrs, UserStatisticsBase, table=True):
 
     level_current: float = Field(default=1)
 
-    user: "User" = Relationship(back_populates="statistics")  # type: ignore[valid-type]
+    user: "User" = Relationship(back_populates="statistics")
 
 
 class UserStatisticsResp(UserStatisticsBase):

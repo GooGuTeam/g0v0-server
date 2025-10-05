@@ -58,6 +58,9 @@ async def vote_beatmap_tags(
     session: Database,
     current_user: Annotated[User, Depends(get_client_user)],
 ):
+    if await current_user.is_restricted(session):
+        raise HTTPException(status_code=403, detail="Your account is restricted and cannot perform this action.")
+
     try:
         get_tag_by_id(tag_id)
         beatmap = (await session.exec(select(exists()).where(Beatmap.id == beatmap_id))).first()
@@ -98,6 +101,9 @@ async def devote_beatmap_tags(
     - **beatmap_id**: 谱面ID
     - **tag_id**: 标签ID
     """
+    if await current_user.is_restricted(session):
+        raise HTTPException(status_code=403, detail="Your account is restricted and cannot perform this action.")
+
     try:
         tag = get_tag_by_id(tag_id)
         assert tag is not None
