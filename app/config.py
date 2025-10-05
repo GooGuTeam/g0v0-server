@@ -601,6 +601,11 @@ STORAGE_SETTINGS='{
         ),
         "反作弊设置",
     ]
+    allow_delete_scores: Annotated[
+        bool,
+        Field(default=False, description="允许用户删除自己的成绩"),
+        "反作弊设置",
+    ]
 
     # 存储设置
     storage_service: Annotated[
