@@ -3,6 +3,7 @@ from typing import Annotated, Literal
 
 from app.database.best_scores import BestScore
 from app.database.score import Score, get_leaderboard
+from app.database.user import User
 from app.dependencies.database import Database
 from app.models.mods import int_to_mods, mod_to_save, mods_to_int
 from app.models.score import GameMode, LeaderboardType
@@ -80,6 +81,7 @@ async def get_user_best(
                     Score.user_id == user if type == "id" or user.isdigit() else col(Score.user).has(username=user),
                     Score.gamemode == GameMode.from_int_extra(ruleset_id),
                     exists().where(col(BestScore.score_id) == Score.id),
+                    ~User.is_restricted_query(col(Score.user_id)),
                 )
                 .order_by(col(Score.pp).desc())
                 .options(joinedload(Score.beatmap))
@@ -112,6 +114,7 @@ async def get_user_recent(
                     Score.user_id == user if type == "id" or user.isdigit() else col(Score.user).has(username=user),
                     Score.gamemode == GameMode.from_int_extra(ruleset_id),
                     Score.ended_at > utcnow() - timedelta(hours=24),
+                    ~User.is_restricted_query(col(Score.user_id)),
                 )
                 .order_by(col(Score.pp).desc())
                 .options(joinedload(Score.beatmap))
@@ -147,6 +150,7 @@ async def get_scores(
                         Score.gamemode == GameMode.from_int_extra(ruleset_id),
                         Score.beatmap_id == beatmap_id,
                         Score.user_id == user if type == "id" or user.isdigit() else col(Score.user).has(username=user),
+                        ~User.is_restricted_query(col(Score.user_id)),
                     )
                     .options(joinedload(Score.beatmap))
                     .order_by(col(Score.classic_total_score).desc())
