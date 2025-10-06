@@ -514,6 +514,7 @@ ALL_INCLUDED = [
     "rank_history",
     "is_restricted",
     "session_verified",
+    "user_preference",
 ]
 
 
