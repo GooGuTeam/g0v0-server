@@ -178,6 +178,68 @@ class Preferences(BaseModel):
     discord: str | None = None
     profile_colour: str | None = None
 
+    @staticmethod
+    async def clear(current_user: User, fields: list[str]):
+        await current_user.awaitable_attrs.user_preference
+        user_pref: UserPreference | None = current_user.user_preference
+        if user_pref is None:
+            return
+        if len(fields) == 0:
+            fields = [
+                *PREFERENCE_FIELDS,
+                *USER_PROFILE_FIELDS_WITH_WEBSITE,
+                "profile_order",
+                "extra",
+                "playmode",
+                "profile_colour",
+            ]
+
+        for field in fields:
+            if field in PREFERENCE_FIELDS:
+                setattr(user_pref, field, UserPreference.model_fields[field].default)
+            elif field == "profile_order":
+                user_pref.extras_order = DEFAULT_ORDER
+            elif field == "extra":
+                user_pref.extra = {}
+
+        for field in fields:
+            if field in USER_PROFILE_FIELDS_WITH_WEBSITE:
+                setattr(current_user, field, None)
+            elif field == "playmode":
+                current_user.playmode = GameMode.OSU
+                current_user.g0v0_playmode = GameMode.OSU
+            elif field == "profile_colour":
+                current_user.profile_colour = None
+                current_user.profile_hue = None
+
+
+PREFERENCE_FIELDS = {
+    "theme",
+    "language",
+    "audio_autoplay",
+    "audio_muted",
+    "audio_volume",
+    "beatmapset_card_size",
+    "beatmap_download",
+    "beatmapset_show_nsfw",
+    "legacy_score_only",
+    "profile_cover_expanded",
+    "scoring_mode",
+    "user_list_filter",
+    "user_list_sort",
+    "user_list_view",
+}
+
+USER_PROFILE_FIELDS = {
+    "interests",
+    "location",
+    "occupation",
+    "twitter",
+    "discord",
+}
+
+USER_PROFILE_FIELDS_WITH_WEBSITE = USER_PROFILE_FIELDS | {"website"}
+
 
 @router.get(
     "/user/preferences",
@@ -222,7 +284,7 @@ async def get_user_preference(
     )
 
 
-@router.post(
+@router.patch(
     "/user/preferences",
     name="修改用户偏好设置",
     description="修改当前登录用户的偏好设置",
@@ -246,23 +308,7 @@ async def change_user_preference(
         user_pref = UserPreference(user_id=current_user.id)
         session.add(user_pref)
 
-    preference_fields = {
-        "theme",
-        "language",
-        "audio_autoplay",
-        "audio_muted",
-        "audio_volume",
-        "beatmapset_card_size",
-        "beatmap_download",
-        "beatmapset_show_nsfw",
-        "legacy_score_only",
-        "profile_cover_expanded",
-        "scoring_mode",
-        "user_list_filter",
-        "user_list_sort",
-        "user_list_view",
-    }
-    for field, value in request.model_dump(include=preference_fields, exclude_none=True).items():
+    for field, value in request.model_dump(include=PREFERENCE_FIELDS, exclude_none=True).items():
         setattr(user_pref, field, value)
 
     if request.profile_order is not None:
@@ -277,14 +323,7 @@ async def change_user_preference(
         current_user.playmode = request.playmode.to_base_ruleset()
         current_user.g0v0_playmode = request.playmode
 
-    user_fields = {
-        "interests",
-        "location",
-        "occupation",
-        "twitter",
-        "discord",
-    }
-    for field, value in request.model_dump(include=user_fields, exclude_none=True).items():
+    for field, value in request.model_dump(include=USER_PROFILE_FIELDS, exclude_none=True).items():
         setattr(current_user, field, value or None)
 
     if request.website is not None:
@@ -301,12 +340,36 @@ async def change_user_preference(
     await session.commit()
 
 
+@router.put(
+    "/user/preferences",
+    name="覆盖用户偏好设置",
+    description="使用提供的数据完整覆盖当前登录用户的偏好设置，未提供的字段将被重置为默认值。",
+    tags=["用户", "g0v0 API"],
+    status_code=204,
+)
+async def overwrite_user_preference(
+    request: Preferences,
+    session: Database,
+    current_user: ClientUser,
+    redis: Redis,
+):
+    if await current_user.is_restricted(session):
+        raise HTTPException(403, "Your account is restricted and cannot perform this action.")
+
+    await Preferences.clear(current_user, [])
+    await change_user_preference(request, session, current_user, redis)
+
+    cache_service = get_user_cache_service(redis)
+    await cache_service.invalidate_user_cache(current_user.id)
+    await session.commit()
+
+
 @router.delete(
     "/user/preferences",
-    status_code=204,
     name="删除用户偏好设置",
-    tags=["用户", "g0v0 API"],
     description="删除当前登录用户的偏好设置，恢复为默认值\n\n如果未指定字段，则删除所有可删除的偏好设置",
+    tags=["用户", "g0v0 API"],
+    status_code=204,
 )
 async def delete_user_preference(
     session: Database,
@@ -314,55 +377,10 @@ async def delete_user_preference(
     fields: list[str],
     redis: Redis,
 ):
-    preference_fields = {
-        "theme",
-        "language",
-        "audio_autoplay",
-        "audio_muted",
-        "audio_volume",
-        "beatmapset_card_size",
-        "beatmap_download",
-        "beatmapset_show_nsfw",
-        "legacy_score_only",
-        "profile_cover_expanded",
-        "scoring_mode",
-        "user_list_filter",
-        "user_list_sort",
-        "user_list_view",
-    }
-    user_fields = {
-        "interests",
-        "location",
-        "occupation",
-        "twitter",
-        "discord",
-        "website",
-    }
+    if await current_user.is_restricted(session):
+        raise HTTPException(403, "Your account is restricted and cannot perform this action.")
 
-    await current_user.awaitable_attrs.user_preference
-    user_pref: UserPreference | None = current_user.user_preference
-    if user_pref is None:
-        return
-    if len(fields) == 0:
-        fields = [*preference_fields, *user_fields, "profile_order", "extra", "playmode", "profile_colour"]
-
-    for field in fields:
-        if field in preference_fields:
-            setattr(user_pref, field, UserPreference.model_fields[field].default)
-        elif field == "profile_order":
-            user_pref.extras_order = DEFAULT_ORDER
-        elif field == "extra":
-            user_pref.extra = {}
-
-    for field in fields:
-        if field in user_fields:
-            setattr(current_user, field, None)
-        elif field == "playmode":
-            current_user.playmode = GameMode.OSU
-            current_user.g0v0_playmode = GameMode.OSU
-        elif field == "profile_colour":
-            current_user.profile_colour = None
-            current_user.profile_hue = None
+    await Preferences.clear(current_user, fields)
 
     cache_service = get_user_cache_service(redis)
     await cache_service.invalidate_user_cache(current_user.id)
