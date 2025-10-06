@@ -3,7 +3,6 @@ import json
 from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict, overload
 
 from app.config import settings
-from app.database.auth import TotpKeys
 from app.models.model import UTCBaseModel
 from app.models.score import GameMode
 from app.models.user import Country, Page
@@ -11,6 +10,7 @@ from app.path import STATIC_DIR
 from app.utils import utcnow
 
 from .achievement import UserAchievement, UserAchievementResp
+from .auth import TotpKeys
 from .beatmap_playcounts import BeatmapPlaycounts
 from .counts import CountResp, MonthlyPlaycounts, ReplayWatchedCount
 from .daily_challenge import DailyChallengeStats, DailyChallengeStatsResp
@@ -19,6 +19,7 @@ from .rank_history import RankHistory, RankHistoryResp, RankTop
 from .statistics import UserStatistics, UserStatisticsResp
 from .team import Team, TeamMember
 from .user_account_history import UserAccountHistory, UserAccountHistoryResp, UserAccountHistoryType
+from .user_preference import DEFAULT_ORDER, UserPreference
 
 from pydantic import field_validator
 from sqlalchemy.ext.asyncio import AsyncAttrs
@@ -112,18 +113,6 @@ class UserBase(UTCBaseModel, SQLModel):
     playstyle: list[str] = Field(default_factory=list, sa_column=Column(JSON))
     # TODO: post_count
     profile_hue: int | None = None
-    profile_order: list[str] = Field(
-        default_factory=lambda: [
-            "me",
-            "recent_activity",
-            "top_ranks",
-            "medals",
-            "historical",
-            "beatmaps",
-            "kudosu",
-        ],
-        sa_column=Column(JSON),
-    )
     title: str | None = None
     title_url: str | None = None
     twitter: str | None = None
@@ -136,6 +125,9 @@ class UserBase(UTCBaseModel, SQLModel):
     is_gmt: bool = False
     is_qat: bool = False
     is_bng: bool = False
+
+    # g0v0-extra
+    g0v0_playmode: GameMode = GameMode.OSU
 
     @field_validator("playmode", mode="before")
     @classmethod
@@ -170,6 +162,7 @@ class User(AsyncAttrs, UserBase, table=True):
     )
     events: list[Event] = Relationship(back_populates="user")
     totp_key: TotpKeys | None = Relationship(back_populates="user")
+    user_preference: UserPreference | None = Relationship(back_populates="user")
 
     email: str = Field(max_length=254, unique=True, index=True, exclude=True)
     priv: int = Field(default=1, exclude=True)
@@ -284,8 +277,12 @@ class UserResp(UserBase):
     default_group: str = ""
     is_deleted: bool = False  # TODO
     is_restricted: bool = False
+    user_preference: UserPreference | None = None
+    profile_order: list[str] = Field(
+        default_factory=lambda: DEFAULT_ORDER,
+    )
 
-    # TODO: monthly_playcounts, unread_pm_count， rank_history, user_preferences
+    # TODO: unread_pm_count
 
     @classmethod
     async def from_db(
@@ -332,6 +329,13 @@ class UserResp(UserBase):
         redis = get_redis()
         u.is_online = bool(await redis.exists(f"metadata:online:{obj.id}"))
         u.cover_url = obj.cover.get("url", "") if obj.cover else ""
+
+        await obj.awaitable_attrs.user_preference
+        if obj.user_preference:
+            u.profile_order = obj.user_preference.extras_order
+
+        if "user_preference" in include:
+            u.user_preference = obj.user_preference
 
         if "friends" in include:
             u.friends = [

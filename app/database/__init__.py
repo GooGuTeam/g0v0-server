@@ -68,6 +68,7 @@ from .user_account_history import (
     UserAccountHistoryType,
 )
 from .user_login_log import UserLoginLog
+from .user_preference import UserPreference
 from .verification import EmailVerification, LoginSession, LoginSessionResp, TrustedDevice, TrustedDeviceResp
 
 __all__ = [
@@ -143,6 +144,7 @@ __all__ = [
     "UserAchievementResp",
     "UserLoginLog",
     "UserNotification",
+    "UserPreference",
     "UserResp",
     "UserStatistics",
     "UserStatisticsResp",
