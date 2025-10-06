@@ -317,7 +317,7 @@ async def change_user_preference(
         user_pref.extras_order = request.profile_order
 
     if request.extra is not None:
-        user_pref.extra = {**(user_pref.extra or {}), **request.extra}
+        user_pref.extra = (user_pref.extra or {}) | request.extra
 
     if request.playmode is not None:
         current_user.playmode = request.playmode.to_base_ruleset()
@@ -334,7 +334,10 @@ async def change_user_preference(
 
     if request.profile_colour is not None:
         current_user.profile_colour = request.profile_colour.removeprefix("#")
-        current_user.profile_hue = hex_to_hue(request.profile_colour)
+        try:
+            current_user.profile_hue = hex_to_hue(request.profile_colour)
+        except ValueError:
+            raise HTTPException(400, "Invalid profile colour hex value")
 
     await cache_service.invalidate_user_cache(current_user.id)
     await session.commit()
