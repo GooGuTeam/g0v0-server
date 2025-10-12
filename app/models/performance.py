@@ -58,6 +58,13 @@ class OsuBeatmapAttributes(BeatmapAttributes):
     aim_difficult_strain_count: float
     speed_difficult_strain_count: float
 
+    # 2025 Q3 update
+    # aim_top_weighted_slider_factor: float
+    # speed_top_weighted_slider_factor: float
+    # nested_score_per_object: float
+    # legacy_score_base_multiplier: float
+    # maximum_legacy_combo_score: float
+
 
 # https://github.com/ppy/osu/blob/9ebc5b0a35452e50bd408af1db62cfc22a57b1f4/osu.Game.Rulesets.Taiko/Difficulty/TaikoDifficultyAttributes.cs
 class TaikoBeatmapAttributes(BeatmapAttributes):
