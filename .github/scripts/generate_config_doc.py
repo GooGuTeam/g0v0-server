@@ -1,6 +1,7 @@
 import datetime
 from enum import Enum
 import importlib.util
+from inspect import isclass
 import json
 from pathlib import Path
 import sys
@@ -82,11 +83,16 @@ def mapping_type(typ: type) -> str:
         if len(args) == 1:
             return f"array[{mapping_type(args[0])}]"
         return "array"
-    if issubclass(typ, Enum):
-        return f"enum({', '.join([e.value for e in typ])})"
+    elif get_origin(typ) is dict:
+        args = typ.__args__
+        if len(args) == 2:
+            return f"object[{mapping_type(args[0])}, {mapping_type(args[1])}]"
+        return "object"
     elif get_origin(typ) is Literal:
         return f"enum({', '.join([str(n) for n in typ.__args__])})"
-    elif issubclass(typ, BaseSettings):
+    elif isclass(typ) and issubclass(typ, Enum):
+        return f"enum({', '.join([e.value for e in typ])})"
+    elif isclass(typ) and issubclass(typ, BaseSettings):
         return typ.__name__
     return "unknown"
 
