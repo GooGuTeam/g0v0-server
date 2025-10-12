@@ -486,6 +486,21 @@ STORAGE_SETTINGS='{
         "游戏设置",
     ]
 
+    # 表现计算设置
+    calculator: Annotated[
+        Literal["rosu"],
+        Field(default="rosu", description="表现分计算器"),
+        "表现计算设置",
+    ]
+    calculator_config: Annotated[
+        dict[str, Any],
+        Field(
+            default={},
+            description="表现分计算器配置 (JSON 格式)，具体配置项请参考上方",
+        ),
+        "表现计算设置",
+    ]
+
     # 谱面缓存设置
     enable_beatmap_preload: Annotated[
         bool,
@@ -612,7 +627,7 @@ STORAGE_SETTINGS='{
     # 反作弊设置
     suspicious_score_check: Annotated[
         bool,
-        Field(default=True, description="启用可疑分数检查（star>25&acc<80 或 pp>3000）"),
+        Field(default=True, description="启用可疑分数检查（pp>3000）"),
         "反作弊设置",
     ]
     banned_name: Annotated[

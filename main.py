@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 import json
 from pathlib import Path
 
+from app.calculator import init_calculator
 from app.config import settings
 from app.database import User
 from app.dependencies.database import (
@@ -58,10 +59,11 @@ import sentry_sdk
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # noqa: ARG001
     # === on startup ===
-    # init mods and achievements
+    # init mods, achievements and performance calculator
     init_mods()
     init_ranked_mods()
     load_achievements()
+    init_calculator()
 
     # init rate limiter
     await FastAPILimiter.init(redis_rate_limit_client)

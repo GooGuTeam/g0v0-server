@@ -3,14 +3,15 @@ import hashlib
 import json
 from typing import Annotated
 
+from app.calculators.performance import ConvertError
 from app.database import Beatmap, BeatmapResp, User
 from app.database.beatmap import calculate_beatmap_attributes
 from app.dependencies.database import Database, Redis
 from app.dependencies.fetcher import Fetcher
 from app.dependencies.user import get_current_user
 from app.helpers.asset_proxy_helper import asset_proxy_response
-from app.models.beatmap import BeatmapAttributes
 from app.models.mods import APIMod, int_to_mods
+from app.models.performance import BeatmapAttributes, OsuBeatmapAttributes, TaikoBeatmapAttributes
 from app.models.score import (
     GameMode,
 )
@@ -20,7 +21,6 @@ from .router import router
 from fastapi import HTTPException, Path, Query, Security
 from httpx import HTTPError, HTTPStatusError
 from pydantic import BaseModel
-import rosu_pp_py as rosu
 from sqlmodel import col, select
 
 
@@ -127,7 +127,7 @@ async def batch_get_beatmaps(
     "/beatmaps/{beatmap_id}/attributes",
     tags=["谱面"],
     name="计算谱面属性",
-    response_model=BeatmapAttributes,
+    response_model=BeatmapAttributes | OsuBeatmapAttributes | TaikoBeatmapAttributes,
     description=("计算谱面指定 mods / ruleset 下谱面的难度属性 (难度/PP 相关属性)。"),
 )
 async def get_beatmap_attributes(
@@ -171,5 +171,5 @@ async def get_beatmap_attributes(
         return await calculate_beatmap_attributes(beatmap_id, ruleset, mods_, redis, fetcher)
     except HTTPStatusError:
         raise HTTPException(status_code=404, detail="Beatmap not found")
-    except rosu.ConvertError as e:  # pyright: ignore[reportAttributeAccessIssue]
-        raise HTTPException(status_code=400, detail=str(e)) from e
+    except ConvertError as e:
+        raise HTTPException(status_code=400, detail=str(e))

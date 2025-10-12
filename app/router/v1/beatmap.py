@@ -10,6 +10,7 @@ from app.dependencies.database import Database, Redis
 from app.dependencies.fetcher import Fetcher
 from app.models.beatmap import BeatmapRankStatus, Genre, Language
 from app.models.mods import int_to_mods
+from app.models.performance import OsuBeatmapAttributes
 from app.models.score import GameMode
 
 from .router import AllStrModel, router
@@ -193,7 +194,12 @@ async def get_beatmaps(
                     redis,
                     fetcher,
                 )
-                results.append(await V1Beatmap.from_db(session, beatmap, attrs.aim_difficulty, attrs.speed_difficulty))
+                aim_diff = None
+                speed_diff = None
+                if isinstance(attrs, OsuBeatmapAttributes):
+                    aim_diff = attrs.aim_difficulty
+                    speed_diff = attrs.speed_difficulty
+                results.append(await V1Beatmap.from_db(session, beatmap, aim_diff, speed_diff))
                 continue
             except Exception:
                 ...

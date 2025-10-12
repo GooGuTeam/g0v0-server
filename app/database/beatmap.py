@@ -1,14 +1,14 @@
-import asyncio
 from datetime import datetime
 import hashlib
 from typing import TYPE_CHECKING
 
-from app.calculator import calculate_beatmap_attribute
+from app.calculator import get_calculator
 from app.config import settings
 from app.database.beatmap_tags import BeatmapTagVote
 from app.database.failtime import FailTime, FailTimeResp
-from app.models.beatmap import BeatmapAttributes, BeatmapRankStatus
+from app.models.beatmap import BeatmapRankStatus
 from app.models.mods import APIMod
+from app.models.performance import DIFFICULTY_CLASS, BeatmapAttributes
 from app.models.score import GameMode
 
 from .beatmap_playcounts import BeatmapPlaycounts
@@ -247,10 +247,13 @@ async def calculate_beatmap_attributes(
     redis: Redis,
     fetcher: "Fetcher",
 ):
+    attr_class = DIFFICULTY_CLASS.get(ruleset, BeatmapAttributes)
+
     key = f"beatmap:{beatmap_id}:{ruleset}:{hashlib.sha256(str(mods_).encode()).hexdigest()}:attributes"
     if await redis.exists(key):
-        return BeatmapAttributes.model_validate_json(await redis.get(key))
+        return attr_class.model_validate_json(await redis.get(key))
     resp = await fetcher.get_or_fetch_beatmap_raw(redis, beatmap_id)
-    attr = await asyncio.get_event_loop().run_in_executor(None, calculate_beatmap_attribute, resp, ruleset, mods_)
+
+    attr = await get_calculator().calculate_difficulty(resp, mods_, ruleset)
     await redis.set(key, attr.model_dump_json())
     return attr
