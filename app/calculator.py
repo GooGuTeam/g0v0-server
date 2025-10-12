@@ -29,7 +29,7 @@ def init_calculator():
     global CALCULATOR
     try:
         module = importlib.import_module(f"app.calculators.performance.{settings.calculator}")
-        CALCULATOR = module.PerformanceCalculator()
+        CALCULATOR = module.PerformanceCalculator(**settings.calculator_config)
     except (ImportError, AttributeError) as e:
         raise ImportError(f"Failed to import performance calculator for {settings.calculator}") from e
     return CALCULATOR

@@ -53,7 +53,7 @@ class OsuBeatmapAttributes(BeatmapAttributes):
     aim_difficult_slider_count: float
     speed_difficulty: float
     speed_note_count: float
-    flashlight_difficulty: float
+    flashlight_difficulty: float | None = None
     slider_factor: float
     aim_difficult_strain_count: float
     speed_difficult_strain_count: float
