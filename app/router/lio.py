@@ -159,10 +159,7 @@ def _validate_playlist_items(items: list[dict[str, Any]]) -> None:
 
 async def _create_room(db: Database, room_data: dict[str, Any]) -> tuple[Room, int]:
     host_user_id = room_data.get("user_id", BANCHOBOT_ID)
-    if "match_type" in room_data:
-        match_type = room_data["match_type"]
-    else:
-        match_type = "Matchmaking" if host_user_id == BANCHOBOT_ID else "HeadToHead"
+    match_type = room_data.get("match_type", "HeadToHead" if host_user_id != BANCHOBOT_ID else "Matchmaking")
     room_name = room_data.get("name", f"{match_type} room: {utcnow().isoformat()}")
     password = room_data.get("password")
     queue_mode = room_data.get("queue_mode", "HostOnly")
