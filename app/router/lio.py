@@ -4,6 +4,7 @@ import base64
 import json
 from typing import Any
 
+from app.const import BANCHOBOT_ID
 from app.database.chat import ChannelType, ChatChannel  # ChatChannel 模型 & 枚举
 from app.database.playlists import Playlist as DBPlaylist
 from app.database.room import Room
@@ -15,7 +16,7 @@ from app.dependencies.storage import StorageService
 from app.log import log
 from app.models.playlist import PlaylistItem
 from app.models.room import MatchType, QueueMode, RoomCategory, RoomStatus
-from app.utils import utcnow
+from app.utils import camel_to_snake, utcnow
 
 from .notification.server import server
 
@@ -91,12 +92,12 @@ async def _validate_user_exists(db: Database, user_id: int) -> User:
 def _parse_room_enums(match_type: str, queue_mode: str) -> tuple[MatchType, QueueMode]:
     """Parse and validate room type enums."""
     try:
-        match_type_enum = MatchType(match_type.lower())
+        match_type_enum = MatchType(camel_to_snake(match_type))
     except ValueError:
         match_type_enum = MatchType.HEAD_TO_HEAD
 
     try:
-        queue_mode_enum = QueueMode(queue_mode.lower())
+        queue_mode_enum = QueueMode(camel_to_snake(queue_mode))
     except ValueError:
         queue_mode_enum = QueueMode.HOST_ONLY
 
@@ -157,10 +158,10 @@ def _validate_playlist_items(items: list[dict[str, Any]]) -> None:
 
 
 async def _create_room(db: Database, room_data: dict[str, Any]) -> tuple[Room, int]:
-    host_user_id = room_data.get("user_id")
-    room_name = room_data.get("name", "Unnamed Room")
+    host_user_id = room_data.get("user_id", BANCHOBOT_ID)
+    match_type = room_data.get("match_type", "HeadToHead" if host_user_id != BANCHOBOT_ID else "Matchmaking")
+    room_name = room_data.get("name", f"{match_type} room: {utcnow().isoformat()}")
     password = room_data.get("password")
-    match_type = room_data.get("match_type", "HeadToHead")
     queue_mode = room_data.get("queue_mode", "HostOnly")
 
     if not host_user_id or not isinstance(host_user_id, int):

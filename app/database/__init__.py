@@ -33,6 +33,11 @@ from .item_attempts_count import (
     ItemAttemptsResp,
     PlaylistAggregateScore,
 )
+from .matchmaking import (
+    MatchmakingPool,
+    MatchmakingPoolBeatmap,
+    MatchmakingUserStats,
+)
 from .multiplayer_event import MultiplayerEvent, MultiplayerEventResp
 from .notification import Notification, UserNotification
 from .password_reset import PasswordReset
@@ -98,6 +103,9 @@ __all__ = [
     "ItemAttemptsResp",
     "LoginSession",
     "LoginSessionResp",
+    "MatchmakingPool",
+    "MatchmakingPoolBeatmap",
+    "MatchmakingUserStats",
     "MeResp",
     "MonthlyPlaycounts",
     "MultiplayerEvent",
