@@ -1,7 +1,3 @@
-from __future__ import annotations
-
-from app.signalr import signalr_router as signalr_router
-
 from .auth import router as auth_router
 from .fetcher import fetcher_router as fetcher_router
 from .file import file_router as file_router
@@ -26,5 +22,4 @@ __all__ = [
     "private_router",
     "redirect_api_router",
     "redirect_router",
-    "signalr_router",
 ]

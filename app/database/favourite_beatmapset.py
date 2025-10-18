@@ -1,7 +1,7 @@
 import datetime
 
 from app.database.beatmapset import Beatmapset
-from app.database.lazer_user import User
+from app.database.user import User
 
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import (

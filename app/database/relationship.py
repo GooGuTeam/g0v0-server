@@ -1,6 +1,6 @@
 from enum import Enum
 
-from .lazer_user import User, UserResp
+from .user import User, UserResp
 
 from pydantic import BaseModel
 from sqlmodel import (

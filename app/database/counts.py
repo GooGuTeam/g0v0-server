@@ -11,7 +11,7 @@ from sqlmodel import (
 )
 
 if TYPE_CHECKING:
-    from .lazer_user import User
+    from .user import User
 
 
 class CountBase(SQLModel):

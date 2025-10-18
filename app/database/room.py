@@ -1,9 +1,8 @@
 from datetime import datetime
 
-from app.database.playlist_attempts import PlaylistAggregateScore
+from app.database.item_attempts_count import PlaylistAggregateScore
 from app.database.room_participated_user import RoomParticipatedUser
 from app.models.model import UTCBaseModel
-from app.models.multiplayer_hub import ServerMultiplayerRoom
 from app.models.room import (
     MatchType,
     QueueMode,
@@ -14,8 +13,8 @@ from app.models.room import (
 )
 from app.utils import utcnow
 
-from .lazer_user import User, UserResp
 from .playlists import Playlist, PlaylistResp
+from .user import User, UserResp
 
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import (
@@ -27,6 +26,7 @@ from sqlmodel import (
     Relationship,
     SQLModel,
     col,
+    func,
     select,
 )
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -118,15 +118,35 @@ class RoomResp(RoomBase):
         resp.difficulty_range = difficulty_range
         resp.current_playlist_item = resp.playlist[-1] if resp.playlist else None
         resp.recent_participants = []
-        for recent_participant in await session.exec(
-            select(RoomParticipatedUser)
-            .where(
-                RoomParticipatedUser.room_id == room.id,
-                col(RoomParticipatedUser.left_at).is_(None),
+        if room.category == RoomCategory.REALTIME:
+            query = (
+                select(RoomParticipatedUser)
+                .where(
+                    RoomParticipatedUser.room_id == room.id,
+                    col(RoomParticipatedUser.left_at).is_(None),
+                )
+                .limit(8)
+                .order_by(col(RoomParticipatedUser.joined_at).desc())
             )
-            .limit(8)
-            .order_by(col(RoomParticipatedUser.joined_at).desc())
-        ):
+        else:
+            query = (
+                select(RoomParticipatedUser)
+                .where(
+                    RoomParticipatedUser.room_id == room.id,
+                )
+                .limit(8)
+                .order_by(col(RoomParticipatedUser.joined_at).desc())
+            )
+            resp.participant_count = (
+                await session.exec(
+                    select(func.count())
+                    .select_from(RoomParticipatedUser)
+                    .where(
+                        RoomParticipatedUser.room_id == room.id,
+                    )
+                )
+            ).first() or 0
+        for recent_participant in await session.exec(query):
             resp.recent_participants.append(
                 await UserResp.from_db(
                     await recent_participant.awaitable_attrs.user,
@@ -137,25 +157,6 @@ class RoomResp(RoomBase):
         resp.host = await UserResp.from_db(await room.awaitable_attrs.host, session, include=["statistics"])
         if "current_user_score" in include and user:
             resp.current_user_score = await PlaylistAggregateScore.from_db(room.id, user.id, session)
-        return resp
-
-    @classmethod
-    async def from_hub(cls, server_room: ServerMultiplayerRoom) -> "RoomResp":
-        room = server_room.room
-        resp = cls(
-            id=room.room_id,
-            name=room.settings.name,
-            type=room.settings.match_type,
-            queue_mode=room.settings.queue_mode,
-            auto_skip=room.settings.auto_skip,
-            auto_start_duration=int(room.settings.auto_start_duration.total_seconds()),
-            status=server_room.status,
-            category=server_room.category,
-            # duration = room.settings.duration,
-            starts_at=server_room.start_at,
-            participant_count=len(room.users),
-            channel_id=server_room.room.channel_id or 0,
-        )
         return resp
 
 

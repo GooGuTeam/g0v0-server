@@ -2,8 +2,6 @@
 邮件验证服务
 """
 
-from __future__ import annotations
-
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import secrets
@@ -18,12 +16,12 @@ class EmailService:
     """邮件发送服务"""
 
     def __init__(self):
-        self.smtp_server = getattr(settings, "smtp_server", "localhost")
-        self.smtp_port = getattr(settings, "smtp_port", 587)
-        self.smtp_username = getattr(settings, "smtp_username", "")
-        self.smtp_password = getattr(settings, "smtp_password", "")
-        self.from_email = getattr(settings, "from_email", "noreply@example.com")
-        self.from_name = getattr(settings, "from_name", "osu! server")
+        self.smtp_server = settings.smtp_server
+        self.smtp_port = settings.smtp_port
+        self.smtp_username = settings.smtp_username
+        self.smtp_password = settings.smtp_password
+        self.from_email = settings.from_email
+        self.from_name = settings.from_name
 
     def generate_verification_code(self) -> str:
         """生成8位验证码"""
@@ -52,7 +50,7 @@ class EmailService:
             line-height: 1.6;
         }}
         .header {{
-            background: linear-gradient(135deg, #ff66aa, #ff9966);
+            background: #ED8EA6;
             color: white;
             padding: 20px;
             text-align: center;
@@ -65,7 +63,7 @@ class EmailService:
         }}
         .code {{
             background: #fff;
-            border: 2px solid #ff66aa;
+            border: 2px solid #ED8EA6;
             border-radius: 8px;
             padding: 15px;
             text-align: center;
@@ -147,11 +145,11 @@ class EmailService:
 
                 server.send_message(msg)
 
-            logger.info(f"[Email Verification] Successfully sent verification code to {email}")
+            logger.info(f"Successfully sent verification code to {email}")
             return True
 
         except Exception as e:
-            logger.error(f"[Email Verification] Failed to send email: {e}")
+            logger.error(f"Failed to send email: {e}")
             return False
 
 

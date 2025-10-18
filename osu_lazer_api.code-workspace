@@ -4,10 +4,7 @@
 			"path": "."
 		},
 		{
-			"path": "packages/msgpack_lazer_api"
-		},
-    {
-      "path": "spectator-server"
-    }
+			"path": "spectator-server"
+		}
 	]
 }

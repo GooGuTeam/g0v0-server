@@ -1,5 +1,4 @@
-from __future__ import annotations
-
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from app.models.score import GameMode
@@ -13,7 +12,7 @@ class UTCBaseModel(BaseModel):
         if isinstance(v, datetime):
             if v.tzinfo is None:
                 v = v.replace(tzinfo=UTC)
-            return v.astimezone(UTC).isoformat()
+            return v.astimezone(UTC).isoformat().replace("+00:00", "Z")
         return v
 
 
@@ -53,3 +52,33 @@ class CurrentUserAttributes(BaseModel):
     can_new_comment: bool | None = None
     can_new_comment_reason: str | None = None
     pin: PinAttributes | None = None
+
+
+@dataclass
+class UserAgentInfo:
+    raw_ua: str = ""
+    browser: str | None = None
+    version: str | None = None
+    os: str | None = None
+    platform: str | None = None
+    is_mobile: bool = False
+    is_tablet: bool = False
+    is_pc: bool = False
+    is_client: bool = False
+
+    @property
+    def displayed_name(self) -> str:
+        parts = []
+        if self.browser:
+            parts.append(self.browser)
+            if self.version:
+                parts.append(self.version)
+        if self.os:
+            if parts:
+                parts.append(f"on {self.os}")
+            else:
+                parts.append(self.os)
+        return " ".join(parts) if parts else "Unknown"
+
+    def __str__(self) -> str:
+        return self.displayed_name

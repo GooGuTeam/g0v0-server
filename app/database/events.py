@@ -18,7 +18,7 @@ from sqlmodel import (
 )
 
 if TYPE_CHECKING:
-    from .lazer_user import User
+    from .user import User
 
 
 class EventType(str, Enum):
@@ -57,6 +57,28 @@ class Event(UTCBaseModel, SQLModel, table=True):
             "createdAt": self.created_at.replace(tzinfo=UTC).isoformat(),
             "type": self.type.value,
         }
-        for k, v in self.event_payload.items():
-            d[k] = v
+
+        # 临时修复：统一成就事件格式 (TODO: 可在数据迁移完成后移除)
+        if self.type == EventType.ACHIEVEMENT and "achievement" in self.event_payload:
+            achievement_data = self.event_payload["achievement"]
+            if "achievement_id" in achievement_data and (
+                "name" not in achievement_data or "slug" not in achievement_data
+            ):
+                from app.models.achievement import MEDALS
+
+                achievement_id = achievement_data["achievement_id"]
+                for medal in MEDALS:
+                    if medal.id == achievement_id:
+                        fixed_payload = dict(self.event_payload)
+                        fixed_payload["achievement"] = {"name": medal.name, "slug": medal.assets_id}
+                        for k, v in fixed_payload.items():
+                            d[k] = v
+                        return d
+
+            for k, v in self.event_payload.items():
+                d[k] = v
+        else:
+            for k, v in self.event_payload.items():
+                d[k] = v
+
         return d

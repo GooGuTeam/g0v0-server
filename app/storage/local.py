@@ -32,8 +32,8 @@ class LocalStorageService(StorageService):
         self,
         file_path: str,
         content: bytes,
-        content_type: str = "application/octet-stream",
-        cache_control: str = "public, max-age=31536000",
+        content_type: str = "application/octet-stream",  # noqa: ARG002
+        cache_control: str = "public, max-age=31536000",  # noqa: ARG002
     ) -> None:
         full_path = self._get_file_path(file_path)
         full_path.parent.mkdir(parents=True, exist_ok=True)
@@ -78,3 +78,8 @@ class LocalStorageService(StorageService):
 
     async def get_file_url(self, file_path: str) -> str:
         return f"{settings.server_url}file/{file_path.lstrip('/')}"
+
+    def get_file_name_by_url(self, url: str) -> str | None:
+        if not url.startswith(str(settings.server_url)):
+            return None
+        return url[len(settings.server_url) + len("file/") :]

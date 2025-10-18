@@ -2,26 +2,33 @@
 会话验证路由 - 实现类似 osu! 的邮件验证流程 (API v2)
 """
 
-from __future__ import annotations
+from typing import Annotated, Literal
 
-from typing import Annotated
-
-from app.database import User
-from app.dependencies import get_current_user
-from app.dependencies.database import Database, get_redis
-from app.dependencies.geoip import GeoIPHelper, get_geoip_helper
-from app.service.email_verification_service import (
+from app.auth import check_totp_backup_code, verify_totp_key_with_replay_protection
+from app.config import settings
+from app.const import BACKUP_CODE_LENGTH, SUPPORT_TOTP_VERIFICATION_VER
+from app.database.auth import TotpKeys
+from app.dependencies.api_version import APIVersion
+from app.dependencies.database import Database, Redis, get_redis
+from app.dependencies.geoip import IPAddress
+from app.dependencies.user import UserAndToken, get_client_user_and_token
+from app.dependencies.user_agent import UserAgentInfo
+from app.log import log
+from app.service.login_log_service import LoginLogService
+from app.service.verification_service import (
     EmailVerificationService,
     LoginSessionService,
 )
-from app.service.login_log_service import LoginLogService
 
 from .router import router
 
-from fastapi import Depends, Form, HTTPException, Request, Security, status
-from fastapi.responses import Response
+from fastapi import Depends, Form, Header, HTTPException, Request, Security, status
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
-from redis.asyncio import Redis
+
+
+class VerifyMethod(BaseModel):
+    method: Literal["totp", "mail"] = "mail"
 
 
 class SessionReissueResponse(BaseModel):
@@ -31,69 +38,152 @@ class SessionReissueResponse(BaseModel):
     message: str
 
 
+class VerifyFailedError(Exception):
+    def __init__(self, message: str, reason: str | None = None, should_reissue: bool = False):
+        super().__init__(message)
+        self.reason = reason
+        self.should_reissue = should_reissue
+
+
 @router.post(
     "/session/verify",
     name="验证会话",
     description="验证邮件验证码并完成会话认证",
     status_code=204,
+    tags=["验证"],
+    responses={
+        401: {"model": VerifyMethod, "description": "验证失败，返回当前使用的验证方法"},
+        204: {"description": "验证成功，无内容返回"},
+    },
 )
 async def verify_session(
     request: Request,
     db: Database,
+    api_version: APIVersion,
+    user_agent: UserAgentInfo,
+    ip_address: IPAddress,
     redis: Annotated[Redis, Depends(get_redis)],
-    verification_key: str = Form(..., description="8位邮件验证码"),
-    current_user: User = Security(get_current_user),
+    verification_key: Annotated[
+        str,
+        Form(..., description="8 位邮件验证码或者 6 位 TOTP 代码或 10 位备份码 （g0v0 扩展支持）"),
+    ],
+    user_and_token: Annotated[UserAndToken, Security(get_client_user_and_token)],
+    web_uuid: Annotated[str | None, Header(include_in_schema=False, alias="X-UUID")] = None,
 ) -> Response:
-    """
-    验证邮件验证码并完成会话认证
+    current_user = user_and_token[0]
+    token_id = user_and_token[1].id
+    user_id = current_user.id
 
-    对应 osu! 的 session/verify 接口
-    成功时返回 204 No Content，失败时返回 401 Unauthorized
-    """
+    if not await LoginSessionService.check_is_need_verification(db, user_id, token_id):
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    verify_method: str | None = (
+        "mail"
+        if api_version < SUPPORT_TOTP_VERIFICATION_VER
+        else await LoginSessionService.get_login_method(user_id, token_id, redis)
+    )
+
+    login_method = "password"
+
     try:
-        from app.dependencies.geoip import get_client_ip
+        totp_key: TotpKeys | None = await current_user.awaitable_attrs.totp_key
+        if verify_method is None:
+            # 智能选择验证方法（参考osu-web实现 State.php:36）
+            # API版本较老或用户未设置TOTP时强制使用邮件验证
+            verify_method = "mail" if api_version < SUPPORT_TOTP_VERIFICATION_VER or totp_key is None else "totp"
+            await LoginSessionService.set_login_method(user_id, token_id, verify_method, redis)
+        login_method = verify_method
 
-        ip_address = get_client_ip(request)  # noqa: F841
-        user_agent = request.headers.get("User-Agent", "Unknown")  # noqa: F841
+        if verify_method == "totp":
+            if not totp_key:
+                # TOTP密钥在验证开始和现在之间被删除（参考osu-web的fallback机制）
+                if settings.enable_email_verification:
+                    await LoginSessionService.set_login_method(user_id, token_id, "mail", redis)
+                    await EmailVerificationService.send_verification_email(
+                        db,
+                        redis,
+                        user_id,
+                        current_user.username,
+                        current_user.email,
+                        ip_address,
+                        user_agent,
+                        current_user.country_code,
+                    )
+                    verify_method = "mail"
+                    raise VerifyFailedError("用户TOTP已被删除，已切换到邮件验证")
+                # 如果未开启邮箱验证，则直接认为认证通过
+                # 正常不会进入到这里
 
-        # 从当前认证用户获取信息
-        user_id = current_user.id
-        if not user_id:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="用户未认证")
-
-        # 验证邮件验证码
-        success, message = await EmailVerificationService.verify_code(db, redis, user_id, verification_key)
-
-        if success:
-            # 记录成功的邮件验证
-            await LoginLogService.record_login(
-                db=db,
-                user_id=user_id,
-                request=request,
-                login_method="email_verification",
-                login_success=True,
-                notes="邮件验证成功",
-            )
-
-            # 返回 204 No Content 表示验证成功
-            return Response(status_code=status.HTTP_204_NO_CONTENT)
+            elif await verify_totp_key_with_replay_protection(user_id, totp_key.secret, verification_key, redis):
+                pass
+            elif len(verification_key) == BACKUP_CODE_LENGTH and check_totp_backup_code(totp_key, verification_key):
+                login_method = "totp_backup_code"
+            else:
+                # 记录详细的验证失败原因（参考osu-web的错误处理）
+                if len(verification_key) != 6:
+                    raise VerifyFailedError("TOTP验证码长度错误，应为6位数字", reason="incorrect_length")
+                elif not verification_key.isdigit():
+                    raise VerifyFailedError("TOTP验证码格式错误，应为纯数字", reason="incorrect_format")
+                else:
+                    # 可能是密钥错误或者重放攻击
+                    raise VerifyFailedError("TOTP 验证失败，请检查验证码是否正确且未过期", reason="incorrect_key")
         else:
-            # 记录失败的邮件验证尝试
-            await LoginLogService.record_failed_login(
-                db=db,
-                request=request,
-                attempted_username=current_user.username,
-                login_method="email_verification",
-                notes=f"邮件验证失败: {message}",
-            )
+            success, message = await EmailVerificationService.verify_email_code(db, redis, user_id, verification_key)
+            if not success:
+                raise VerifyFailedError(f"邮件验证失败: {message}")
 
-            # 返回 401 Unauthorized 表示验证失败
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=message)
+        await LoginLogService.record_login(
+            db=db,
+            user_id=user_id,
+            request=request,
+            login_method=login_method,
+            user_agent=user_agent.raw_ua,
+            login_success=True,
+            notes=f"{login_method} 验证成功",
+        )
+        await LoginSessionService.mark_session_verified(db, redis, user_id, token_id, ip_address, user_agent, web_uuid)
+        await db.commit()
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-    except ValueError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="无效的用户会话")
-    except Exception:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="验证过程中发生错误")
+    except VerifyFailedError as e:
+        await LoginLogService.record_failed_login(
+            db=db,
+            request=request,
+            attempted_username=current_user.username,
+            login_method=login_method,
+            notes=str(e),
+        )
+
+        # 构建更详细的错误响应（参考osu-web的错误处理）
+        error_response = {
+            "error": str(e),
+            "method": verify_method,
+        }
+
+        # 如果有具体的错误原因，添加到响应中
+        if hasattr(e, "reason") and e.reason:
+            error_response["reason"] = e.reason
+
+        # 如果需要重新发送邮件验证码
+        if hasattr(e, "should_reissue") and e.should_reissue and verify_method == "mail":
+            try:
+                await EmailVerificationService.send_verification_email(
+                    db,
+                    redis,
+                    user_id,
+                    current_user.username,
+                    current_user.email,
+                    ip_address,
+                    user_agent,
+                    current_user.country_code,
+                )
+                error_response["reissued"] = True
+            except Exception:
+                log("Verification").exception(
+                    f"Failed to resend verification email to user {current_user.id} (token: {token_id})"
+                )
+
+        return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content=error_response)
 
 
 @router.post(
@@ -101,31 +191,34 @@ async def verify_session(
     name="重新发送验证码",
     description="重新发送邮件验证码",
     response_model=SessionReissueResponse,
+    tags=["验证"],
 )
 async def reissue_verification_code(
-    request: Request,
     db: Database,
+    user_agent: UserAgentInfo,
+    api_version: APIVersion,
+    ip_address: IPAddress,
     redis: Annotated[Redis, Depends(get_redis)],
-    current_user: User = Security(get_current_user),
+    user_and_token: Annotated[UserAndToken, Security(get_client_user_and_token)],
 ) -> SessionReissueResponse:
-    """
-    重新发送邮件验证码
+    current_user = user_and_token[0]
+    token_id = user_and_token[1].id
+    user_id = current_user.id
 
-    对应 osu! 的 session/verify/reissue 接口
-    """
+    if not await LoginSessionService.check_is_need_verification(db, user_id, token_id):
+        return SessionReissueResponse(success=False, message="当前会话不需要验证")
+
+    verify_method: str | None = (
+        "mail"
+        if api_version < SUPPORT_TOTP_VERIFICATION_VER
+        else await LoginSessionService.get_login_method(user_id, token_id, redis)
+    )
+    if verify_method != "mail":
+        return SessionReissueResponse(success=False, message="当前会话不支持重新发送验证码")
+
     try:
-        from app.dependencies.geoip import get_client_ip
-
-        ip_address = get_client_ip(request)
-        user_agent = request.headers.get("User-Agent", "Unknown")
-
-        # 从当前认证用户获取信息
         user_id = current_user.id
-        if not user_id:
-            return SessionReissueResponse(success=False, message="用户未认证")
-
-        # 重新发送验证码
-        success, message = await EmailVerificationService.resend_verification_code(
+        success, message, _ = await EmailVerificationService.resend_verification_code(
             db,
             redis,
             user_id,
@@ -133,6 +226,7 @@ async def reissue_verification_code(
             current_user.email,
             ip_address,
             user_agent,
+            current_user.country_code,
         )
 
         return SessionReissueResponse(success=success, message=message)
@@ -144,37 +238,37 @@ async def reissue_verification_code(
 
 
 @router.post(
-    "/session/check-new-location",
-    name="检查新位置登录",
-    description="检查登录是否来自新位置（内部接口）",
+    "/session/verify/mail-fallback",
+    name="邮件验证码回退",
+    description="当 TOTP 验证不可用时，使用邮件验证码进行回退验证",
+    response_model=VerifyMethod,
+    tags=["验证"],
 )
-async def check_new_location(
-    request: Request,
+async def fallback_email(
     db: Database,
-    user_id: int,
-    geoip: GeoIPHelper = Depends(get_geoip_helper),
-):
-    """
-    检查是否为新位置登录
-    这是一个内部接口，用于登录流程中判断是否需要邮件验证
-    """
-    try:
-        from app.dependencies.geoip import get_client_ip
+    user_agent: UserAgentInfo,
+    ip_address: IPAddress,
+    redis: Annotated[Redis, Depends(get_redis)],
+    user_and_token: Annotated[UserAndToken, Security(get_client_user_and_token)],
+) -> VerifyMethod:
+    current_user = user_and_token[0]
+    token_id = user_and_token[1].id
+    if not await LoginSessionService.get_login_method(current_user.id, token_id, redis):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前会话不需要回退")
 
-        ip_address = get_client_ip(request)
-        geo_info = geoip.lookup(ip_address)
-        country_code = geo_info.get("country_iso", "XX")
-
-        is_new_location = await LoginSessionService.check_new_location(db, user_id, ip_address, country_code)
-
-        return {
-            "is_new_location": is_new_location,
-            "ip_address": ip_address,
-            "country_code": country_code,
-        }
-
-    except Exception as e:
-        return {
-            "is_new_location": True,  # 出错时默认为新位置
-            "error": str(e),
-        }
+    await LoginSessionService.set_login_method(current_user.id, token_id, "mail", redis)
+    success, message, _ = await EmailVerificationService.resend_verification_code(
+        db,
+        redis,
+        current_user.id,
+        current_user.username,
+        current_user.email,
+        ip_address,
+        user_agent,
+        current_user.country_code,
+    )
+    if not success:
+        log("Verification").error(
+            f"Failed to send fallback email to user {current_user.id} (token: {token_id}): {message}"
+        )
+    return VerifyMethod()

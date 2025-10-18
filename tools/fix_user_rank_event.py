@@ -163,13 +163,19 @@ async def main():
 
             # Show specific changes
             changes = []
-            if "scorerank" in original_payload and "scorerank" in fixed_payload:
-                if original_payload["scorerank"] != fixed_payload["scorerank"]:
-                    changes.append(f"scorerank: {original_payload['scorerank']} → {fixed_payload['scorerank']}")
+            if (
+                "scorerank" in original_payload
+                and "scorerank" in fixed_payload
+                and original_payload["scorerank"] != fixed_payload["scorerank"]
+            ):
+                changes.append(f"scorerank: {original_payload['scorerank']} → {fixed_payload['scorerank']}")
 
-            if "mode" in original_payload and "mode" in fixed_payload:
-                if original_payload["mode"] != fixed_payload["mode"]:
-                    changes.append(f"mode: {original_payload['mode']} → {fixed_payload['mode']}")
+            if (
+                "mode" in original_payload
+                and "mode" in fixed_payload
+                and original_payload["mode"] != fixed_payload["mode"]
+            ):
+                changes.append(f"mode: {original_payload['mode']} → {fixed_payload['mode']}")
 
             if changes:
                 print(f"   Changes:  {', '.join(changes)}")

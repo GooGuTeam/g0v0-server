@@ -1,0 +1,18 @@
+Hello, {{ username }}!
+
+Thank you for registering with {{ server_name }}. To complete your account verification, please use the following verification code:
+
+Verification Code: {{ code }}
+
+This code will expire in {{ expiry_minutes }} minutes.
+
+Security Notice:
+- Do not share this verification code with anyone
+- If you did not request this code, please ignore this email
+- For your account security, do not use the same password on other websites
+- This code can only be used once
+
+---
+© {{ year }} {{ server_name }}. All rights reserved.
+This email was sent automatically, please do not reply.
+

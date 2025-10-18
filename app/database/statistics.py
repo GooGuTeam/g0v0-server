@@ -23,7 +23,7 @@ from sqlmodel import (
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 if TYPE_CHECKING:
-    from .lazer_user import User, UserResp
+    from .user import User, UserResp
 
 
 class UserStatisticsBase(SQLModel):
@@ -77,7 +77,7 @@ class UserStatistics(AsyncAttrs, UserStatisticsBase, table=True):
 
     level_current: float = Field(default=1)
 
-    user: "User" = Relationship(back_populates="statistics")  # type: ignore[valid-type]
+    user: "User" = Relationship(back_populates="statistics")
 
 
 class UserStatisticsResp(UserStatisticsBase):
@@ -122,7 +122,7 @@ class UserStatisticsResp(UserStatisticsBase):
             "progress": int(math.fmod(obj.level_current, 1) * 100),
         }
         if "user" in include:
-            from .lazer_user import RANKING_INCLUDES, UserResp
+            from .user import RANKING_INCLUDES, UserResp
 
             user = await UserResp.from_db(await obj.awaitable_attrs.user, session, include=RANKING_INCLUDES)
             s.user = user
@@ -149,7 +149,7 @@ class UserStatisticsResp(UserStatisticsBase):
 
 
 async def get_rank(session: AsyncSession, statistics: UserStatistics, country: str | None = None) -> int | None:
-    from .lazer_user import User
+    from .user import User
 
     query = select(
         UserStatistics.user_id,

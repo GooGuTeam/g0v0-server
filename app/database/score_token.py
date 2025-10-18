@@ -5,7 +5,7 @@ from app.models.score import GameMode
 from app.utils import utcnow
 
 from .beatmap import Beatmap
-from .lazer_user import User
+from .user import User
 
 from sqlalchemy import Column, DateTime, Index
 from sqlalchemy.orm import Mapped
@@ -36,6 +36,7 @@ class ScoreToken(ScoreTokenBase, table=True):
     user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id")))
     beatmap_id: int = Field(foreign_key="beatmaps.id")
     user: Mapped[User] = Relationship()
+
     beatmap: Mapped[Beatmap] = Relationship()
 
 

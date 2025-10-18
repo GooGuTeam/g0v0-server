@@ -1,13 +1,13 @@
-from __future__ import annotations
+from typing import Annotated
 
-from app.database import Relationship, User
+from app.database import Relationship
 from app.database.relationship import RelationshipType
 from app.dependencies.database import Database
-from app.dependencies.user import get_client_user
+from app.dependencies.user import ClientUser
 
 from .router import router
 
-from fastapi import HTTPException, Path, Security
+from fastapi import HTTPException, Path
 from pydantic import BaseModel, Field
 from sqlmodel import select
 
@@ -23,11 +23,12 @@ class CheckResponse(BaseModel):
     name="检查关系状态",
     description="检查当前用户与指定用户的关系状态",
     response_model=CheckResponse,
+    tags=["用户关系", "g0v0 API"],
 )
 async def check_user_relationship(
     db: Database,
-    user_id: int = Path(..., description="目标用户的 ID"),
-    current_user: User = Security(get_client_user),
+    user_id: Annotated[int, Path(..., description="目标用户的 ID")],
+    current_user: ClientUser,
 ):
     if user_id == current_user.id:
         raise HTTPException(422, "Cannot check relationship with yourself")

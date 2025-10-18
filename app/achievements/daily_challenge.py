@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from functools import partial
 
 from app.database.daily_challenge import DailyChallengeStats
@@ -32,11 +30,9 @@ async def process_streak(
     ).first()
     if not stats:
         return False
-    if streak <= stats.daily_streak_best < next_streak:
-        return True
-    elif next_streak == 0 and stats.daily_streak_best >= streak:
-        return True
-    return False
+    return bool(
+        streak <= stats.daily_streak_best < next_streak or (next_streak == 0 and stats.daily_streak_best >= streak)
+    )
 
 
 MEDALS = {

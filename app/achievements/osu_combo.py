@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from functools import partial
 
 from app.database.score import Beatmap, Score
@@ -22,11 +20,7 @@ async def process_combo(
         return False
     if next_combo != 0 and combo >= next_combo:
         return False
-    if combo <= score.max_combo < next_combo:
-        return True
-    elif next_combo == 0 and score.max_combo >= combo:
-        return True
-    return False
+    return bool(combo <= score.max_combo < next_combo or (next_combo == 0 and score.max_combo >= combo))
 
 
 MEDALS: Medals = {

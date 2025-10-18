@@ -1,13 +1,13 @@
-from __future__ import annotations
-
 import http
 import inspect
 import logging
 import re
 from sys import stdout
+from types import FunctionType
 from typing import TYPE_CHECKING
 
 from app.config import settings
+from app.utils import snake_to_pascal
 
 import loguru
 
@@ -37,16 +37,18 @@ class InterceptHandler(logging.Handler):
             depth += 1
 
         message = record.getMessage()
-
+        _logger = logger
         if record.name == "uvicorn.access":
             message = self._format_uvicorn_access_log(message)
             color = True
+            _logger = uvicorn_logger()
         elif record.name == "uvicorn.error":
             message = self._format_uvicorn_error_log(message)
+            _logger = uvicorn_logger()
             color = True
         else:
             color = False
-        logger.opt(depth=depth, exception=record.exc_info, colors=color).log(level, message)
+        _logger.opt(depth=depth, exception=record.exc_info, colors=color).log(level, message)
 
     def _format_uvicorn_error_log(self, message: str) -> str:
         websocket_pattern = r'(\d+\.\d+\.\d+\.\d+:\d+)\s*-\s*"WebSocket\s+([^"]+)"\s+([\w\[\]]+)'
@@ -93,9 +95,7 @@ class InterceptHandler(logging.Handler):
                 status_color = "green"
             elif 300 <= status < 400:
                 status_color = "yellow"
-            elif 400 <= status < 500:
-                status_color = "red"
-            elif 500 <= status < 600:
+            elif 400 <= status < 500 or 500 <= status < 600:
                 status_color = "red"
 
             return (
@@ -107,11 +107,106 @@ class InterceptHandler(logging.Handler):
         return message
 
 
+def get_caller_class_name(module_prefix: str = "", just_last_part: bool = True) -> str | None:
+    stack = inspect.stack()
+    for frame_info in stack[2:]:
+        module = frame_info.frame.f_globals.get("__name__", "")
+        if module_prefix and not module.startswith(module_prefix):
+            continue
+
+        local_vars = frame_info.frame.f_locals
+        # 实例方法
+        if "self" in local_vars:
+            return local_vars["self"].__class__.__name__
+        # 类方法
+        if "cls" in local_vars:
+            return local_vars["cls"].__name__
+
+        # 静态方法 / 普通函数 -> 尝试通过函数名匹配类
+        func_name = frame_info.function
+        for obj_name, obj in frame_info.frame.f_globals.items():
+            if isinstance(obj, type):  # 遍历模块内类
+                cls = obj
+                attr = getattr(cls, func_name, None)
+                if isinstance(attr, (staticmethod, classmethod, FunctionType)):
+                    return cls.__name__
+
+        # 如果没找到类，返回模块名
+        if just_last_part:
+            return module.rsplit(".", 1)[-1]
+        return module
+    return None
+
+
+def service_logger(name: str) -> "Logger":
+    return logger.bind(service=name)
+
+
+def fetcher_logger(name: str) -> "Logger":
+    return logger.bind(fetcher=name)
+
+
+def task_logger(name: str) -> "Logger":
+    return logger.bind(task=name)
+
+
+def system_logger(name: str) -> "Logger":
+    return logger.bind(system=name)
+
+
+def uvicorn_logger() -> "Logger":
+    return logger.bind(uvicorn="Uvicorn")
+
+
+def log(name: str) -> "Logger":
+    return logger.bind(real_name=name)
+
+
+def dynamic_format(record):
+    name = ""
+
+    uvicorn = record["extra"].get("uvicorn")
+    if uvicorn:
+        name = f"<fg #228B22>{uvicorn}</fg #228B22>"
+
+    service = record["extra"].get("service")
+    if not service:
+        service = get_caller_class_name("app.service")
+    if service:
+        name = f"<blue>{service}</blue>"
+
+    fetcher = record["extra"].get("fetcher")
+    if not fetcher:
+        fetcher = get_caller_class_name("app.fetcher")
+    if fetcher:
+        name = f"<magenta>{fetcher}</magenta>"
+
+    task = record["extra"].get("task")
+    if not task:
+        task = get_caller_class_name("app.tasks")
+    if task:
+        task = snake_to_pascal(task)
+        name = f"<fg #FFD700>{task}</fg #FFD700>"
+
+    system = record["extra"].get("system")
+    if system:
+        name = f"<red>{system}</red>"
+
+    if name == "":
+        real_name = record["extra"].get("real_name", "") or record["name"]
+        name = f"<fg #FFC1C1>{real_name}</fg #FFC1C1>"
+
+    format = f"<green>{{time:YYYY-MM-DD HH:mm:ss}}</green> [<level>{{level}}</level>] | {name} | {{message}}\n"
+    if record["exception"]:
+        format += "{exception}\n"
+    return format
+
+
 logger.remove()
 logger.add(
     stdout,
     colorize=True,
-    format=("<green>{time:YYYY-MM-DD HH:mm:ss}</green> [<level>{level}</level>] | {message}"),
+    format=dynamic_format,
     level=settings.log_level,
     diagnose=settings.debug,
 )
@@ -120,7 +215,7 @@ logger.add(
     rotation="00:00",
     retention="30 days",
     colorize=False,
-    format="{time:YYYY-MM-DD HH:mm:ss} {level} | {message}",
+    format=dynamic_format,
     level=settings.log_level,
     diagnose=settings.debug,
     encoding="utf8",
@@ -135,8 +230,9 @@ uvicorn_loggers = [
 ]
 
 for logger_name in uvicorn_loggers:
-    uvicorn_logger = logging.getLogger(logger_name)
-    uvicorn_logger.handlers = [InterceptHandler()]
-    uvicorn_logger.propagate = False
+    _uvicorn_logger = logging.getLogger(logger_name)
+    _uvicorn_logger.handlers = [InterceptHandler()]
+    _uvicorn_logger.propagate = False
 
 logging.getLogger("httpx").setLevel("WARNING")
+logging.getLogger("apscheduler").setLevel("WARNING")

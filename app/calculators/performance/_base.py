@@ -1,0 +1,37 @@
+import abc
+from typing import TYPE_CHECKING
+
+from app.models.mods import APIMod
+from app.models.performance import BeatmapAttributes, PerformanceAttributes
+from app.models.score import GameMode
+
+if TYPE_CHECKING:
+    from app.database.score import Score
+
+
+class CalculateError(Exception):
+    """An error occurred during performance calculation."""
+
+
+class DifficultyError(CalculateError):
+    """The difficulty could not be calculated."""
+
+
+class ConvertError(DifficultyError):
+    """A beatmap cannot be converted to the specified game mode."""
+
+
+class PerformanceError(CalculateError):
+    """The performance could not be calculated."""
+
+
+class PerformanceCalculator(abc.ABC):
+    @abc.abstractmethod
+    async def calculate_performance(self, beatmap_raw: str, score: "Score") -> PerformanceAttributes:
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    async def calculate_difficulty(
+        self, beatmap_raw: str, mods: list[APIMod] | None = None, gamemode: GameMode | None = None
+    ) -> BeatmapAttributes:
+        raise NotImplementedError

@@ -11,11 +11,14 @@ from app.calculator import (
     calculate_weighted_acc,
     calculate_weighted_pp,
     clamp,
+    pre_fetch_and_calculate_pp,
 )
 from app.config import settings
-from app.database.events import Event, EventType
+from app.database.beatmap_playcounts import BeatmapPlaycounts
 from app.database.team import TeamMember
 from app.dependencies.database import get_redis
+from app.log import log
+from app.models.beatmap import BeatmapRankStatus
 from app.models.model import (
     CurrentUserAttributes,
     PinAttributes,
@@ -31,26 +34,28 @@ from app.models.score import (
     ScoreStatistics,
     SoloScoreSubmissionInfo,
 )
+from app.storage import StorageService
 from app.utils import utcnow
 
 from .beatmap import Beatmap, BeatmapResp
-from .beatmap_playcounts import process_beatmap_playcount
 from .beatmapset import BeatmapsetResp
-from .best_score import BestScore
+from .best_scores import BestScore
 from .counts import MonthlyPlaycounts
-from .lazer_user import User, UserResp
-from .pp_best_score import PPBestScore
+from .events import Event, EventType
+from .playlist_best_score import PlaylistBestScore
 from .relationship import (
     Relationship as DBRelationship,
     RelationshipType,
 )
 from .score_token import ScoreToken
+from .total_score_best_scores import TotalScoreBestScore
+from .user import User, UserResp
 
-from pydantic import field_serializer, field_validator
+from pydantic import BaseModel, field_serializer, field_validator
 from redis.asyncio import Redis
-from sqlalchemy import Boolean, Column, ColumnExpressionArgument, DateTime, TextClause
+from sqlalchemy import Boolean, Column, DateTime, TextClause
 from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlalchemy.orm import Mapped, aliased
+from sqlalchemy.orm import Mapped, joinedload
 from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import (
     JSON,
@@ -66,10 +71,11 @@ from sqlmodel import (
     true,
 )
 from sqlmodel.ext.asyncio.session import AsyncSession
-from sqlmodel.sql._expression_select_cls import SelectOfScalar
 
 if TYPE_CHECKING:
     from app.fetcher import Fetcher
+
+logger = log("Score")
 
 
 class ScoreBase(AsyncAttrs, SQLModel, UTCBaseModel):
@@ -95,6 +101,7 @@ class ScoreBase(AsyncAttrs, SQLModel, UTCBaseModel):
     beatmap_id: int = Field(index=True, foreign_key="beatmaps.id")
     maximum_statistics: ScoreStatistics = Field(sa_column=Column(JSON), default_factory=dict)
     processed: bool = False  # solo_score
+    ranked: bool = False
 
     @field_validator("maximum_statistics", mode="before")
     @classmethod
@@ -189,21 +196,56 @@ class Score(ScoreBase, table=True):
     # optional
     beatmap: Mapped[Beatmap] = Relationship()
     user: Mapped[User] = Relationship(sa_relationship_kwargs={"lazy": "joined"})
+    best_score: Mapped[TotalScoreBestScore | None] = Relationship(
+        back_populates="score",
+        sa_relationship_kwargs={
+            "cascade": "all, delete-orphan",
+        },
+    )
+    ranked_score: Mapped[BestScore | None] = Relationship(
+        back_populates="score",
+        sa_relationship_kwargs={
+            "cascade": "all, delete-orphan",
+        },
+    )
+    playlist_item_score: Mapped[PlaylistBestScore | None] = Relationship(
+        back_populates="score",
+        sa_relationship_kwargs={
+            "cascade": "all, delete-orphan",
+        },
+    )
 
     @property
     def is_perfect_combo(self) -> bool:
         return self.max_combo == self.beatmap.max_combo
 
-    @staticmethod
-    def select_clause_unique(
-        *where_clauses: ColumnExpressionArgument[bool] | bool,
-    ) -> SelectOfScalar["Score"]:
-        rownum = (
-            func.row_number().over(partition_by=col(Score.user_id), order_by=col(Score.total_score).desc()).label("rn")
-        )
-        subq = select(Score, rownum).where(*where_clauses).subquery()
-        best = aliased(Score, subq, adapt_on_names=True)
-        return select(best).where(subq.c.rn == 1)
+    @property
+    def replay_filename(self) -> str:
+        return f"replays/{self.id}_{self.beatmap_id}_{self.user_id}_lazer_replay.osr"
+
+    async def to_resp(self, session: AsyncSession, api_version: int) -> "ScoreResp | LegacyScoreResp":
+        if api_version >= 20220705:
+            return await ScoreResp.from_db(session, self)
+        return await LegacyScoreResp.from_db(session, self)
+
+    async def delete(
+        self,
+        session: AsyncSession,
+        storage_service: StorageService,
+    ):
+        if await self.awaitable_attrs.best_score:
+            assert self.best_score is not None
+            await self.best_score.delete(session)
+            await session.refresh(self)
+        if await self.awaitable_attrs.ranked_score:
+            assert self.ranked_score is not None
+            await self.ranked_score.delete(session)
+            await session.refresh(self)
+        if await self.awaitable_attrs.playlist_item_score:
+            await session.delete(self.playlist_item_score)
+
+        await storage_service.delete_file(self.replay_filename)
+        await session.delete(self)
 
 
 class ScoreResp(ScoreBase):
@@ -224,7 +266,6 @@ class ScoreResp(ScoreBase):
     rank_country: int | None = None
     position: int | None = None
     scores_around: "ScoreAround | None" = None
-    ranked: bool = False
     current_user_attributes: CurrentUserAttributes | None = None
 
     @field_validator(
@@ -341,8 +382,91 @@ class ScoreResp(ScoreBase):
         s.current_user_attributes = CurrentUserAttributes(
             pin=PinAttributes(is_pinned=bool(score.pinned_order), score_id=score.id)
         )
-        s.ranked = s.pp > 0
         return s
+
+
+class LegacyStatistics(BaseModel):
+    count_300: int
+    count_100: int
+    count_50: int
+    count_miss: int
+    count_geki: int | None = None
+    count_katu: int | None = None
+
+
+class LegacyScoreResp(UTCBaseModel):
+    accuracy: float
+    best_id: int
+    created_at: datetime
+    id: int
+    max_combo: int
+    mode: GameMode
+    mode_int: int
+    mods: list[str]  # acronym
+    passed: bool
+    perfect: bool = False
+    pp: float
+    rank: Rank
+    replay: bool
+    score: int
+    statistics: LegacyStatistics
+    type: str
+    user_id: int
+    current_user_attributes: CurrentUserAttributes
+    user: UserResp
+    beatmap: BeatmapResp
+    rank_global: int | None = Field(default=None, exclude=True)
+
+    @classmethod
+    async def from_db(cls, session: AsyncSession, score: Score) -> "LegacyScoreResp":
+        await session.refresh(score)
+        await score.awaitable_attrs.beatmap
+        return cls(
+            accuracy=score.accuracy,
+            best_id=await get_best_id(session, score.id) or 0,
+            created_at=score.started_at,
+            id=score.id,
+            max_combo=score.max_combo,
+            mode=score.gamemode,
+            mode_int=int(score.gamemode),
+            mods=[m["acronym"] for m in score.mods],
+            passed=score.passed,
+            pp=score.pp,
+            rank=score.rank,
+            replay=score.has_replay,
+            score=score.total_score,
+            statistics=LegacyStatistics(
+                count_300=score.n300,
+                count_100=score.n100,
+                count_50=score.n50,
+                count_miss=score.nmiss,
+                count_geki=score.ngeki or 0,
+                count_katu=score.nkatu or 0,
+            ),
+            type=score.type,
+            user_id=score.user_id,
+            current_user_attributes=CurrentUserAttributes(
+                pin=PinAttributes(is_pinned=bool(score.pinned_order), score_id=score.id)
+            ),
+            user=await UserResp.from_db(
+                score.user,
+                session,
+                include=["statistics", "team", "daily_challenge_user_stats"],
+                ruleset=score.gamemode,
+            ),
+            beatmap=await BeatmapResp.from_db(score.beatmap),
+            perfect=score.is_perfect_combo,
+            rank_global=(
+                await get_score_position_by_id(
+                    session,
+                    score.beatmap_id,
+                    score.id,
+                    mode=score.gamemode,
+                    user=score.user,
+                )
+                or None
+            ),
+        )
 
 
 class MultiplayerScores(RespWithCursor):
@@ -355,11 +479,13 @@ class ScoreAround(SQLModel):
     lower: MultiplayerScores | None = None
 
 
-async def get_best_id(session: AsyncSession, score_id: int) -> None:
+async def get_best_id(session: AsyncSession, score_id: int) -> int | None:
     rownum = (
-        func.row_number().over(partition_by=col(PPBestScore.user_id), order_by=col(PPBestScore.pp).desc()).label("rn")
+        func.row_number()
+        .over(partition_by=(col(BestScore.user_id), col(BestScore.gamemode)), order_by=col(BestScore.pp).desc())
+        .label("rn")
     )
-    subq = select(PPBestScore, rownum).subquery()
+    subq = select(BestScore, rownum).subquery()
     stmt = select(subq.c.rn).where(subq.c.score_id == score_id)
     result = await session.exec(stmt)
     return result.one_or_none()
@@ -373,8 +499,9 @@ async def _score_where(
     user: User | None = None,
 ) -> list[ColumnElement[bool] | TextClause] | None:
     wheres: list[ColumnElement[bool] | TextClause] = [
-        col(BestScore.beatmap_id) == beatmap,
-        col(BestScore.gamemode) == mode,
+        col(TotalScoreBestScore.beatmap_id) == beatmap,
+        col(TotalScoreBestScore.gamemode) == mode,
+        ~User.is_restricted_query(col(TotalScoreBestScore.user_id)),
     ]
 
     if type == LeaderboardType.FRIENDS:
@@ -387,20 +514,21 @@ async def _score_where(
                 )
                 .subquery()
             )
-            wheres.append(col(BestScore.user_id).in_(select(subq.c.target_id)))
+            wheres.append(col(TotalScoreBestScore.user_id).in_(select(subq.c.target_id)))
         else:
             return None
     elif type == LeaderboardType.COUNTRY:
         if user and user.is_supporter:
-            wheres.append(col(BestScore.user).has(col(User.country_code) == user.country_code))
+            wheres.append(col(TotalScoreBestScore.user).has(col(User.country_code) == user.country_code))
         else:
             return None
-    elif type == LeaderboardType.TEAM:
-        if user:
-            team_membership = await user.awaitable_attrs.team_membership
-            if team_membership:
-                team_id = team_membership.team_id
-                wheres.append(col(BestScore.user).has(col(User.team_membership).has(TeamMember.team_id == team_id)))
+    elif type == LeaderboardType.TEAM and user:
+        team_membership = await user.awaitable_attrs.team_membership
+        if team_membership:
+            team_id = team_membership.team_id
+            wheres.append(
+                col(TotalScoreBestScore.user).has(col(User.team_membership).has(TeamMember.team_id == team_id))
+            )
     if mods:
         if user and user.is_supporter:
             wheres.append(
@@ -434,10 +562,10 @@ async def get_leaderboard(
     max_score = sys.maxsize
     while limit > 0:
         query = (
-            select(BestScore)
-            .where(*wheres, BestScore.total_score < max_score)
+            select(TotalScoreBestScore)
+            .where(*wheres, TotalScoreBestScore.total_score < max_score)
             .limit(limit)
-            .order_by(col(BestScore.total_score).desc())
+            .order_by(col(TotalScoreBestScore.total_score).desc())
         )
         extra_need = 0
         for s in await session.exec(query):
@@ -456,13 +584,13 @@ async def get_leaderboard(
     user_score = None
     if user:
         self_query = (
-            select(BestScore)
-            .where(BestScore.user_id == user.id)
+            select(TotalScoreBestScore)
+            .where(TotalScoreBestScore.user_id == user.id)
             .where(
-                col(BestScore.beatmap_id) == beatmap,
-                col(BestScore.gamemode) == mode,
+                col(TotalScoreBestScore.beatmap_id) == beatmap,
+                col(TotalScoreBestScore.gamemode) == mode,
             )
-            .order_by(col(BestScore.total_score).desc())
+            .order_by(col(TotalScoreBestScore.total_score).desc())
             .limit(1)
         )
         if mods:
@@ -494,12 +622,15 @@ async def get_score_position_by_user(
     rownum = (
         func.row_number()
         .over(
-            partition_by=col(BestScore.beatmap_id),
-            order_by=col(BestScore.total_score).desc(),
+            partition_by=(
+                col(TotalScoreBestScore.beatmap_id),
+                col(TotalScoreBestScore.gamemode),
+            ),
+            order_by=col(TotalScoreBestScore.total_score).desc(),
         )
         .label("row_number")
     )
-    subq = select(BestScore, rownum).join(Beatmap).where(*wheres).subquery()
+    subq = select(TotalScoreBestScore, rownum).join(Beatmap).where(*wheres).subquery()
     stmt = select(subq.c.row_number).where(subq.c.user_id == user.id)
     result = await session.exec(stmt)
     s = result.first()
@@ -521,12 +652,15 @@ async def get_score_position_by_id(
     rownum = (
         func.row_number()
         .over(
-            partition_by=col(BestScore.beatmap_id),
-            order_by=col(BestScore.total_score).desc(),
+            partition_by=(
+                col(TotalScoreBestScore.beatmap_id),
+                col(TotalScoreBestScore.gamemode),
+            ),
+            order_by=col(TotalScoreBestScore.total_score).desc(),
         )
         .label("row_number")
     )
-    subq = select(BestScore, rownum).join(Beatmap).where(*wheres).subquery()
+    subq = select(TotalScoreBestScore, rownum).join(Beatmap).where(*wheres).subquery()
     stmt = select(subq.c.row_number).where(subq.c.score_id == score_id)
     result = await session.exec(stmt)
     s = result.one_or_none()
@@ -538,16 +672,16 @@ async def get_user_best_score_in_beatmap(
     beatmap: int,
     user: int,
     mode: GameMode | None = None,
-) -> BestScore | None:
+) -> TotalScoreBestScore | None:
     return (
         await session.exec(
-            select(BestScore)
+            select(TotalScoreBestScore)
             .where(
-                BestScore.gamemode == mode if mode is not None else true(),
-                BestScore.beatmap_id == beatmap,
-                BestScore.user_id == user,
+                TotalScoreBestScore.gamemode == mode if mode is not None else true(),
+                TotalScoreBestScore.beatmap_id == beatmap,
+                TotalScoreBestScore.user_id == user,
             )
-            .order_by(col(BestScore.total_score).desc())
+            .order_by(col(TotalScoreBestScore.total_score).desc())
         )
     ).first()
 
@@ -558,22 +692,84 @@ async def get_user_best_score_with_mod_in_beatmap(
     user: int,
     mod: list[str],
     mode: GameMode | None = None,
-) -> BestScore | None:
+) -> TotalScoreBestScore | None:
     return (
         await session.exec(
-            select(BestScore)
+            select(TotalScoreBestScore)
             .where(
-                BestScore.gamemode == mode if mode is not None else True,
-                BestScore.beatmap_id == beatmap,
-                BestScore.user_id == user,
+                TotalScoreBestScore.gamemode == mode if mode is not None else True,
+                TotalScoreBestScore.beatmap_id == beatmap,
+                TotalScoreBestScore.user_id == user,
                 text(
                     "JSON_CONTAINS(total_score_best_scores.mods, :w)"
                     " AND JSON_CONTAINS(:w, total_score_best_scores.mods)"
                 ).params(w=json.dumps(mod)),
             )
-            .order_by(col(BestScore.total_score).desc())
+            .order_by(col(TotalScoreBestScore.total_score).desc())
         )
     ).first()
+
+
+async def get_user_first_scores(
+    session: AsyncSession, user_id: int, mode: GameMode, limit: int = 5, offset: int = 0
+) -> list[TotalScoreBestScore]:
+    rownum = (
+        func.row_number()
+        .over(
+            partition_by=(col(TotalScoreBestScore.beatmap_id), col(TotalScoreBestScore.gamemode)),
+            order_by=col(TotalScoreBestScore.total_score).desc(),
+        )
+        .label("rn")
+    )
+
+    # Step 1: Fetch top score_ids in Python
+    subq = (
+        select(
+            col(TotalScoreBestScore.score_id).label("score_id"),
+            col(TotalScoreBestScore.user_id).label("user_id"),
+            rownum,
+        )
+        .where(col(TotalScoreBestScore.gamemode) == mode)
+        .subquery()
+    )
+
+    top_ids_stmt = select(subq.c.score_id).where(subq.c.rn == 1, subq.c.user_id == user_id).limit(limit).offset(offset)
+
+    top_ids = await session.exec(top_ids_stmt)
+    top_ids = list(top_ids)
+
+    stmt = (
+        select(TotalScoreBestScore)
+        .where(col(TotalScoreBestScore.score_id).in_(top_ids))
+        .order_by(col(TotalScoreBestScore.total_score).desc())
+    )
+
+    result = await session.exec(stmt)
+    return list(result.all())
+
+
+async def get_user_first_score_count(session: AsyncSession, user_id: int, mode: GameMode) -> int:
+    rownum = (
+        func.row_number()
+        .over(
+            partition_by=(col(TotalScoreBestScore.beatmap_id), col(TotalScoreBestScore.gamemode)),
+            order_by=col(TotalScoreBestScore.total_score).desc(),
+        )
+        .label("rn")
+    )
+    subq = (
+        select(
+            col(TotalScoreBestScore.score_id).label("score_id"),
+            col(TotalScoreBestScore.user_id).label("user_id"),
+            rownum,
+        )
+        .where(col(TotalScoreBestScore.gamemode) == mode)
+        .subquery()
+    )
+    count_stmt = select(func.count()).where(subq.c.rn == 1, subq.c.user_id == user_id)
+
+    result = await session.exec(count_stmt)
+    return result.one()
 
 
 async def get_user_best_pp_in_beatmap(
@@ -581,16 +777,30 @@ async def get_user_best_pp_in_beatmap(
     beatmap: int,
     user: int,
     mode: GameMode,
-) -> PPBestScore | None:
+) -> BestScore | None:
     return (
         await session.exec(
-            select(PPBestScore).where(
-                PPBestScore.beatmap_id == beatmap,
-                PPBestScore.user_id == user,
-                PPBestScore.gamemode == mode,
+            select(BestScore).where(
+                BestScore.beatmap_id == beatmap,
+                BestScore.user_id == user,
+                BestScore.gamemode == mode,
             )
         )
     ).first()
+
+
+async def calculate_user_pp(session: AsyncSession, user_id: int, mode: GameMode) -> tuple[float, float]:
+    pp_sum = 0
+    acc_sum = 0
+    bps = await get_user_best_pp(session, user_id, mode)
+    for i, s in enumerate(bps):
+        pp_sum += calculate_weighted_pp(s.pp, i)
+        acc_sum += calculate_weighted_acc(s.acc, i)
+    if len(bps):
+        # https://github.com/ppy/osu-queue-score-statistics/blob/c538ae/osu.Server.Queues.ScoreStatisticsProcessor/Helpers/UserTotalPerformanceAggregateHelper.cs#L41-L45
+        acc_sum *= 100 / (20 * (1 - math.pow(0.95, len(bps))))
+    acc_sum = clamp(acc_sum, 0.0, 100.0)
+    return pp_sum, acc_sum
 
 
 async def get_user_best_pp(
@@ -598,12 +808,12 @@ async def get_user_best_pp(
     user: int,
     mode: GameMode,
     limit: int = 1000,
-) -> Sequence[PPBestScore]:
+) -> Sequence[BestScore]:
     return (
         await session.exec(
-            select(PPBestScore)
-            .where(PPBestScore.user_id == user, PPBestScore.gamemode == mode)
-            .order_by(col(PPBestScore.pp).desc())
+            select(BestScore)
+            .where(BestScore.user_id == user, BestScore.gamemode == mode)
+            .order_by(col(BestScore.pp).desc())
             .limit(limit)
         )
     ).all()
@@ -641,200 +851,25 @@ def calculate_playtime(score: Score, beatmap_length: int) -> tuple[int, bool]:
     )
 
 
-async def process_user(
-    session: AsyncSession,
-    user: User,
-    score: Score,
-    score_token: int,
-    beatmap_length: int,
-    ranked: bool = False,
-    has_leaderboard: bool = False,
-):
-    mod_for_save = mod_to_save(score.mods)
-    previous_score_best = await get_user_best_score_in_beatmap(session, score.beatmap_id, user.id, score.gamemode)
-    previous_score_best_mod = await get_user_best_score_with_mod_in_beatmap(
-        session, score.beatmap_id, user.id, mod_for_save, score.gamemode
-    )
-    add_to_db = False
-    mouthly_playcount = (
-        await session.exec(
-            select(MonthlyPlaycounts).where(
-                MonthlyPlaycounts.user_id == user.id,
-                MonthlyPlaycounts.year == date.today().year,
-                MonthlyPlaycounts.month == date.today().month,
-            )
-        )
-    ).first()
-    if mouthly_playcount is None:
-        mouthly_playcount = MonthlyPlaycounts(user_id=user.id, year=date.today().year, month=date.today().month)
-        add_to_db = True
-    statistics = None
-    for i in await user.awaitable_attrs.statistics:
-        if i.mode == score.gamemode.value:
-            statistics = i
-            break
-    if statistics is None:
-        raise ValueError(f"User {user.id} does not have statistics for mode {score.gamemode.value}")
-
-    # pc, pt, tth, tts
-    statistics.total_score += score.total_score
-    difference = score.total_score - previous_score_best.total_score if previous_score_best else score.total_score
-    if difference > 0 and score.passed and ranked:
-        match score.rank:
-            case Rank.X:
-                statistics.grade_ss += 1
-            case Rank.XH:
-                statistics.grade_ssh += 1
-            case Rank.S:
-                statistics.grade_s += 1
-            case Rank.SH:
-                statistics.grade_sh += 1
-            case Rank.A:
-                statistics.grade_a += 1
-        if previous_score_best is not None:
-            match previous_score_best.rank:
-                case Rank.X:
-                    statistics.grade_ss -= 1
-                case Rank.XH:
-                    statistics.grade_ssh -= 1
-                case Rank.S:
-                    statistics.grade_s -= 1
-                case Rank.SH:
-                    statistics.grade_sh -= 1
-                case Rank.A:
-                    statistics.grade_a -= 1
-        statistics.ranked_score += difference
-        statistics.level_current = calculate_score_to_level(statistics.total_score)
-        statistics.maximum_combo = max(statistics.maximum_combo, score.max_combo)
-        new_score_position = await get_score_position_by_user(session, score.beatmap_id, user, score.gamemode)
-        total_users = await session.exec(select(func.count()).select_from(User))
-        score_range = min(50, math.ceil(float(total_users.one()) * 0.01))
-        if new_score_position <= score_range and new_score_position > 0:
-            # Get the scores that might be displaced
-            displaced_scores_query = (
-                select(BestScore)
-                .where(
-                    BestScore.beatmap_id == score.beatmap_id,
-                    BestScore.gamemode == score.gamemode,
-                    BestScore.user_id != user.id,  # Not the current user
-                )
-                .order_by(col(BestScore.total_score).desc())
-                .limit(score_range)
-            )
-            displaced_scores = (await session.exec(displaced_scores_query)).all()
-
-            # Check if any scores were pushed out of the top positions
-            for i, displaced_score in enumerate(displaced_scores):
-                # Get the position of this displaced score
-                displaced_position = await get_score_position_by_id(
-                    session, score.beatmap_id, displaced_score.score_id, score.gamemode
-                )
-
-                # If this score was previously in top positions but now pushed out
-                if i < score_range and displaced_position > score_range and displaced_position is not None:
-                    # Create rank lost event for the displaced user
-                    rank_lost_event = Event(
-                        created_at=utcnow(),
-                        type=EventType.RANK_LOST,
-                        user_id=displaced_score.user_id,
-                    )
-                    rank_lost_event.event_payload = {
-                        "mode": str(score.gamemode),
-                        "beatmap": {
-                            "title": score.beatmap.version,
-                            "url": score.beatmap.url,
-                        },
-                        "user": {
-                            "username": user.username,
-                            "url": settings.web_url + "users/" + str(user.id),
-                        },
-                    }
-                    session.add(rank_lost_event)
-    if score.passed and has_leaderboard:
-        # 情况1: 没有最佳分数记录，直接添加
-        # 情况2: 有最佳分数记录但没有该mod组合的记录，添加新记录
-        if previous_score_best is None or previous_score_best_mod is None:
-            session.add(
-                BestScore(
-                    user_id=user.id,
-                    beatmap_id=score.beatmap_id,
-                    gamemode=score.gamemode,
-                    score_id=score.id,
-                    total_score=score.total_score,
-                    rank=score.rank,
-                    mods=mod_for_save,
-                )
-            )
-
-        # 情况3: 有最佳分数记录和该mod组合的记录，且是同一个记录，更新得分更高的情况
-        elif previous_score_best.score_id == previous_score_best_mod.score_id and difference > 0:
-            previous_score_best.total_score = score.total_score
-            previous_score_best.rank = score.rank
-            previous_score_best.score_id = score.id
-
-        # 情况4: 有最佳分数记录和该mod组合的记录，但不是同一个记录
-        elif previous_score_best.score_id != previous_score_best_mod.score_id:
-            # 更新全局最佳记录（如果新分数更高）
-            if difference > 0:
-                # 下方的 if 一定会触发。将高分设置为此分数，删除自己防止重复的 score_id
-                await session.delete(previous_score_best)
-
-            # 更新mod特定最佳记录（如果新分数更高）
-            mod_diff = score.total_score - previous_score_best_mod.total_score
-            if mod_diff > 0:
-                previous_score_best_mod.total_score = score.total_score
-                previous_score_best_mod.rank = score.rank
-                previous_score_best_mod.score_id = score.id
-
-    statistics.play_count += 1
-    mouthly_playcount.count += 1
-    playtime, is_valid = calculate_playtime(score, beatmap_length)
-    if is_valid:
-        redis = get_redis()
-        await redis.xadd(f"score:existed_time:{score_token}", {"time": playtime})
-        statistics.play_time += playtime
-    statistics.count_100 += score.n100 + score.nkatu
-    statistics.count_300 += score.n300 + score.ngeki
-    statistics.count_50 += score.n50
-    statistics.count_miss += score.nmiss
-    statistics.total_hits += score.n300 + score.n100 + score.n50 + score.ngeki + score.nkatu
-
-    if score.passed and ranked:
-        with session.no_autoflush:
-            best_pp_scores = await get_user_best_pp(session, user.id, score.gamemode)
-            pp_sum = 0.0
-            acc_sum = 0.0
-            for i, bp in enumerate(best_pp_scores):
-                pp_sum += calculate_weighted_pp(bp.pp, i)
-                acc_sum += calculate_weighted_acc(bp.acc, i)
-            if len(best_pp_scores):
-                # https://github.com/ppy/osu-queue-score-statistics/blob/c538ae/osu.Server.Queues.ScoreStatisticsProcessor/Helpers/UserTotalPerformanceAggregateHelper.cs#L41-L45
-                acc_sum *= 100 / (20 * (1 - math.pow(0.95, len(best_pp_scores))))
-            acc_sum = clamp(acc_sum, 0.0, 100.0)
-            statistics.pp = pp_sum
-            statistics.hit_accuracy = acc_sum
-    if add_to_db:
-        session.add(mouthly_playcount)
-    with session.no_autoflush:
-        await process_beatmap_playcount(session, user.id, score.beatmap_id)
-    await session.commit()
-    await session.refresh(user)
-
-
 async def process_score(
     user: User,
     beatmap_id: int,
     ranked: bool,
     score_token: ScoreToken,
     info: SoloScoreSubmissionInfo,
-    fetcher: "Fetcher",
     session: AsyncSession,
-    redis: Redis,
     item_id: int | None = None,
     room_id: int | None = None,
 ) -> Score:
-    can_get_pp = info.passed and ranked and mods_can_get_pp(info.ruleset_id, info.mods)
     gamemode = GameMode.from_int(info.ruleset_id).to_special_mode(info.mods)
+    logger.info(
+        "Creating score for user {user_id} | beatmap={beatmap_id} ruleset={ruleset} passed={passed} total={total}",
+        user_id=user.id,
+        beatmap_id=beatmap_id,
+        ruleset=gamemode,
+        passed=info.passed,
+        total=info.total_score,
+    )
     score = Score(
         accuracy=info.accuracy,
         max_combo=info.max_combo,
@@ -866,32 +901,437 @@ async def process_score(
         room_id=room_id,
         maximum_statistics=info.maximum_statistics,
         processed=True,
+        ranked=ranked,
     )
-    if can_get_pp:
-        from app.calculator import pre_fetch_and_calculate_pp
-
-        pp = await pre_fetch_and_calculate_pp(score, beatmap_id, session, redis, fetcher)
-        score.pp = pp
     session.add(score)
-    user_id = user.id
+    logger.debug(
+        "Score staged for commit | token={token} mods={mods} total_hits={hits}",
+        token=score_token.id,
+        mods=info.mods,
+        hits=sum(info.statistics.values()) if info.statistics else 0,
+    )
     await session.commit()
     await session.refresh(score)
-    if can_get_pp and score.pp != 0:
-        previous_pp_best = await get_user_best_pp_in_beatmap(session, beatmap_id, user_id, score.gamemode)
-        if previous_pp_best is None or score.pp > previous_pp_best.pp:
-            best_score = PPBestScore(
-                user_id=user_id,
-                score_id=score.id,
-                beatmap_id=beatmap_id,
-                gamemode=score.gamemode,
-                pp=score.pp,
-                acc=score.accuracy,
-            )
-            session.add(best_score)
-            await session.delete(previous_pp_best) if previous_pp_best else None
-            await session.commit()
-            await session.refresh(score)
-    await session.refresh(score_token)
-    await session.refresh(user)
-    await redis.publish("osu-channel:score:processed", f'{{"ScoreId": {score.id}}}')
     return score
+
+
+async def _process_score_pp(score: Score, session: AsyncSession, redis: Redis, fetcher: "Fetcher"):
+    if score.pp != 0:
+        logger.debug(
+            "Skipping PP calculation for score {score_id} | already set {pp:.2f}",
+            score_id=score.id,
+            pp=score.pp,
+        )
+        return
+    can_get_pp = score.passed and score.ranked and mods_can_get_pp(int(score.gamemode), score.mods)
+    if not can_get_pp:
+        logger.debug(
+            "Skipping PP calculation for score {score_id} | passed={passed} ranked={ranked} mods={mods}",
+            score_id=score.id,
+            passed=score.passed,
+            ranked=score.ranked,
+            mods=score.mods,
+        )
+        return
+    pp, successed = await pre_fetch_and_calculate_pp(score, session, redis, fetcher)
+    if not successed:
+        await redis.rpush("score:need_recalculate", score.id)  # pyright: ignore[reportGeneralTypeIssues]
+        logger.warning("Queued score {score_id} for PP recalculation", score_id=score.id)
+        return
+    score.pp = pp
+    logger.info("Calculated PP for score {score_id} | pp={pp:.2f}", score_id=score.id, pp=pp)
+    user_id = score.user_id
+    beatmap_id = score.beatmap_id
+    previous_pp_best = await get_user_best_pp_in_beatmap(session, beatmap_id, user_id, score.gamemode)
+    if previous_pp_best is None or score.pp > previous_pp_best.pp:
+        best_score = BestScore(
+            user_id=user_id,
+            score_id=score.id,
+            beatmap_id=beatmap_id,
+            gamemode=score.gamemode,
+            pp=score.pp,
+            acc=score.accuracy,
+        )
+        session.add(best_score)
+        await session.delete(previous_pp_best) if previous_pp_best else None
+        logger.info(
+            "Updated PP best for user {user_id} | score_id={score_id} pp={pp:.2f}",
+            user_id=user_id,
+            score_id=score.id,
+            pp=score.pp,
+        )
+
+
+async def _process_score_events(score: Score, session: AsyncSession):
+    total_users = (await session.exec(select(func.count()).select_from(User))).one()
+    rank_global = await get_score_position_by_id(
+        session,
+        score.beatmap_id,
+        score.id,
+        mode=score.gamemode,
+        user=score.user,
+    )
+
+    if rank_global == 0 or total_users == 0:
+        logger.debug(
+            "Skipping event creation for score {score_id} | rank_global={rank_global} total_users={total_users}",
+            score_id=score.id,
+            rank_global=rank_global,
+            total_users=total_users,
+        )
+        return
+    logger.debug(
+        "Processing events for score {score_id} | rank_global={rank_global} total_users={total_users}",
+        score_id=score.id,
+        rank_global=rank_global,
+        total_users=total_users,
+    )
+    if rank_global <= min(math.ceil(float(total_users) * 0.01), 50):
+        rank_event = Event(
+            created_at=utcnow(),
+            type=EventType.RANK,
+            user_id=score.user_id,
+            user=score.user,
+        )
+        rank_event.event_payload = {
+            "scorerank": score.rank.value,
+            "rank": rank_global,
+            "mode": score.gamemode.readable(),
+            "beatmap": {
+                "title": (
+                    f"{score.beatmap.beatmapset.artist} - {score.beatmap.beatmapset.title} [{score.beatmap.version}]"
+                ),
+                "url": score.beatmap.url.replace("https://osu.ppy.sh/", settings.web_url),
+            },
+            "user": {
+                "username": score.user.username,
+                "url": settings.web_url + "users/" + str(score.user.id),
+            },
+        }
+        session.add(rank_event)
+        logger.info(
+            "Registered rank event for user {user_id} | score_id={score_id} rank={rank}",
+            user_id=score.user_id,
+            score_id=score.id,
+            rank=rank_global,
+        )
+    if rank_global == 1:
+        displaced_score = (
+            await session.exec(
+                select(TotalScoreBestScore)
+                .where(
+                    TotalScoreBestScore.beatmap_id == score.beatmap_id,
+                    TotalScoreBestScore.gamemode == score.gamemode,
+                )
+                .order_by(col(TotalScoreBestScore.total_score).desc())
+                .limit(1)
+                .offset(1)
+            )
+        ).first()
+        if displaced_score and displaced_score.user_id != score.user_id:
+            username = (await session.exec(select(User.username).where(User.id == displaced_score.user_id))).one()
+
+            rank_lost_event = Event(
+                created_at=utcnow(),
+                type=EventType.RANK_LOST,
+                user_id=displaced_score.user_id,
+            )
+            rank_lost_event.event_payload = {
+                "mode": score.gamemode.readable(),
+                "beatmap": {
+                    "title": (
+                        f"{score.beatmap.beatmapset.artist} - {score.beatmap.beatmapset.title} "
+                        f"[{score.beatmap.version}]"
+                    ),
+                    "url": score.beatmap.url.replace("https://osu.ppy.sh/", settings.web_url),
+                },
+                "user": {
+                    "username": username,
+                    "url": settings.web_url + "users/" + str(displaced_score.user.id),
+                },
+            }
+            session.add(rank_lost_event)
+            logger.info(
+                "Registered rank lost event | displaced_user={user_id} new_score_id={score_id}",
+                user_id=displaced_score.user_id,
+                score_id=score.id,
+            )
+    logger.debug(
+        "Event processing committed for score {score_id}",
+        score_id=score.id,
+    )
+
+
+async def _process_statistics(
+    session: AsyncSession,
+    redis: Redis,
+    user: User,
+    score: Score,
+    score_token: int,
+    beatmap_length: int,
+    beatmap_status: BeatmapRankStatus,
+):
+    has_pp = beatmap_status.has_pp() or settings.enable_all_beatmap_pp
+    ranked = beatmap_status.ranked() or settings.enable_all_beatmap_pp
+    has_leaderboard = beatmap_status.has_leaderboard() or settings.enable_all_beatmap_leaderboard
+
+    mod_for_save = mod_to_save(score.mods)
+    previous_score_best = await get_user_best_score_in_beatmap(session, score.beatmap_id, user.id, score.gamemode)
+    previous_score_best_mod = await get_user_best_score_with_mod_in_beatmap(
+        session, score.beatmap_id, user.id, mod_for_save, score.gamemode
+    )
+    logger.debug(
+        "Existing best scores for user {user_id} | global={global_id} mod={mod_id}",
+        user_id=user.id,
+        global_id=previous_score_best.score_id if previous_score_best else None,
+        mod_id=previous_score_best_mod.score_id if previous_score_best_mod else None,
+    )
+    add_to_db = False
+    mouthly_playcount = (
+        await session.exec(
+            select(MonthlyPlaycounts).where(
+                MonthlyPlaycounts.user_id == user.id,
+                MonthlyPlaycounts.year == date.today().year,
+                MonthlyPlaycounts.month == date.today().month,
+            )
+        )
+    ).first()
+    if mouthly_playcount is None:
+        mouthly_playcount = MonthlyPlaycounts(user_id=user.id, year=date.today().year, month=date.today().month)
+        add_to_db = True
+    statistics = None
+    for i in await user.awaitable_attrs.statistics:
+        if i.mode == score.gamemode.value:
+            statistics = i
+            break
+    if statistics is None:
+        raise ValueError(f"User {user.id} does not have statistics for mode {score.gamemode.value}")
+
+    # pc, pt, tth, tts
+    statistics.total_score += score.total_score
+    difference = score.total_score - previous_score_best.total_score if previous_score_best else score.total_score
+    logger.debug(
+        "Score delta computed for {score_id}: {difference}",
+        score_id=score.id,
+        difference=difference,
+    )
+    if difference > 0 and score.passed and ranked:
+        match score.rank:
+            case Rank.X:
+                statistics.grade_ss += 1
+            case Rank.XH:
+                statistics.grade_ssh += 1
+            case Rank.S:
+                statistics.grade_s += 1
+            case Rank.SH:
+                statistics.grade_sh += 1
+            case Rank.A:
+                statistics.grade_a += 1
+        if previous_score_best is not None:
+            match previous_score_best.rank:
+                case Rank.X:
+                    statistics.grade_ss -= 1
+                case Rank.XH:
+                    statistics.grade_ssh -= 1
+                case Rank.S:
+                    statistics.grade_s -= 1
+                case Rank.SH:
+                    statistics.grade_sh -= 1
+                case Rank.A:
+                    statistics.grade_a -= 1
+        statistics.ranked_score += difference
+        statistics.level_current = calculate_score_to_level(statistics.total_score)
+        statistics.maximum_combo = max(statistics.maximum_combo, score.max_combo)
+    if score.passed and has_leaderboard:
+        # 情况1: 没有最佳分数记录，直接添加
+        # 情况2: 有最佳分数记录但没有该mod组合的记录，添加新记录
+        if previous_score_best is None or previous_score_best_mod is None:
+            session.add(
+                TotalScoreBestScore(
+                    user_id=user.id,
+                    beatmap_id=score.beatmap_id,
+                    gamemode=score.gamemode,
+                    score_id=score.id,
+                    total_score=score.total_score,
+                    rank=score.rank,
+                    mods=mod_for_save,
+                )
+            )
+            logger.info(
+                "Created new best score entry for user {user_id} | score_id={score_id} mods={mods}",
+                user_id=user.id,
+                score_id=score.id,
+                mods=mod_for_save,
+            )
+
+        # 情况3: 有最佳分数记录和该mod组合的记录，且是同一个记录，更新得分更高的情况
+        elif previous_score_best.score_id == previous_score_best_mod.score_id and difference > 0:
+            previous_score_best.total_score = score.total_score
+            previous_score_best.rank = score.rank
+            previous_score_best.score_id = score.id
+            logger.info(
+                "Updated existing best score for user {user_id} | score_id={score_id} total={total}",
+                user_id=user.id,
+                score_id=score.id,
+                total=score.total_score,
+            )
+
+        # 情况4: 有最佳分数记录和该mod组合的记录，但不是同一个记录
+        elif previous_score_best.score_id != previous_score_best_mod.score_id:
+            # 更新全局最佳记录（如果新分数更高）
+            if difference > 0:
+                # 下方的 if 一定会触发。将高分设置为此分数，删除自己防止重复的 score_id
+                logger.info(
+                    "Replacing global best score for user {user_id} | old_score_id={old_score_id}",
+                    user_id=user.id,
+                    old_score_id=previous_score_best.score_id,
+                )
+                await session.delete(previous_score_best)
+
+            # 更新mod特定最佳记录（如果新分数更高）
+            mod_diff = score.total_score - previous_score_best_mod.total_score
+            if mod_diff > 0:
+                previous_score_best_mod.total_score = score.total_score
+                previous_score_best_mod.rank = score.rank
+                previous_score_best_mod.score_id = score.id
+                logger.info(
+                    "Replaced mod-specific best for user {user_id} | mods={mods} score_id={score_id}",
+                    user_id=user.id,
+                    mods=mod_for_save,
+                    score_id=score.id,
+                )
+
+    playtime, is_valid = calculate_playtime(score, beatmap_length)
+    if is_valid:
+        redis = get_redis()
+        await redis.xadd(f"score:existed_time:{score_token}", {"time": playtime})
+        statistics.play_count += 1
+        mouthly_playcount.count += 1
+        statistics.play_time += playtime
+
+        await _process_beatmap_playcount(session, score.beatmap_id, user.id)
+
+        logger.debug(
+            "Recorded playtime {playtime}s for score {score_id} (user {user_id})",
+            playtime=playtime,
+            score_id=score.id,
+            user_id=user.id,
+        )
+    else:
+        logger.debug(
+            "Playtime {playtime}s for score {score_id} did not meet validity checks",
+            playtime=playtime,
+            score_id=score.id,
+        )
+    nlarge_tick_miss = score.nlarge_tick_miss or 0
+    nsmall_tick_hit = score.nsmall_tick_hit or 0
+    nlarge_tick_hit = score.nlarge_tick_hit or 0
+    statistics.count_100 += score.n100 + score.nkatu
+    statistics.count_300 += score.n300 + score.ngeki
+    statistics.count_50 += score.n50
+    statistics.count_miss += score.nmiss
+    statistics.total_hits += (
+        score.n300
+        + score.n100
+        + score.n50
+        + score.ngeki
+        + score.nkatu
+        + nlarge_tick_hit
+        + nlarge_tick_miss
+        + nsmall_tick_hit
+    )
+
+    if score.gamemode in {GameMode.FRUITS, GameMode.FRUITSRX}:
+        statistics.count_miss += nlarge_tick_miss
+        statistics.count_50 += nsmall_tick_hit
+        statistics.count_100 += nlarge_tick_hit
+
+    if score.passed and has_pp:
+        statistics.pp, statistics.hit_accuracy = await calculate_user_pp(session, statistics.user_id, score.gamemode)
+
+    if add_to_db:
+        session.add(mouthly_playcount)
+        logger.debug(
+            "Created monthly playcount record for user {user_id} ({year}-{month})",
+            user_id=user.id,
+            year=mouthly_playcount.year,
+            month=mouthly_playcount.month,
+        )
+
+
+async def _process_beatmap_playcount(session: AsyncSession, beatmap_id: int, user_id: int):
+    beatmap_playcount = (
+        await session.exec(
+            select(BeatmapPlaycounts).where(
+                BeatmapPlaycounts.beatmap_id == beatmap_id,
+                BeatmapPlaycounts.user_id == user_id,
+            )
+        )
+    ).first()
+    if beatmap_playcount is None:
+        beatmap_playcount = BeatmapPlaycounts(beatmap_id=beatmap_id, user_id=user_id, playcount=1)
+        session.add(beatmap_playcount)
+        logger.debug(
+            "Created beatmap playcount record for user {user_id} on beatmap {beatmap_id}",
+            user_id=user_id,
+            beatmap_id=beatmap_id,
+        )
+    else:
+        beatmap_playcount.playcount += 1
+        logger.debug(
+            "Incremented beatmap playcount for user {user_id} on beatmap {beatmap_id} to {count}",
+            user_id=user_id,
+            beatmap_id=beatmap_id,
+            count=beatmap_playcount.playcount,
+        )
+
+
+async def process_user(
+    session: AsyncSession,
+    redis: Redis,
+    fetcher: "Fetcher",
+    user: User,
+    score: Score,
+    score_token: int,
+    beatmap_length: int,
+    beatmap_status: BeatmapRankStatus,
+):
+    score_id = score.id
+    user_id = user.id
+    logger.info(
+        "Processing score {score_id} for user {user_id} on beatmap {beatmap_id}",
+        score_id=score_id,
+        user_id=user_id,
+        beatmap_id=score.beatmap_id,
+    )
+    await _process_score_pp(score, session, redis, fetcher)
+    await session.commit()
+    await session.refresh(score)
+    await session.refresh(user)
+
+    await _process_statistics(
+        session,
+        redis,
+        user,
+        score,
+        score_token,
+        beatmap_length,
+        beatmap_status,
+    )
+    await redis.publish("osu-channel:score:processed", f'{{"ScoreId": {score_id}}}')
+    await session.commit()
+
+    score_ = (await session.exec(select(Score).where(Score.id == score_id).options(joinedload(Score.beatmap)))).first()
+    if score_ is None:
+        logger.warning(
+            "Score {score_id} disappeared after commit, skipping event processing",
+            score_id=score_id,
+        )
+        return
+    await _process_score_events(score_, session)
+    await session.commit()
+    logger.info(
+        "Finished processing score {score_id} for user {user_id}",
+        score_id=score_id,
+        user_id=user_id,
+    )

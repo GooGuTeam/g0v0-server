@@ -3,8 +3,6 @@
 用于缓存用户信息，提供热缓存和实时刷新功能
 """
 
-from __future__ import annotations
-
 from datetime import datetime
 import json
 from typing import TYPE_CHECKING, Any
@@ -12,11 +10,12 @@ from typing import TYPE_CHECKING, Any
 from app.config import settings
 from app.const import BANCHOBOT_ID
 from app.database import User, UserResp
-from app.database.lazer_user import SEARCH_INCLUDED
-from app.database.score import ScoreResp
+from app.database.score import LegacyScoreResp, ScoreResp
+from app.database.user import SEARCH_INCLUDED
+from app.dependencies.database import with_db
+from app.helpers.asset_proxy_helper import replace_asset_urls
 from app.log import logger
 from app.models.score import GameMode
-from app.service.asset_proxy_service import get_asset_proxy_service
 
 from redis.asyncio import Redis
 from sqlmodel import col, select
@@ -107,13 +106,18 @@ class UserCacheService:
         self,
         user_id: int,
         score_type: str,
+        include_fail: bool,
         mode: GameMode | None = None,
         limit: int = 100,
         offset: int = 0,
+        is_legacy: bool = False,
     ) -> str:
         """生成用户成绩缓存键"""
         mode_part = f":{mode}" if mode else ""
-        return f"user:{user_id}:scores:{score_type}{mode_part}:limit:{limit}:offset:{offset}"
+        return (
+            f"user:{user_id}:scores:{score_type}{mode_part}:limit:{limit}:offset:"
+            f"{offset}:include_fail:{include_fail}:is_legacy:{is_legacy}"
+        )
 
     def _get_user_beatmapsets_cache_key(
         self, user_id: int, beatmapset_type: str, limit: int = 100, offset: int = 0
@@ -159,18 +163,23 @@ class UserCacheService:
         self,
         user_id: int,
         score_type: str,
+        include_fail: bool,
         mode: GameMode | None = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> list[ScoreResp] | None:
+        is_legacy: bool = False,
+    ) -> list[ScoreResp] | list[LegacyScoreResp] | None:
         """从缓存获取用户成绩"""
         try:
-            cache_key = self._get_user_scores_cache_key(user_id, score_type, mode, limit, offset)
+            model = LegacyScoreResp if is_legacy else ScoreResp
+            cache_key = self._get_user_scores_cache_key(
+                user_id, score_type, include_fail, mode, limit, offset, is_legacy
+            )
             cached_data = await self.redis.get(cache_key)
             if cached_data:
                 logger.debug(f"User scores cache hit for user {user_id}, type {score_type}")
                 data = json.loads(cached_data)
-                return [ScoreResp(**score_data) for score_data in data]
+                return [model(**score_data) for score_data in data]  # pyright: ignore[reportReturnType]
             return None
         except Exception as e:
             logger.error(f"Error getting user scores from cache: {e}")
@@ -180,17 +189,21 @@ class UserCacheService:
         self,
         user_id: int,
         score_type: str,
-        scores: list[ScoreResp],
+        scores: list[ScoreResp] | list[LegacyScoreResp],
+        include_fail: bool,
         mode: GameMode | None = None,
         limit: int = 100,
         offset: int = 0,
         expire_seconds: int | None = None,
+        is_legacy: bool = False,
     ):
         """缓存用户成绩"""
         try:
             if expire_seconds is None:
                 expire_seconds = settings.user_scores_cache_expire_seconds
-            cache_key = self._get_user_scores_cache_key(user_id, score_type, mode, limit, offset)
+            cache_key = self._get_user_scores_cache_key(
+                user_id, score_type, include_fail, mode, limit, offset, is_legacy
+            )
             # 使用 model_dump_json() 而不是 model_dump() + json.dumps()
             scores_json_list = [score.model_dump_json() for score in scores]
             cached_data = f"[{','.join(scores_json_list)}]"
@@ -303,8 +316,7 @@ class UserCacheService:
             # 应用资源代理处理
             if settings.enable_asset_proxy:
                 try:
-                    asset_proxy_service = get_asset_proxy_service()
-                    user_resp = await asset_proxy_service.replace_asset_urls(user_resp)
+                    user_resp = await replace_asset_urls(user_resp)
                 except Exception as e:
                     logger.warning(f"Asset proxy processing failed for user cache {user.id}: {e}")
 
@@ -342,6 +354,7 @@ class UserCacheService:
                     if size:
                         total_size += size
                 except Exception:
+                    logger.warning(f"Failed to get memory usage for key {key}")
                     continue
 
             return {
@@ -368,3 +381,14 @@ def get_user_cache_service(redis: Redis) -> UserCacheService:
     if _user_cache_service is None:
         _user_cache_service = UserCacheService(redis)
     return _user_cache_service
+
+
+async def refresh_user_cache_background(redis: Redis, user_id: int, mode: GameMode):
+    """后台任务：刷新用户缓存"""
+    try:
+        user_cache_service = get_user_cache_service(redis)
+        # 创建独立的数据库会话
+        async with with_db() as session:
+            await user_cache_service.refresh_user_cache_on_score_submit(session, user_id, mode)
+    except Exception as e:
+        logger.error(f"Failed to refresh user cache after score submit: {e}")

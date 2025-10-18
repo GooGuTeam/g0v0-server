@@ -2,13 +2,14 @@
 GeoIP dependency for FastAPI
 """
 
-from __future__ import annotations
-
 from functools import lru_cache
 import ipaddress
+from typing import Annotated
 
 from app.config import settings
 from app.helpers.geoip_helper import GeoIPHelper
+
+from fastapi import Depends, Request
 
 
 @lru_cache
@@ -26,7 +27,7 @@ def get_geoip_helper() -> GeoIPHelper:
     )
 
 
-def get_client_ip(request) -> str:
+def get_client_ip(request: Request) -> str:
     """
     获取客户端真实 IP 地址
     支持 IPv4 和 IPv6，考虑代理、负载均衡器等情况
@@ -64,6 +65,10 @@ def get_client_ip(request) -> str:
     # 3. 回退到客户端 IP
     client_ip = request.client.host if request.client else "127.0.0.1"
     return client_ip if is_valid_ip(client_ip) else "127.0.0.1"
+
+
+IPAddress = Annotated[str, Depends(get_client_ip)]
+GeoIPService = Annotated[GeoIPHelper, Depends(get_geoip_helper)]
 
 
 def is_valid_ip(ip_str: str) -> bool:

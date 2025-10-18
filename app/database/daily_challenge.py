@@ -17,14 +17,14 @@ from sqlmodel import (
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 if TYPE_CHECKING:
-    from .lazer_user import User
+    from .user import User
 
 
 class DailyChallengeStatsBase(SQLModel, UTCBaseModel):
     daily_streak_best: int = Field(default=0)
     daily_streak_current: int = Field(default=0)
     last_update: datetime | None = Field(default=None, sa_column=Column(DateTime))
-    last_day_streak: datetime | None = Field(default=None, sa_column=Column(DateTime))
+    last_day_streak: datetime | None = Field(default=None, sa_column=Column(DateTime), exclude=True)
     last_weekly_streak: datetime | None = Field(default=None, sa_column=Column(DateTime))
     playcount: int = Field(default=0)
     top_10p_placements: int = Field(default=0)
@@ -57,7 +57,9 @@ class DailyChallengeStatsResp(DailyChallengeStatsBase):
         cls,
         obj: DailyChallengeStats,
     ) -> "DailyChallengeStatsResp":
-        return cls.model_validate(obj)
+        stats = cls.model_validate(obj)
+        stats.last_update = obj.last_day_streak
+        return stats
 
 
 async def process_daily_challenge_score(session: AsyncSession, user_id: int, room_id: int):

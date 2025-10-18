@@ -1,16 +1,13 @@
-from __future__ import annotations
-
 import secrets
+from typing import Annotated
 
 from app.database.auth import OAuthClient, OAuthToken
-from app.database.lazer_user import User
-from app.dependencies.database import Database, get_redis
-from app.dependencies.user import get_client_user
+from app.dependencies.database import Database, Redis
+from app.dependencies.user import ClientUser
 
 from .router import router
 
-from fastapi import Body, Depends, HTTPException, Security
-from redis.asyncio import Redis
+from fastapi import Body, HTTPException
 from sqlmodel import select, text
 
 
@@ -18,13 +15,14 @@ from sqlmodel import select, text
     "/oauth-app/create",
     name="创建 OAuth 应用",
     description="创建一个新的 OAuth 应用程序，并生成客户端 ID 和密钥",
+    tags=["osu! OAuth 认证", "g0v0 API"],
 )
 async def create_oauth_app(
     session: Database,
-    name: str = Body(..., max_length=100, description="应用程序名称"),
-    description: str = Body("", description="应用程序描述"),
-    redirect_uris: list[str] = Body(..., description="允许的重定向 URI 列表"),
-    current_user: User = Security(get_client_user),
+    name: Annotated[str, Body(..., max_length=100, description="应用程序名称")],
+    redirect_uris: Annotated[list[str], Body(..., description="允许的重定向 URI 列表")],
+    current_user: ClientUser,
+    description: Annotated[str, Body(description="应用程序描述")] = "",
 ):
     result = await session.execute(
         text(
@@ -58,11 +56,12 @@ async def create_oauth_app(
     "/oauth-apps/{client_id}",
     name="获取 OAuth 应用信息",
     description="通过客户端 ID 获取 OAuth 应用的详细信息",
+    tags=["osu! OAuth 认证", "g0v0 API"],
 )
 async def get_oauth_app(
     session: Database,
     client_id: int,
-    current_user: User = Security(get_client_user),
+    current_user: ClientUser,
 ):
     oauth_app = await session.get(OAuthClient, client_id)
     if not oauth_app:
@@ -79,10 +78,11 @@ async def get_oauth_app(
     "/oauth-apps",
     name="获取用户的 OAuth 应用列表",
     description="获取当前用户创建的所有 OAuth 应用程序",
+    tags=["osu! OAuth 认证", "g0v0 API"],
 )
 async def get_user_oauth_apps(
     session: Database,
-    current_user: User = Security(get_client_user),
+    current_user: ClientUser,
 ):
     oauth_apps = await session.exec(select(OAuthClient).where(OAuthClient.owner_id == current_user.id))
     return [
@@ -101,11 +101,12 @@ async def get_user_oauth_apps(
     status_code=204,
     name="删除 OAuth 应用",
     description="删除指定的 OAuth 应用程序及其关联的所有令牌",
+    tags=["osu! OAuth 认证", "g0v0 API"],
 )
 async def delete_oauth_app(
     session: Database,
     client_id: int,
-    current_user: User = Security(get_client_user),
+    current_user: ClientUser,
 ):
     oauth_client = await session.get(OAuthClient, client_id)
     if not oauth_client:
@@ -125,14 +126,15 @@ async def delete_oauth_app(
     "/oauth-app/{client_id}",
     name="更新 OAuth 应用",
     description="更新指定 OAuth 应用的名称、描述和重定向 URI",
+    tags=["osu! OAuth 认证", "g0v0 API"],
 )
 async def update_oauth_app(
     session: Database,
     client_id: int,
-    name: str = Body(..., max_length=100, description="应用程序新名称"),
-    description: str = Body("", description="应用程序新描述"),
-    redirect_uris: list[str] = Body(..., description="新的重定向 URI 列表"),
-    current_user: User = Security(get_client_user),
+    name: Annotated[str, Body(..., max_length=100, description="应用程序新名称")],
+    redirect_uris: Annotated[list[str], Body(..., description="新的重定向 URI 列表")],
+    current_user: ClientUser,
+    description: Annotated[str, Body(description="应用程序新描述")] = "",
 ):
     oauth_client = await session.get(OAuthClient, client_id)
     if not oauth_client:
@@ -158,11 +160,12 @@ async def update_oauth_app(
     "/oauth-app/{client_id}/refresh",
     name="刷新 OAuth 密钥",
     description="为指定的 OAuth 应用生成新的客户端密钥，并使所有现有的令牌失效",
+    tags=["osu! OAuth 认证", "g0v0 API"],
 )
 async def refresh_secret(
     session: Database,
     client_id: int,
-    current_user: User = Security(get_client_user),
+    current_user: ClientUser,
 ):
     oauth_client = await session.get(OAuthClient, client_id)
     if not oauth_client:
@@ -189,14 +192,15 @@ async def refresh_secret(
     "/oauth-app/{client_id}/code",
     name="生成 OAuth 授权码",
     description="为特定用户和 OAuth 应用生成授权码，用于授权码授权流程",
+    tags=["osu! OAuth 认证", "g0v0 API"],
 )
 async def generate_oauth_code(
     session: Database,
     client_id: int,
-    current_user: User = Security(get_client_user),
-    redirect_uri: str = Body(..., description="授权后重定向的 URI"),
-    scopes: list[str] = Body(..., description="请求的权限范围列表"),
-    redis: Redis = Depends(get_redis),
+    current_user: ClientUser,
+    redirect_uri: Annotated[str, Body(..., description="授权后重定向的 URI")],
+    scopes: Annotated[list[str], Body(..., description="请求的权限范围列表")],
+    redis: Redis,
 ):
     client = await session.get(OAuthClient, client_id)
     if not client:

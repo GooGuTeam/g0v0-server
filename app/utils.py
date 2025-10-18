@@ -1,15 +1,17 @@
-from __future__ import annotations
-
 import asyncio
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
 import functools
 import inspect
 from io import BytesIO
-from typing import Any, ParamSpec, TypeVar
+import re
+from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
 
 from fastapi import HTTPException
 from PIL import Image
+
+if TYPE_CHECKING:
+    from app.models.model import UserAgentInfo
 
 
 def unix_timestamp_to_windows(timestamp: int) -> int:
@@ -135,7 +137,7 @@ def truncate(text: str, limit: int = 100, ellipsis: str = "...") -> str:
     return text
 
 
-def check_image(content: bytes, size: int, width: int, height: int) -> None:
+def check_image(content: bytes, size: int, width: int, height: int) -> str:
     if len(content) > size:  # 10MB limit
         raise HTTPException(status_code=400, detail="File size exceeds 10MB limit")
     elif len(content) == 0:
@@ -149,85 +151,84 @@ def check_image(content: bytes, size: int, width: int, height: int) -> None:
                     status_code=400,
                     detail=f"Image size exceeds {width}x{height} pixels",
                 )
+            return img.format.lower()
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error processing image: {e}")
 
 
-def simplify_user_agent(user_agent: str | None, max_length: int = 200) -> str | None:
-    """
-    简化 User-Agent 字符串，只保留 osu! 和关键设备系统信息浏览器
+def extract_user_agent(user_agent: str | None) -> "UserAgentInfo":
+    from app.models.model import UserAgentInfo
 
-    Args:
-        user_agent: 原始 User-Agent 字符串
-        max_length: 最大长度限制
+    raw_ua = user_agent or ""
+    ua = raw_ua.strip()
+    lower_ua = ua.lower()
 
-    Returns:
-        简化后的 User-Agent 字符串，或 None
-    """
-    import re
+    info = UserAgentInfo(raw_ua=raw_ua)
 
-    if not user_agent:
-        return None
+    if not ua:
+        return info
 
-    # 如果长度在限制内，直接返回
-    if len(user_agent) <= max_length:
-        return user_agent
+    client_identifiers = ("osu!", "osu!lazer", "osu-framework")
+    if any(identifier in lower_ua for identifier in client_identifiers):
+        info.browser = "osu!"
+        info.is_client = True
+        return info
 
-    # 提取操作系统信息
-    os_info = ""
-    os_patterns = [
-        r"(Windows[^;)]*)",
-        r"(Mac OS[^;)]*)",
-        r"(Linux[^;)]*)",
-        r"(Android[^;)]*)",
-        r"(iOS[^;)]*)",
-        r"(iPhone[^;)]*)",
-        r"(iPad[^;)]*)",
-    ]
+    browser_patterns: tuple[tuple[re.Pattern[str], str], ...] = (
+        (re.compile(r"OPR/(\d+(?:\.\d+)*)"), "Opera"),
+        (re.compile(r"Edg/(\d+(?:\.\d+)*)"), "Edge"),
+        (re.compile(r"Chrome/(\d+(?:\.\d+)*)"), "Chrome"),
+        (re.compile(r"Firefox/(\d+(?:\.\d+)*)"), "Firefox"),
+        (re.compile(r"Version/(\d+(?:\.\d+)*).*Safari"), "Safari"),
+        (re.compile(r"Safari/(\d+(?:\.\d+)*)"), "Safari"),
+        (re.compile(r"MSIE (\d+(?:\.\d+)*)"), "Internet Explorer"),
+        (re.compile(r"Trident/.*rv:(\d+(?:\.\d+)*)"), "Internet Explorer"),
+    )
 
-    for pattern in os_patterns:
-        match = re.search(pattern, user_agent, re.IGNORECASE)
+    for pattern, name in browser_patterns:
+        match = pattern.search(ua)
         if match:
-            os_info = match.group(1).strip()
+            info.browser = name
+            info.version = match.group(1)
             break
 
-    # 提取浏览器信息
-    browser_info = ""
-    browser_patterns = [
-        r"(osu![^)]*)",  # osu! 客户端
-        r"(Chrome/[\d.]+)",
-        r"(Firefox/[\d.]+)",
-        r"(Safari/[\d.]+)",
-        r"(Edge/[\d.]+)",
-        r"(Opera/[\d.]+)",
-    ]
+    os_patterns: tuple[tuple[re.Pattern[str], str], ...] = (
+        (re.compile(r"windows nt 10"), "Windows 10"),
+        (re.compile(r"windows nt 6\.3"), "Windows 8.1"),
+        (re.compile(r"windows nt 6\.2"), "Windows 8"),
+        (re.compile(r"windows nt 6\.1"), "Windows 7"),
+        (re.compile(r"windows nt 6\.0"), "Windows Vista"),
+        (re.compile(r"windows nt 5\.1"), "Windows XP"),
+        (re.compile(r"mac os x"), "macOS"),
+        (re.compile(r"iphone os"), "iOS"),
+        (re.compile(r"ipad;"), "iPadOS"),
+        (re.compile(r"android"), "Android"),
+        (re.compile(r"linux"), "Linux"),
+    )
 
-    for pattern in browser_patterns:
-        match = re.search(pattern, user_agent, re.IGNORECASE)
-        if match:
-            browser_info = match.group(1).strip()
-            # 如果找到了 osu! 客户端，优先使用
-            if "osu!" in browser_info.lower():
-                break
+    for pattern, name in os_patterns:
+        if pattern.search(lower_ua):
+            info.os = name
+            break
 
-    # 构建简化的 User-Agent
-    parts = []
-    if os_info:
-        parts.append(os_info)
-    if browser_info:
-        parts.append(browser_info)
+    info.is_mobile = any(keyword in lower_ua for keyword in ("mobile", "iphone", "android", "ipod"))
+    info.is_tablet = any(keyword in lower_ua for keyword in ("ipad", "tablet"))
+    # Only classify as PC if not mobile or tablet
+    if (
+        not info.is_mobile
+        and not info.is_tablet
+        and any(keyword in lower_ua for keyword in ("windows", "macintosh", "linux", "x11"))
+    ):
+        info.is_pc = True
 
-    if parts:
-        simplified = "; ".join(parts)
-    else:
-        # 如果没有识别到关键信息，截断原始字符串
-        simplified = user_agent[: max_length - 3] + "..."
+    if info.is_tablet:
+        info.platform = "tablet"
+    elif info.is_mobile:
+        info.platform = "mobile"
+    elif info.is_pc:
+        info.platform = "pc"
 
-    # 确保不超过最大长度
-    if len(simplified) > max_length:
-        simplified = simplified[: max_length - 3] + "..."
-
-    return simplified
+    return info
 
 
 # https://github.com/encode/starlette/blob/master/starlette/_utils.py
@@ -255,10 +256,7 @@ class BackgroundTasks:
         self.tasks = set(tasks) if tasks else set()
 
     def add_task(self, func: Callable[P, Any], *args: P.args, **kwargs: P.kwargs) -> None:
-        if is_async_callable(func):
-            coro = func(*args, **kwargs)
-        else:
-            coro = run_in_threadpool(func, *args, **kwargs)
+        coro = func(*args, **kwargs) if is_async_callable(func) else run_in_threadpool(func, *args, **kwargs)
         task = asyncio.create_task(coro)
         self.tasks.add(task)
         task.add_done_callback(self.tasks.discard)
@@ -274,3 +272,30 @@ bg_tasks = BackgroundTasks()
 
 def utcnow() -> datetime:
     return datetime.now(tz=UTC)
+
+
+def hex_to_hue(hex_color: str) -> int:
+    """Convert a hex color string to a hue value (0-360)."""
+    hex_color = hex_color.lstrip("#")
+    if len(hex_color) != 6:
+        raise ValueError("Invalid hex color format. Expected format: RRGGBB")
+
+    r = int(hex_color[0:2], 16) / 255.0
+    g = int(hex_color[2:4], 16) / 255.0
+    b = int(hex_color[4:6], 16) / 255.0
+
+    max_c = max(r, g, b)
+    min_c = min(r, g, b)
+    delta = max_c - min_c
+
+    if delta == 0:
+        return 0  # Achromatic (grey)
+
+    if max_c == r:
+        hue = (60 * ((g - b) / delta) + 360) % 360
+    elif max_c == g:
+        hue = (60 * ((b - r) / delta) + 120) % 360
+    else:  # max_c == b
+        hue = (60 * ((r - g) / delta) + 240) % 360
+
+    return int(hue)

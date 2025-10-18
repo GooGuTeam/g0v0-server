@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from functools import partial
 
 from app.database.score import Beatmap, Score
@@ -19,9 +17,7 @@ async def process_mod(
         return False
     if not beatmap.beatmap_status.has_leaderboard():
         return False
-    if len(score.mods) != 1 or score.mods[0]["acronym"] != mod:
-        return False
-    return True
+    return not (len(score.mods) != 1 or score.mods[0]["acronym"] != mod)
 
 
 async def process_category_mod(

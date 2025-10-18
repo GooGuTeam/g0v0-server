@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 
 from app.models.model import UTCBaseModel
 from app.models.mods import APIMod
-from app.models.multiplayer_hub import PlaylistItem
+from app.models.playlist import PlaylistItem
 
 from .beatmap import Beatmap, BeatmapResp
 
@@ -72,7 +72,7 @@ class Playlist(PlaylistBase, table=True):
         return result.one()
 
     @classmethod
-    async def from_hub(cls, playlist: PlaylistItem, room_id: int, session: AsyncSession) -> "Playlist":
+    async def from_model(cls, playlist: PlaylistItem, room_id: int, session: AsyncSession) -> "Playlist":
         next_id = await cls.get_next_id_for_room(room_id, session=session)
         return cls(
             id=next_id,
@@ -107,7 +107,7 @@ class Playlist(PlaylistBase, table=True):
 
     @classmethod
     async def add_to_db(cls, playlist: PlaylistItem, room_id: int, session: AsyncSession):
-        db_playlist = await cls.from_hub(playlist, room_id, session)
+        db_playlist = await cls.from_model(playlist, room_id, session)
         session.add(db_playlist)
         await session.commit()
         await session.refresh(db_playlist)

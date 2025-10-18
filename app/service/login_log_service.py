@@ -2,8 +2,6 @@
 用户登录记录服务
 """
 
-from __future__ import annotations
-
 import asyncio
 
 from app.database.user_login_log import UserLoginLog
@@ -23,6 +21,7 @@ class LoginLogService:
         db: AsyncSession,
         user_id: int,
         request: Request,
+        user_agent: str | None = None,
         login_success: bool = True,
         login_method: str = "password",
         notes: str | None = None,
@@ -44,12 +43,6 @@ class LoginLogService:
         # 获取客户端IP并标准化格式
         raw_ip = get_client_ip(request)
         ip_address = normalize_ip(raw_ip)
-
-        # 获取并简化User-Agent
-        from app.utils import simplify_user_agent
-
-        raw_user_agent = request.headers.get("User-Agent", "")
-        user_agent = simplify_user_agent(raw_user_agent, max_length=500)
 
         # 创建基本的登录记录
         login_log = UserLoginLog(
@@ -110,6 +103,7 @@ class LoginLogService:
         attempted_username: str | None = None,
         login_method: str = "password",
         notes: str | None = None,
+        user_agent: str | None = None,
     ) -> UserLoginLog:
         """
         记录失败的登录尝试
@@ -131,7 +125,12 @@ class LoginLogService:
             request=request,
             login_success=False,
             login_method=login_method,
-            notes=f"Failed login attempt: {attempted_username}" if attempted_username else "Failed login attempt",
+            user_agent=user_agent,
+            notes=(
+                f"Failed login attempt on user {attempted_username}: {notes}"
+                if attempted_username
+                else "Failed login attempt"
+            ),
         )
 
 

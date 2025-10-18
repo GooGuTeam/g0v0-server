@@ -1,48 +1,184 @@
-## g0v0-server – AI Coding Agent Quick Guide
+# copilot-instruction
 
-Focus: High‑performance osu! (v1 / v2 / lazer) API emulator. Python (FastAPI + SQLModel/MySQL + Redis + APScheduler) + Rust (`packages/msgpack_lazer_api` for MessagePack encode/decode).
+> 此文件是 AGENTS.md 的复制。一切以 AGENTS.md 为主。
 
-### Core Architecture (know these before editing)
-1. Entry: `main.py` – FastAPI app + lifespan startup/shutdown orchestration (fetcher init, GeoIP, schedulers, cache/email/download health checks, Redis message system, stats, achievements). Add new long‑running startup logic here only if it is foundational; otherwise prefer a scheduler or on‑demand service.
-2. Routers (`app/router/`):
-    - `v1/` & `v2/`: Must mirror official endpoints only (no custom additions). Keep prefix via parent `router = APIRouter(prefix="/api/v2")` etc.
-    - `notification/`: Chat & notification subset (also “official only”).
-    - `auth.py`: Auth / token flows.
-    - `private/`: Server‑specific or internal endpoints (place all custom APIs here; split by concern with small modules + include via `private/router.py`).
-3. Services (`app/service/`): Stateless or stateful domain logic (pp calc, rankings, caching, daily challenge, email, geoip, etc.). If you need background computation, create a service + (optionally) scheduler wrapper.
-4. Schedulers (`app/scheduler/`): Start/stop functions named `start_*_scheduler` + matching `stop_*`. Lifespan wires them; stay consistent (see `cache_scheduler`, `database_cleanup_scheduler`).
-5. Database layer (`app/database/`): SQLModel models; large models (e.g. `score.py`) embed domain helpers & serialization validators. When adding/altering tables: generate Alembic migration (autogenerate) & review for types / indexes.
-6. Caching: Redis accessed via dependency (`app/dependencies/database.get_redis`). High‑traffic objects (users, user scores) use `UserCacheService` with explicit key patterns (`user:{id}...`). Reuse existing service; do not invent new ad‑hoc keys for similar data.
-7. Rust module: `packages/msgpack_lazer_api` – performance critical (MessagePack for lazer). After Rust edits: `maturin develop -R` (release) inside dev container; Python interface consumed via import `msgpack_lazer_api` (see usage in encode/decode paths – keep function signatures stable; update `.pyi` if API changes).
+> 使用自动化与 AI 代理（GitHub Copilot、依赖/CI 机器人，以及仓库中的运行时调度器/worker）的指导原则，适用于 g0v0-server 仓库。
 
-### Common Task Playbooks
-Add v2 endpoint: create file under `app/router/v2/`, import router via `from .router import router`, define FastAPI path ops (async) using DB session (`session: Database`) & caching patterns; avoid blocking calls. Do NOT modify existing prefixes; do NOT add non‑official endpoints here (place in `private`).
-Add background job: put pure logic in `app/service/<name>_job.py` (idempotent / retry‑safe), add small scheduler starter in `app/scheduler/<name>_scheduler.py` exposing `start_<name>_scheduler()` & `stop_<name>_scheduler()`, then register in `main.lifespan` near similar tasks.
-DB schema change: edit / add SQLModel in relevant module, then: `alembic revision --autogenerate -m "feat(db): add <table>"` → inspect migration (indexes, enums) → `alembic upgrade head`.
-pp / ranking recalculation: standalone scriptable path via env `RECALCULATE=true python main.py` (see `app/service/recalculate.py`). Keep heavy loops async + batched (`asyncio.gather`) like `_recalculate_pp` pattern.
-User data responses: Use `UserResp.from_db(...)` and cache asynchronously (`background_task.add_task(cache_service.cache_user, user_resp)`). Maintain ≤50 result limits where existing code does (see `v2/user.py`).
+---
 
-### Configuration & Safety
-Central settings: `app/config.py` (pydantic-settings). Secrets default to unsafe placeholders; lifespan logs warnings if not overridden (`secret_key`, `osu_web_client_secret`). When introducing new config flags: add field + defaults, document in README tables, and reference via `settings.<name>` (avoid reading env directly elsewhere).
+## API 参考
 
-### Conventions / Quality
-Commit messages: Angular format (type(scope): subject). Types: feat/fix/docs/style/refactor/perf/test/chore/ci.
-Async only in request paths (no blocking I/O). Use existing redis/service helpers instead of inline logic. Prefer model methods / helper functions near existing ones for cohesion.
-Cache keys: follow established prefixes (`user:` / `v1_user:` / `user:{id}:scores:`). Invalidate via provided service methods.
-Error handling: Raise `HTTPException` for client issues; wrap external fetch retries (see `_recalculate_pp` loop with capped retries + sleep). Avoid silent except; log via `logger`.
+本项目必须保持与公开的 osu! API 兼容。在添加或映射端点时请参考：
 
-### Tooling / Commands
-Setup: `uv sync` → `pre-commit install`.
-Run dev server: `uvicorn main:app --reload --host 0.0.0.0 --port 8000` (logs managed by custom logger; uvicorn default log config disabled).
-Rust rebuild: `maturin develop -R`.
-Migrations: `alembic revision --autogenerate -m "feat(db): ..."` → `alembic upgrade head`.
+- **v1（旧版）：** [https://github.com/ppy/osu-api/wiki](https://github.com/ppy/osu-api/wiki)
+- **v2（OpenAPI）：** [https://osu.ppy.sh/docs/openapi.yaml](https://osu.ppy.sh/docs/openapi.yaml)
 
-### When Modifying Large Files (e.g. `score.py`)
-Keep validation / serializer patterns (field_validator / field_serializer). Add new enum-like JSON fields with both validator + serializer for forward compatibility.
+任何在 `app/router/v1/`、`app/router/v2/` 或 `app/router/notification/` 中的实现必须与官方规范保持一致。自定义或实验性的端点应放在 `app/router/private/` 中。
 
-### PR Scope Guidance
-One concern per change (e.g., add endpoint OR refactor cache logic—not both). Update README config tables if adding env vars.
+---
 
-Questions / ambiguous patterns: prefer aligning with closest existing service; if still unclear, surface a clarification comment instead of introducing a new pattern.
+## 代理类别
 
-— End of instructions —
+允许的代理分为三类：
+
+- **代码生成/补全代理**（如 GitHub Copilot 或其他 LLM）—— **仅当** 有维护者审核并批准输出时允许使用。
+- **自动维护代理**（如 Dependabot、Renovate、pre-commit.ci）—— 允许使用，但必须遵守严格的 PR 和 CI 政策。
+- **运行时/后台代理**（调度器、worker）—— 属于产品代码的一部分；必须遵守生命周期、并发和幂等性规范。
+
+所有由代理生成或建议的更改必须遵守以下规则。
+
+---
+
+## 所有代理的规则
+
+1. **单一职责的 PR。** 代理的 PR 必须只解决一个问题（一个功能、一个 bug 修复或一次依赖更新）。提交信息应使用 Angular 风格（如 `feat(api): add ...`）。
+2. **通过 Lint 与 CI 检查。** 每个 PR（包括代理创建的）在合并前必须通过 `pyright`、`ruff`、`pre-commit` 钩子和仓库 CI。PR 中应附带 CI 运行结果链接。
+3. **绝不可提交敏感信息。** 代理不得提交密钥、密码、token 或真实 `.env` 值。如果检测到可能的敏感信息，代理必须中止并通知指定的维护者。
+4. **API 位置限制。** 不得在 `app/router/v1` 或 `app/router/v2` 下添加新的公开端点，除非该端点在官方 v1/v2 规范中存在。自定义或实验性端点必须放在 `app/router/private/`。
+5. **保持公共契约稳定。** 未经批准的迁移计划，不得随意修改响应 schema、路由前缀或其他公共契约。若有变更，PR 中必须包含明确的兼容性说明。
+
+---
+
+## Copilot / LLM 使用
+
+> 关于在本仓库中使用 GitHub Copilot 和其他基于 LLM 的辅助工具的统一指导。
+
+### 关键项目结构（需要了解的内容）
+
+- **应用入口：** `main.py` —— FastAPI 应用，包含启动/关闭生命周期管理（fetchers、GeoIP、调度器、缓存与健康检查、Redis 消息、统计、成就系统）。
+
+- **路由：** `app/router/` 包含所有路由组。主要的路由包括：
+  - `v1/`（v1 端点）
+  - `v2/`（v2 端点）
+  - `notification/` 路由（聊天/通知子系统）
+  - `auth.py`（认证/token 流程）
+  - `private/`（自定义或实验性的端点）
+
+  **规则：** `v1/` 和 `v2/` 必须与官方 API 对应。仅内部或实验端点应放在 `app/router/private/`。
+
+- **模型与数据库工具：**
+  - SQLModel/ORM 模型在 `app/database/`。
+  - 非数据库模型在 `app/models/`。
+  - 修改模型/schema 时必须生成 Alembic 迁移，并手动检查生成的 SQL 与索引。
+
+- **服务层：** `app/service/` 保存领域逻辑（如缓存工具、通知/邮件逻辑）。复杂逻辑应放在 service，而不是路由处理器中。
+
+- **任务：** `app/tasks/` 保存任务（定时任务、启动任务、关闭任务）。
+  - 均在 `__init__.py` 进行导出。
+  - 对于启动任务/关闭任务，在 `main.py` 的 `lifespan` 调用。
+  - 定时任务使用 APScheduler
+
+- **缓存与依赖：** 使用 `app/dependencies/` 提供的 Redis 依赖和缓存服务（遵循现有 key 命名约定，如 `user:{id}:...`）。
+
+- **日志：** 使用 `app/log` 提供的日志工具。
+
+### 实用工作流（提示模式）
+
+- **添加 v2 端点（正确方式）：** 在 `app/router/v2/` 下添加文件，导出路由，实现基于数据库与缓存依赖的异步处理函数。**不得**在 v1/v2 添加非官方端点。
+- **添加自定义端点：** 放在 `app/router/private/`，保持处理器精简，将业务逻辑放入 `app/service/`。
+- **鉴权：** 使用 [`app.dependencies.user`](../app/dependencies/user.py) 提供的依赖注入，如 `ClientUser` 和 `get_current_user`，参考下方。
+  
+  ```python
+  from typing import Annotated
+  from fastapi import Security
+  from app.dependencies.user import ClientUser, get_current_user
+
+
+  @router.get("/some-api")
+  async def _(current_user: Annotated[User, Security(get_current_user, scopes=["public"])]):
+      ...
+
+
+  @router.get("/some-client-api")
+  async def _(current_user: ClientUser):
+      ...
+  ```
+
+- **添加后台任务：** 将任务逻辑写在 `app/service/_job.py`（幂等、可重试）。调度器入口放在 `app/scheduler/_scheduler.py`，并在应用生命周期注册。
+- **数据库 schema 变更：** 修改 `app/models/` 中的 SQLModel 模型，运行 `alembic revision --autogenerate`，检查迁移并本地测试 `alembic upgrade head` 后再提交。
+- **缓存写入与响应：** 使用现有的 `UserResp` 模式和 `UserCacheService`；异步缓存写入应使用后台任务。
+
+### 提示指导（给 LLM/Copilot 的输入）
+
+- 明确文件位置和限制（如：`Add an async endpoint under app/router/private/... DO NOT add to app/router/v1 or v2`）。
+- 要求异步处理函数、依赖注入 DB/Redis、复用已有服务/工具、加上类型注解，并生成最小化 pytest 测试样例。
+
+### 约定与质量要求
+
+- **使用 Annotated-style 依赖注入** 在路由处理器中。
+- **提交信息风格：** `type(scope): subject`（Angular 风格）。
+- **优先异步：** 路由必须为异步函数；避免阻塞事件循环。
+- **关注点分离：** 业务逻辑应放在 service，而不是路由中。
+- **错误处理：** 客户端错误用 `HTTPException`，服务端错误使用结构化日志。
+- **类型与 lint：** 在请求评审前，代码必须通过 `pyright` 和 `ruff` 检查。
+- **注释：** 避免过多注释，仅为晦涩逻辑添加简洁的“魔法注释”。
+- **日志：** 使用 `app.log` 提供的 `log` 函数获取 logger 实例。（服务、任务除外）
+
+### 工具参考
+
+```
+uv sync
+pre-commit install
+pre-commit run --all-files
+pyright
+ruff .
+alembic revision --autogenerate -m "feat(db): ..."
+alembic upgrade head
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### PR 范围指导
+
+- 保持 PR 专注：一次只做一件事（如端点或重构，不要混合）。
+- 不确定时，请参考现有服务，并添加简短说明性注释。
+
+### PR 审核规则
+
+> GitHub Copilot PR review 可参考。
+
+1. 如果 PR 修改了端点，简要说明端点的用途和预期行为。同时检查是否满足上述的 API 位置限制。
+2. 如果 PR 修改了数据库模型，必须包含 Alembic 迁移。检查迁移的 SQL 语句和索引是否合理。
+3. 修改的其他功能需要提供简短的说明。
+4. 提供性能优化的建议（见下文）。
+
+---
+
+## 性能优化提示
+
+以下为结合本仓库架构（FastAPI + SQLModel/SQLAlchemy、Redis 缓存、后台调度器）总结的性能优化建议：
+
+### 数据库
+
+- **仅选择必要字段。** 使用 `select(Model.col1, Model.col2)`，避免 `select(Model)`。
+
+```py
+stmt = select(User.id, User.username).where(User.active == True)
+rows = await session.execute(stmt)
+```
+
+- **使用 `select(exists())` 检查存在性。** 避免加载整行：
+
+```py
+from sqlalchemy import select, exists
+exists_stmt = select(exists().where(User.id == some_id))
+found = await session.scalar(exists_stmt)
+```
+
+- **避免 N+1 查询。** 需要关联对象时用 `selectinload`、`joinedload`。
+
+- **批量操作。** 插入/更新时应批量执行，并放在一个事务中，而不是多个小事务。
+
+
+### 耗时任务
+
+- 如果这个任务来自 API Router，请使用 FastAPI 提供的 [`BackgroundTasks`](https://fastapi.tiangolo.com/tutorial/background-tasks)
+- 其他情况，使用 `app.utils` 的 `bg_tasks`，它提供了与 FastAPI 的 `BackgroundTasks` 类似的功能。
+
+---
+
+## 部分 LLM 的额外要求
+
+### Claude Code
+
+- 禁止创建额外的测试脚本。
+

@@ -2,10 +2,11 @@ from datetime import datetime
 from typing import TYPE_CHECKING, NotRequired, Self, TypedDict
 
 from app.config import settings
+from app.database.beatmap_playcounts import BeatmapPlaycounts
 from app.models.beatmap import BeatmapRankStatus, Genre, Language
 from app.models.score import GameMode
 
-from .lazer_user import BASE_INCLUDES, User, UserResp
+from .user import BASE_INCLUDES, User, UserResp
 
 from pydantic import BaseModel, field_validator, model_validator
 from sqlalchemy import JSON, Boolean, Column, DateTime, Text
@@ -74,7 +75,6 @@ class BeatmapsetBase(SQLModel):
     covers: BeatmapCovers | None = Field(sa_column=Column(JSON))
     creator: str = Field(index=True)
     nsfw: bool = Field(default=False, sa_column=Column(Boolean))
-    play_count: int = Field(index=True)
     preview_url: str
     source: str = Field(default="")
 
@@ -93,7 +93,6 @@ class BeatmapsetBase(SQLModel):
     # TODO: events: Optional[list[BeatmapsetEvent]] = None
 
     pack_tags: list[str] = Field(default=[], sa_column=Column(JSON))
-    ratings: list[int] | None = Field(default=None, sa_column=Column(JSON))
     # TODO: related_users: Optional[list[User]] = None
     # TODO: user: Optional[User] = Field(default=None)
     track_id: int | None = Field(default=None, index=True)  # feature artist?
@@ -131,25 +130,22 @@ class Beatmapset(AsyncAttrs, BeatmapsetBase, table=True):
     favourites: list["FavouriteBeatmapset"] = Relationship(back_populates="beatmapset")
 
     @classmethod
-    async def from_resp(cls, session: AsyncSession, resp: "BeatmapsetResp", from_: int = 0) -> "Beatmapset":
-        from .beatmap import Beatmap
-
+    async def from_resp_no_save(cls, resp: "BeatmapsetResp") -> "Beatmapset":
         d = resp.model_dump()
-        update = {}
         if resp.nominations:
-            update["nominations_required"] = resp.nominations.required
-            update["nominations_current"] = resp.nominations.current
+            d["nominations_required"] = resp.nominations.required
+            d["nominations_current"] = resp.nominations.current
         if resp.hype:
-            update["hype_current"] = resp.hype.current
-            update["hype_required"] = resp.hype.required
+            d["hype_current"] = resp.hype.current
+            d["hype_required"] = resp.hype.required
         if resp.genre_id:
-            update["beatmap_genre"] = Genre(resp.genre_id)
+            d["beatmap_genre"] = Genre(resp.genre_id)
         elif resp.genre:
-            update["beatmap_genre"] = Genre(resp.genre.id)
+            d["beatmap_genre"] = Genre(resp.genre.id)
         if resp.language_id:
-            update["beatmap_language"] = Language(resp.language_id)
+            d["beatmap_language"] = Language(resp.language_id)
         elif resp.language:
-            update["beatmap_language"] = Language(resp.language.id)
+            d["beatmap_language"] = Language(resp.language.id)
         beatmapset = Beatmapset.model_validate(
             {
                 **d,
@@ -159,18 +155,34 @@ class Beatmapset(AsyncAttrs, BeatmapsetBase, table=True):
                 "download_disabled": resp.availability.download_disabled or False,
             }
         )
+        return beatmapset
+
+    @classmethod
+    async def from_resp(
+        cls,
+        session: AsyncSession,
+        resp: "BeatmapsetResp",
+        from_: int = 0,
+    ) -> "Beatmapset":
+        from .beatmap import Beatmap
+
+        beatmapset = await cls.from_resp_no_save(resp)
         if not (await session.exec(select(exists()).where(Beatmapset.id == resp.id))).first():
             session.add(beatmapset)
             await session.commit()
         await Beatmap.from_resp_batch(session, resp.beatmaps, from_=from_)
+        beatmapset = (await session.exec(select(Beatmapset).where(Beatmapset.id == resp.id))).one()
         return beatmapset
 
     @classmethod
     async def get_or_fetch(cls, session: AsyncSession, fetcher: "Fetcher", sid: int) -> "Beatmapset":
+        from app.service.beatmapset_update_service import get_beatmapset_update_service
+
         beatmapset = await session.get(Beatmapset, sid)
         if not beatmapset:
             resp = await fetcher.get_beatmapset(sid)
             beatmapset = await cls.from_resp(session, resp)
+            await get_beatmapset_update_service().add(resp)
         return beatmapset
 
 
@@ -192,6 +204,7 @@ class BeatmapsetResp(BeatmapsetBase):
     has_favourited: bool = False
     favourite_count: int = 0
     recent_favourites: list[UserResp] = Field(default_factory=list)
+    play_count: int = 0
 
     @field_validator(
         "nsfw",
@@ -228,7 +241,7 @@ class BeatmapsetResp(BeatmapsetBase):
         session: AsyncSession | None = None,
         user: User | None = None,
     ) -> "BeatmapsetResp":
-        from .beatmap import BeatmapResp
+        from .beatmap import Beatmap, BeatmapResp
         from .favourite_beatmapset import FavouriteBeatmapset
 
         update = {
@@ -259,9 +272,21 @@ class BeatmapsetResp(BeatmapsetBase):
             **beatmapset.model_dump(),
         }
 
-        # 确保 ratings 字段不为 null，避免客户端崩溃
-        if update.get("ratings") is None:
-            update["ratings"] = []
+        if session is not None:
+            # 从数据库读取对应谱面集的评分
+            from .beatmapset_ratings import BeatmapRating
+
+            beatmapset_all_ratings = (
+                await session.exec(select(BeatmapRating).where(BeatmapRating.beatmapset_id == beatmapset.id))
+            ).all()
+            ratings_list = [0] * 11
+            for rating in beatmapset_all_ratings:
+                ratings_list[rating.rating] += 1
+            update["ratings"] = ratings_list
+        else:
+            # 返回非空值避免客户端崩溃
+            if update.get("ratings") is None:
+                update["ratings"] = []
 
         beatmap_status = beatmapset.beatmap_status
         if settings.enable_all_beatmap_leaderboard and not beatmap_status.has_leaderboard():
@@ -307,6 +332,14 @@ class BeatmapsetResp(BeatmapsetBase):
                     .where(FavouriteBeatmapset.beatmapset_id == beatmapset.id)
                 )
             ).one()
+
+            update["play_count"] = (
+                await session.exec(
+                    select(func.sum(BeatmapPlaycounts.playcount)).where(
+                        col(BeatmapPlaycounts.beatmap).has(col(Beatmap.beatmapset_id) == beatmapset.id)
+                    )
+                )
+            ).first() or 0
         return cls.model_validate(
             update,
         )
@@ -315,5 +348,5 @@ class BeatmapsetResp(BeatmapsetBase):
 class SearchBeatmapsetsResp(SQLModel):
     beatmapsets: list[BeatmapsetResp]
     total: int
-    cursor: dict[str, int | float] | None = None
+    cursor: dict[str, int | float | str] | None = None
     cursor_string: str | None = None

@@ -1,24 +1,21 @@
-from __future__ import annotations
-
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
 from app.database.beatmap import Beatmap, calculate_beatmap_attributes
 from app.database.beatmap_playcounts import BeatmapPlaycounts
 from app.database.beatmapset import Beatmapset
 from app.database.favourite_beatmapset import FavouriteBeatmapset
 from app.database.score import Score
-from app.dependencies.database import Database, get_redis
-from app.dependencies.fetcher import get_fetcher
-from app.fetcher import Fetcher
+from app.dependencies.database import Database, Redis
+from app.dependencies.fetcher import Fetcher
 from app.models.beatmap import BeatmapRankStatus, Genre, Language
 from app.models.mods import int_to_mods
+from app.models.performance import OsuBeatmapAttributes
 from app.models.score import GameMode
 
 from .router import AllStrModel, router
 
-from fastapi import Depends, Query
-from redis.asyncio import Redis
+from fastapi import Query
 from sqlmodel import col, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -148,18 +145,18 @@ class V1Beatmap(AllStrModel):
 )
 async def get_beatmaps(
     session: Database,
-    since: datetime | None = Query(None, description="自指定时间后拥有排行榜的谱面"),
-    beatmapset_id: int | None = Query(None, alias="s", description="谱面集 ID"),
-    beatmap_id: int | None = Query(None, alias="b", description="谱面 ID"),
-    user: str | None = Query(None, alias="u", description="谱师"),
-    type: Literal["string", "id"] | None = Query(None, description="用户类型：string 用户名称 / id 用户 ID"),
-    ruleset_id: int | None = Query(None, alias="m", description="Ruleset ID", ge=0, le=3),  # TODO
-    convert: bool = Query(False, alias="a", description="转谱"),  # TODO
-    checksum: str | None = Query(None, alias="h", description="谱面文件 MD5"),
-    limit: int = Query(500, ge=1, le=500, description="返回结果数量限制"),
-    mods: int = Query(0, description="应用到谱面属性的 MOD"),
-    redis: Redis = Depends(get_redis),
-    fetcher: Fetcher = Depends(get_fetcher),
+    redis: Redis,
+    fetcher: Fetcher,
+    since: Annotated[datetime | None, Query(description="自指定时间后拥有排行榜的谱面")] = None,
+    beatmapset_id: Annotated[int | None, Query(alias="s", description="谱面集 ID")] = None,
+    beatmap_id: Annotated[int | None, Query(alias="b", description="谱面 ID")] = None,
+    user: Annotated[str | None, Query(alias="u", description="谱师")] = None,
+    type: Annotated[Literal["string", "id"] | None, Query(description="用户类型：string 用户名称 / id 用户 ID")] = None,
+    ruleset_id: Annotated[int | None, Query(alias="m", description="Ruleset ID", ge=0, le=3)] = None,  # TODO
+    convert: Annotated[bool, Query(alias="a", description="转谱")] = False,  # TODO
+    checksum: Annotated[str | None, Query(alias="h", description="谱面文件 MD5")] = None,
+    limit: Annotated[int, Query(ge=1, le=500, description="返回结果数量限制")] = 500,
+    mods: Annotated[int, Query(description="应用到谱面属性的 MOD")] = 0,
 ):
     beatmaps: list[Beatmap] = []
     results = []
@@ -170,10 +167,7 @@ async def get_beatmaps(
     elif beatmapset_id is not None:
         beatmapset = await Beatmapset.get_or_fetch(session, fetcher, beatmapset_id)
         await beatmapset.awaitable_attrs.beatmaps
-        if len(beatmapset.beatmaps) > limit:
-            beatmaps = beatmapset.beatmaps[:limit]
-        else:
-            beatmaps = beatmapset.beatmaps
+        beatmaps = beatmapset.beatmaps[:limit] if len(beatmapset.beatmaps) > limit else beatmapset.beatmaps
     elif user is not None:
         where = Beatmapset.user_id == user if type == "id" or user.isdigit() else Beatmapset.creator == user
         beatmapsets = (await session.exec(select(Beatmapset).where(where))).all()
@@ -200,7 +194,12 @@ async def get_beatmaps(
                     redis,
                     fetcher,
                 )
-                results.append(await V1Beatmap.from_db(session, beatmap, attrs.aim_difficulty, attrs.speed_difficulty))
+                aim_diff = None
+                speed_diff = None
+                if isinstance(attrs, OsuBeatmapAttributes):
+                    aim_diff = attrs.aim_difficulty
+                    speed_diff = attrs.speed_difficulty
+                results.append(await V1Beatmap.from_db(session, beatmap, aim_diff, speed_diff))
                 continue
             except Exception:
                 ...

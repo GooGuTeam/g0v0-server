@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from enum import IntEnum
 from typing import Annotated, Any, Literal
 
@@ -30,6 +28,10 @@ class BeatmapRankStatus(IntEnum):
             BeatmapRankStatus.RANKED,
             BeatmapRankStatus.APPROVED,
         }
+
+    def ranked(self) -> bool:
+        # https://osu.ppy.sh/wiki/Gameplay/Score/Ranked_score
+        return self in {BeatmapRankStatus.RANKED, BeatmapRankStatus.APPROVED, BeatmapRankStatus.LOVED}
 
 
 class Genre(IntEnum):
@@ -65,23 +67,6 @@ class Language(IntEnum):
     RUSSIAN = 12
     POLISH = 13
     OTHER = 14
-
-
-class BeatmapAttributes(BaseModel):
-    star_rating: float
-    max_combo: int
-
-    # osu
-    aim_difficulty: float | None = None
-    aim_difficult_slider_count: float | None = None
-    speed_difficulty: float | None = None
-    speed_note_count: float | None = None
-    slider_factor: float | None = None
-    aim_difficult_strain_count: float | None = None
-    speed_difficult_strain_count: float | None = None
-
-    # taiko
-    mono_stamina_factor: float | None = None
 
 
 def _parse_list(v: Any):
@@ -200,3 +185,6 @@ class SearchQueryModel(BaseModel):
         default=None,
         description="游标字符串，用于分页",
     )
+
+
+SearchQueryModel.model_rebuild()

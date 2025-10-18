@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING
 
+from app.config import settings
 from app.database.events import Event, EventType
 from app.utils import utcnow
 
@@ -19,7 +20,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 if TYPE_CHECKING:
     from .beatmap import Beatmap, BeatmapResp
     from .beatmapset import BeatmapsetResp
-    from .lazer_user import User
+    from .user import User
 
 
 class BeatmapPlaycounts(AsyncAttrs, SQLModel, table=True):
@@ -80,7 +81,7 @@ async def process_beatmap_playcount(session: AsyncSession, user_id: int, beatmap
                 "count": existing_playcount.playcount,
                 "beatmap": {
                     "title": existing_playcount.beatmap.version,
-                    "url": existing_playcount.beatmap.url,
+                    "url": existing_playcount.beatmap.url.replace("https://osu.ppy.sh/", settings.web_url),
                 },
             }
             session.add(playcount_event)

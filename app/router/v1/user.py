@@ -1,10 +1,8 @@
-from __future__ import annotations
-
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from app.database.lazer_user import User
 from app.database.statistics import UserStatistics, UserStatisticsResp
+from app.database.user import User
 from app.dependencies.database import Database, get_redis
 from app.log import logger
 from app.models.score import GameMode
@@ -13,7 +11,7 @@ from app.service.user_cache_service import get_user_cache_service
 from .router import AllStrModel, router
 
 from fastapi import BackgroundTasks, HTTPException, Query
-from sqlmodel import select
+from sqlmodel import col, select
 
 
 class V1User(AllStrModel):
@@ -49,10 +47,6 @@ class V1User(AllStrModel):
 
     @classmethod
     async def from_db(cls, session: Database, db_user: User, ruleset: GameMode | None = None) -> "V1User":
-        # 确保 user_id 不为 None
-        if db_user.id is None:
-            raise ValueError("User ID cannot be None")
-
         ruleset = ruleset or db_user.playmode
         current_statistics: UserStatistics | None = None
         for i in await db_user.awaitable_attrs.statistics:
@@ -98,10 +92,10 @@ class V1User(AllStrModel):
 async def get_user(
     session: Database,
     background_tasks: BackgroundTasks,
-    user: str = Query(..., alias="u", description="用户"),
-    ruleset_id: int | None = Query(None, alias="m", description="Ruleset ID", ge=0),
-    type: Literal["string", "id"] | None = Query(None, description="用户类型：string 用户名称 / id 用户 ID"),
-    event_days: int = Query(default=1, ge=1, le=31, description="从现在起所有事件的最大天数"),
+    user: Annotated[str, Query(..., alias="u", description="用户")],
+    ruleset_id: Annotated[int | None, Query(alias="m", description="Ruleset ID", ge=0)] = None,
+    type: Annotated[Literal["string", "id"] | None, Query(description="用户类型：string 用户名称 / id 用户 ID")] = None,
+    event_days: Annotated[int, Query(ge=1, le=31, description="从现在起所有事件的最大天数")] = 1,
 ):
     redis = get_redis()
     cache_service = get_user_cache_service(redis)
@@ -130,6 +124,7 @@ async def get_user(
         await session.exec(
             select(User).where(
                 User.id == user if is_id_query else User.username == user,
+                ~User.is_restricted_query(col(User.id)),
             )
         )
     ).first()
@@ -153,3 +148,28 @@ async def get_user(
     except ValueError as e:
         logger.error(f"Error processing V1 user data: {e}")
         raise HTTPException(500, "Internal server error")
+
+
+# 以下为 get_player_info 接口相关的实现函数
+
+
+async def _get_pp_history_for_mode(session: Database, user_id: int, mode: GameMode, days: int = 30) -> list[float]:
+    """获取指定模式的 PP 历史数据"""
+    try:
+        # 获取最近 30 天的排名历史（由于没有 PP 历史，我们使用当前的 PP 填充）
+        stats = (
+            await session.exec(
+                select(UserStatistics).where(
+                    UserStatistics.user_id == user_id,
+                    UserStatistics.mode == mode,
+                    ~User.is_restricted_query(col(UserStatistics.user_id)),
+                )
+            )
+        ).first()
+
+        current_pp = stats.pp if stats else 0.0
+        # 创建 30 天的 PP 历史（使用当前 PP 值填充）
+        return [current_pp] * days
+    except Exception as e:
+        logger.error(f"Error getting PP history for user {user_id}, mode {mode}: {e}")
+        return [0.0] * days

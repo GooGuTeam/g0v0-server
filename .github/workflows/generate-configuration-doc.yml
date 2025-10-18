@@ -1,0 +1,56 @@
+name: Generate configuration Docs to Wiki
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "app/config.py"
+      - ".github/scripts/generate_config_doc.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generate-wiki:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout main repository
+        uses: actions/checkout@v5
+        with:
+          path: project
+
+      - name: Checkout repo
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ github.repository }}.wiki
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: wiki
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: 3.12
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pydantic pydantic-settings
+
+      - name: Generate Markdown
+        run: |
+          cd project
+          python ./.github/scripts/generate_config_doc.py ${{ github.sha }} > ../wiki/Configuration.md
+
+      - name: Commit and push to Wiki
+        run: |
+          cd wiki
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "Update configuration docs from Actions [skip ci]" || echo "No changes"
+          git push origin master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

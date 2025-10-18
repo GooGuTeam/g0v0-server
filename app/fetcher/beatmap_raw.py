@@ -1,10 +1,9 @@
-from __future__ import annotations
+from app.log import fetcher_logger
 
 from ._base import BaseFetcher
 
 from httpx import AsyncClient, HTTPError
 from httpx._models import Response
-from loguru import logger
 import redis.asyncio as redis
 
 urls = [
@@ -13,12 +12,14 @@ urls = [
     "https://catboy.best/osu/{beatmap_id}",
 ]
 
+logger = fetcher_logger("BeatmapRawFetcher")
+
 
 class BeatmapRawFetcher(BaseFetcher):
     async def get_beatmap_raw(self, beatmap_id: int) -> str:
         for url in urls:
             req_url = url.format(beatmap_id=beatmap_id)
-            logger.opt(colors=True).debug(f"<blue>[BeatmapRawFetcher]</blue> get_beatmap_raw: <y>{req_url}</y>")
+            logger.opt(colors=True).debug(f"get_beatmap_raw: <y>{req_url}</y>")
             resp = await self._request(req_url)
             if resp.status_code >= 400:
                 continue

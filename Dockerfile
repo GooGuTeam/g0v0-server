@@ -2,7 +2,7 @@ FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim AS builder
 WORKDIR /app
 
 RUN apt-get update \
- && apt-get install -y gcc pkg-config default-libmysqlclient-dev \
+ && apt-get install -y git gcc pkg-config default-libmysqlclient-dev \
  && rm -rf /var/lib/apt/lists/* \
  && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
@@ -14,12 +14,15 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV UV_PROJECT_ENVIRONMENT=/app/.venv
 
 COPY pyproject.toml uv.lock ./
-COPY packages/ ./packages/
 
 RUN uv sync --frozen --no-dev
-RUN uv pip install rosu-pp-py
 
-COPY . .
+COPY alembic.ini ./
+COPY tools/ ./tools/
+COPY migrations/ ./migrations/
+COPY static/ ./app/static/
+COPY app/ ./app/
+COPY main.py ./
 
 # ---
 

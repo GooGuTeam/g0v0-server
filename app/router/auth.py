@@ -1,8 +1,6 @@
-from __future__ import annotations
-
 from datetime import timedelta
 import re
-from typing import Literal
+from typing import Annotated, Literal
 
 from app.auth import (
     authenticate_user,
@@ -12,16 +10,19 @@ from app.auth import (
     get_token_by_refresh_token,
     get_user_by_authorization_code,
     store_token,
+    validate_password,
     validate_username,
 )
 from app.config import settings
-from app.const import BANCHOBOT_ID
+from app.const import BANCHOBOT_ID, SUPPORT_TOTP_VERIFICATION_VER
 from app.database import DailyChallengeStats, OAuthClient, User
+from app.database.auth import TotpKeys
 from app.database.statistics import UserStatistics
-from app.dependencies.database import Database, get_redis
-from app.dependencies.geoip import get_client_ip, get_geoip_helper
-from app.helpers.geoip_helper import GeoIPHelper
-from app.log import logger
+from app.dependencies.api_version import APIVersion
+from app.dependencies.database import Database, Redis
+from app.dependencies.geoip import GeoIPService, IPAddress
+from app.dependencies.user_agent import UserAgentInfo
+from app.log import log
 from app.models.extended_auth import ExtendedTokenResponse
 from app.models.oauth import (
     OAuthErrorResponse,
@@ -30,19 +31,21 @@ from app.models.oauth import (
     UserRegistrationErrors,
 )
 from app.models.score import GameMode
-from app.service.email_verification_service import (
+from app.service.login_log_service import LoginLogService
+from app.service.password_reset_service import password_reset_service
+from app.service.turnstile_service import turnstile_service
+from app.service.verification_service import (
     EmailVerificationService,
     LoginSessionService,
 )
-from app.service.login_log_service import LoginLogService
-from app.service.password_reset_service import password_reset_service
 from app.utils import utcnow
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Form, Header, Request
 from fastapi.responses import JSONResponse
-from redis.asyncio import Redis
 from sqlalchemy import text
-from sqlmodel import select
+from sqlmodel import exists, select
+
+logger = log("Auth")
 
 
 def create_oauth_error_response(error: str, description: str, hint: str, status_code: int = 400):
@@ -67,20 +70,6 @@ def validate_email(email: str) -> list[str]:
     return errors
 
 
-def validate_password(password: str) -> list[str]:
-    """验证密码"""
-    errors = []
-
-    if not password:
-        errors.append("Password is required")
-        return errors
-
-    if len(password) < 8:
-        errors.append("Password must be at least 8 characters long")
-
-    return errors
-
-
 router = APIRouter(tags=["osu! OAuth 认证"])
 
 
@@ -91,22 +80,34 @@ router = APIRouter(tags=["osu! OAuth 认证"])
 )
 async def register_user(
     db: Database,
-    request: Request,
-    user_username: str = Form(..., alias="user[username]", description="用户名"),
-    user_email: str = Form(..., alias="user[user_email]", description="电子邮箱"),
-    user_password: str = Form(..., alias="user[password]", description="密码"),
-    geoip: GeoIPHelper = Depends(get_geoip_helper),
+    user_username: Annotated[str, Form(..., alias="user[username]", description="用户名")],
+    user_email: Annotated[str, Form(..., alias="user[user_email]", description="电子邮箱")],
+    user_password: Annotated[str, Form(..., alias="user[password]", description="密码")],
+    geoip: GeoIPService,
+    client_ip: IPAddress,
+    user_agent: UserAgentInfo,
+    cf_turnstile_response: Annotated[
+        str, Form(description="Cloudflare Turnstile 响应 token")
+    ] = "XXXX.DUMMY.TOKEN.XXXX",
 ):
+    # Turnstile 验证（仅对非 osu! 客户端）
+    if settings.enable_turnstile_verification and not user_agent.is_client:
+        success, error_msg = await turnstile_service.verify_token(cf_turnstile_response, client_ip)
+        logger.info(f"Turnstile verification result: {success}, error_msg: {error_msg}")
+        if not success:
+            errors = RegistrationRequestErrors(message=f"Verification failed: {error_msg}")
+            return JSONResponse(status_code=400, content={"form_error": errors.model_dump()})
+
     username_errors = validate_username(user_username)
     email_errors = validate_email(user_email)
     password_errors = validate_password(user_password)
 
-    result = await db.exec(select(User).where(User.username == user_username))
+    result = await db.exec(select(exists()).where(User.username == user_username))
     existing_user = result.first()
     if existing_user:
         username_errors.append("Username is already taken")
 
-    result = await db.exec(select(User).where(User.email == user_email))
+    result = await db.exec(select(exists()).where(User.email == user_email))
     existing_email = result.first()
     if existing_email:
         email_errors.append("Email is already taken")
@@ -124,22 +125,22 @@ async def register_user(
 
     try:
         # 获取客户端 IP 并查询地理位置
-        client_ip = get_client_ip(request)
-        country_code = "CN"  # 默认国家代码
+        country_code = None  # 默认国家代码
 
         try:
             # 查询 IP 地理位置
             geo_info = geoip.lookup(client_ip)
-            if geo_info and geo_info.get("country_iso"):
-                country_code = geo_info["country_iso"]
+            if geo_info and (country_code := geo_info.get("country_iso")):
                 logger.info(f"User {user_username} registering from {client_ip}, country: {country_code}")
             else:
                 logger.warning(f"Could not determine country for IP {client_ip}")
         except Exception as e:
             logger.warning(f"GeoIP lookup failed for {client_ip}: {e}")
+        if country_code is None:
+            country_code = "CN"
 
         # 创建新用户
-        # 确保 AUTO_INCREMENT 值从3开始（ID=1是BanchoBot，ID=2预留给ppy）
+        # 确保 AUTO_INCREMENT 值从3开始（ID=2是BanchoBot）
         result = await db.execute(
             text(
                 "SELECT AUTO_INCREMENT FROM information_schema.TABLES "
@@ -156,7 +157,7 @@ async def register_user(
             email=user_email,
             pw_bcrypt=get_password_hash(user_password),
             priv=1,  # 普通用户权限
-            country_code=country_code,  # 根据 IP 地理位置设置国家
+            country_code=country_code,
             join_date=utcnow(),
             last_visit=utcnow(),
             is_supporter=settings.enable_supporter_for_all_users,
@@ -198,19 +199,42 @@ async def register_user(
 async def oauth_token(
     db: Database,
     request: Request,
-    grant_type: Literal["authorization_code", "refresh_token", "password", "client_credentials"] = Form(
-        ..., description="授权类型：密码/刷新令牌/授权码/客户端凭证"
-    ),
-    client_id: int = Form(..., description="客户端 ID"),
-    client_secret: str = Form(..., description="客户端密钥"),
-    code: str | None = Form(None, description="授权码（仅授权码模式需要）"),
-    scope: str = Form("*", description="权限范围（空格分隔，默认为 '*'）"),
-    username: str | None = Form(None, description="用户名（仅密码模式需要）"),
-    password: str | None = Form(None, description="密码（仅密码模式需要）"),
-    refresh_token: str | None = Form(None, description="刷新令牌（仅刷新令牌模式需要）"),
-    redis: Redis = Depends(get_redis),
-    geoip: GeoIPHelper = Depends(get_geoip_helper),
+    user_agent: UserAgentInfo,
+    ip_address: IPAddress,
+    grant_type: Annotated[
+        Literal["authorization_code", "refresh_token", "password", "client_credentials"],
+        Form(..., description="授权类型：密码、刷新令牌和授权码三种授权方式。"),
+    ],
+    client_id: Annotated[int, Form(..., description="客户端 ID")],
+    client_secret: Annotated[str, Form(..., description="客户端密钥")],
+    redis: Redis,
+    geoip: GeoIPService,
+    api_version: APIVersion,
+    code: Annotated[str | None, Form(description="授权码（仅授权码模式需要）")] = None,
+    scope: Annotated[str, Form(description="权限范围（空格分隔，默认为 '*'）")] = "*",
+    username: Annotated[str | None, Form(description="用户名（仅密码模式需要）")] = None,
+    password: Annotated[str | None, Form(description="密码（仅密码模式需要）")] = None,
+    refresh_token: Annotated[str | None, Form(description="刷新令牌（仅刷新令牌模式需要）")] = None,
+    web_uuid: Annotated[str | None, Header(include_in_schema=False, alias="X-UUID")] = None,
+    cf_turnstile_response: Annotated[
+        str, Form(description="Cloudflare Turnstile 响应 token")
+    ] = "XXXX.DUMMY.TOKEN.XXXX",
 ):
+    # Turnstile 验证（仅对非 osu! 客户端的密码授权模式）
+    if grant_type == "password" and settings.enable_turnstile_verification and not user_agent.is_client:
+        logger.debug(
+            f"Turnstile check: grant_type={grant_type}, token={cf_turnstile_response[:20]}..., "
+            f"enabled={settings.enable_turnstile_verification}, is_client={user_agent.is_client}"
+        )
+        success, error_msg = await turnstile_service.verify_token(cf_turnstile_response, ip_address)
+        logger.info(f"Turnstile verification result: success={success}, error={error_msg}, ip={ip_address}")
+        if not success:
+            return create_oauth_error_response(
+                error="invalid_request",
+                description=f"Verification failed: {error_msg}",
+                hint="Invalid or expired verification token",
+            )
+
     scopes = scope.split(" ")
 
     client = (
@@ -287,32 +311,63 @@ async def oauth_token(
         # 确保用户对象与当前会话关联
         await db.refresh(user)
 
-        # 获取用户信息和客户端信息
         user_id = user.id
+        totp_key: TotpKeys | None = await user.awaitable_attrs.totp_key
 
-        ip_address = get_client_ip(request)
-        user_agent = request.headers.get("User-Agent", "")
+        # 生成令牌
+        access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
+        access_token = create_access_token(data={"sub": str(user_id)}, expires_delta=access_token_expires)
+        refresh_token_str = generate_refresh_token()
+        token = await store_token(
+            db,
+            user_id,
+            client_id,
+            scopes,
+            access_token,
+            refresh_token_str,
+            settings.access_token_expire_minutes * 60,
+            settings.refresh_token_expire_minutes * 60,
+            allow_multiple_devices=settings.enable_multi_device_login,  # 使用配置决定是否启用多设备支持
+        )
+        token_id = token.id
 
         # 获取国家代码
         geo_info = geoip.lookup(ip_address)
         country_code = geo_info.get("country_iso", "XX")
 
         # 检查是否为新位置登录
-        is_new_location = await LoginSessionService.check_new_location(db, user_id, ip_address, country_code)
+        trusted_device = await LoginSessionService.check_trusted_device(db, user_id, ip_address, user_agent, web_uuid)
 
-        # 创建登录会话记录
-        login_session = await LoginSessionService.create_session(  # noqa: F841
-            db, redis, user_id, ip_address, user_agent, country_code, is_new_location
-        )
-
-        # 如果是新位置登录，需要邮件验证
-        if is_new_location and settings.enable_email_verification:
+        # 根据 osu-web 逻辑确定验证方法：
+        # 1. 如果 API 版本支持 TOTP 且用户启用了 TOTP，则始终要求 TOTP 验证（无论是否为信任设备）
+        # 2. 否则，如果是新设备且启用了邮件验证，则要求邮件验证
+        # 3. 否则，不需要验证或自动验证
+        session_verification_method = None
+        if api_version >= SUPPORT_TOTP_VERIFICATION_VER and settings.enable_totp_verification and totp_key is not None:
+            # TOTP 验证优先（参考 osu-web State.php:36）
+            session_verification_method = "totp"
+            await LoginLogService.record_login(
+                db=db,
+                user_id=user_id,
+                request=request,
+                login_success=True,
+                login_method="password_pending_verification",
+                notes="需要 TOTP 验证",
+            )
+        elif not trusted_device and settings.enable_email_verification:
+            # 如果是新设备登录，需要邮件验证
             # 刷新用户对象以确保属性已加载
             await db.refresh(user)
-
-            # 发送邮件验证码
-            verification_sent = await EmailVerificationService.send_verification_email(
-                db, redis, user_id, user.username, user.email, ip_address, user_agent
+            session_verification_method = "mail"
+            await EmailVerificationService.send_verification_email(
+                db,
+                redis,
+                user_id,
+                user.username,
+                user.email,
+                ip_address,
+                user_agent,
+                user.country_code,
             )
 
             # 记录需要二次验证的登录尝试
@@ -322,20 +377,19 @@ async def oauth_token(
                 request=request,
                 login_success=True,
                 login_method="password_pending_verification",
-                notes=f"新位置登录，需要邮件验证 - IP: {ip_address}, 国家: {country_code}",
+                notes=(
+                    f"邮箱验证: User-Agent: {user_agent.raw_ua}, 客户端: {user_agent.displayed_name} "
+                    f"IP: {ip_address}, 国家: {country_code}"
+                ),
             )
-
-            if not verification_sent:
-                # 邮件发送失败，记录错误
-                logger.error(f"[Auth] Failed to send email verification code for user {user_id}")
-        elif is_new_location and not settings.enable_email_verification:
-            # 新位置登录但邮件验证功能被禁用，直接标记会话为已验证
-            await LoginSessionService.mark_session_verified(db, user_id)
-            logger.debug(
-                f"[Auth] New location login detected but email verification disabled, auto-verifying user {user_id}"
+        elif not trusted_device:
+            # 新设备登录但邮件验证功能被禁用，直接标记会话为已验证
+            await LoginSessionService.mark_session_verified(
+                db, redis, user_id, token_id, ip_address, user_agent, web_uuid
             )
+            logger.debug(f"New location login detected but email verification disabled, auto-verifying user {user_id}")
         else:
-            # 不是新位置登录，正常登录
+            # 不是新设备登录，正常登录
             await LoginLogService.record_login(
                 db=db,
                 user_id=user_id,
@@ -345,28 +399,19 @@ async def oauth_token(
                 notes=f"正常登录 - IP: {ip_address}, 国家: {country_code}",
             )
 
-        # 无论是否新位置登录，都返回正常的token
-        # session_verified状态通过/me接口的session_verified字段来体现
+        if session_verification_method:
+            await LoginSessionService.create_session(
+                db, user_id, token_id, ip_address, user_agent.raw_ua, not trusted_device, web_uuid, False
+            )
+            await LoginSessionService.set_login_method(user_id, token_id, session_verification_method, redis)
+        else:
+            await LoginSessionService.create_session(
+                db, user_id, token_id, ip_address, user_agent.raw_ua, not trusted_device, web_uuid, True
+            )
 
-        # 生成令牌
-        access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
-        # 获取用户ID，避免触发延迟加载
-        access_token = create_access_token(data={"sub": str(user_id)}, expires_delta=access_token_expires)
-        refresh_token_str = generate_refresh_token()
-
-        # 存储令牌
-        await store_token(
-            db,
-            user_id,
-            client_id,
-            scopes,
-            access_token,
-            refresh_token_str,
-            settings.access_token_expire_minutes * 60,
-        )
         return TokenResponse(
             access_token=access_token,
-            token_type="Bearer",
+            token_type="Bearer",  # noqa: S106
             expires_in=settings.access_token_expire_minutes * 60,
             refresh_token=refresh_token_str,
             scope=scope,
@@ -414,10 +459,12 @@ async def oauth_token(
             access_token,
             new_refresh_token,
             settings.access_token_expire_minutes * 60,
+            settings.refresh_token_expire_minutes * 60,
+            allow_multiple_devices=settings.enable_multi_device_login,  # 使用配置决定是否启用多设备支持
         )
         return TokenResponse(
             access_token=access_token,
-            token_type="Bearer",
+            token_type="Bearer",  # noqa: S106
             expires_in=settings.access_token_expire_minutes * 60,
             refresh_token=new_refresh_token,
             scope=scope,
@@ -478,14 +525,16 @@ async def oauth_token(
             access_token,
             refresh_token_str,
             settings.access_token_expire_minutes * 60,
+            settings.refresh_token_expire_minutes * 60,
+            allow_multiple_devices=settings.enable_multi_device_login,  # 使用配置决定是否启用多设备支持
         )
 
         # 打印jwt
-        logger.info(f"[Auth] Generated JWT for user {user_id}: {access_token}")
+        logger.info(f"Generated JWT for user {user_id}: {access_token}")
 
         return TokenResponse(
             access_token=access_token,
-            token_type="Bearer",
+            token_type="Bearer",  # noqa: S106
             expires_in=settings.access_token_expire_minutes * 60,
             refresh_token=refresh_token_str,
             scope=" ".join(scopes),
@@ -524,11 +573,13 @@ async def oauth_token(
             access_token,
             refresh_token_str,
             settings.access_token_expire_minutes * 60,
+            settings.refresh_token_expire_minutes * 60,
+            allow_multiple_devices=settings.enable_multi_device_login,  # 使用配置决定是否启用多设备支持
         )
 
         return TokenResponse(
             access_token=access_token,
-            token_type="Bearer",
+            token_type="Bearer",  # noqa: S106
             expires_in=settings.access_token_expire_minutes * 60,
             refresh_token=refresh_token_str,
             scope=" ".join(scopes),
@@ -542,23 +593,34 @@ async def oauth_token(
 )
 async def request_password_reset(
     request: Request,
-    email: str = Form(..., description="邮箱地址"),
-    redis: Redis = Depends(get_redis),
+    email: Annotated[str, Form(..., description="邮箱地址")],
+    redis: Redis,
+    ip_address: IPAddress,
+    user_agent: UserAgentInfo,
+    cf_turnstile_response: Annotated[
+        str, Form(description="Cloudflare Turnstile 响应 token")
+    ] = "XXXX.DUMMY.TOKEN.XXXX",
 ):
     """
     请求密码重置
     """
-    from app.dependencies.geoip import get_client_ip
+    # Turnstile 验证（仅对非 osu! 客户端）
+    if settings.enable_turnstile_verification and not user_agent.is_client:
+        success, error_msg = await turnstile_service.verify_token(cf_turnstile_response, ip_address)
+        if not success:
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": f"Verification failed: {error_msg}"},
+            )
 
     # 获取客户端信息
-    ip_address = get_client_ip(request)
-    user_agent = request.headers.get("User-Agent", "")
+    user_agent_str = request.headers.get("User-Agent", "")
 
     # 请求密码重置
     success, message = await password_reset_service.request_password_reset(
         email=email.lower().strip(),
         ip_address=ip_address,
-        user_agent=user_agent,
+        user_agent=user_agent_str,
         redis=redis,
     )
 
@@ -570,20 +632,16 @@ async def request_password_reset(
 
 @router.post("/password-reset/reset", name="重置密码", description="使用验证码重置密码")
 async def reset_password(
-    request: Request,
-    email: str = Form(..., description="邮箱地址"),
-    reset_code: str = Form(..., description="重置验证码"),
-    new_password: str = Form(..., description="新密码"),
-    redis: Redis = Depends(get_redis),
+    email: Annotated[str, Form(..., description="邮箱地址")],
+    reset_code: Annotated[str, Form(..., description="重置验证码")],
+    new_password: Annotated[str, Form(..., description="新密码")],
+    redis: Redis,
+    ip_address: IPAddress,
 ):
     """
     重置密码
     """
-    from app.dependencies.geoip import get_client_ip
-
     # 获取客户端信息
-    ip_address = get_client_ip(request)
-
     # 重置密码
     success, message = await password_reset_service.reset_password(
         email=email.lower().strip(),

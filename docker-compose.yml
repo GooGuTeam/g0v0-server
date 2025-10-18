@@ -3,7 +3,7 @@ version: '3.8'
 services:
   app:
     # or use
-    # image: mingxuangame/osu-lazer-api:latest
+    # image: mingxuangame/g0v0-server:latest
     build:
       context: .
       dockerfile: Dockerfile
@@ -13,7 +13,9 @@ services:
     environment:
       - MYSQL_HOST=mysql
       - MYSQL_PORT=3306
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=redis://redis:6379
+      # - CALCULATOR=performance_server
+      # - CALCULATOR_CONFIG='{"server_url":"http://performance-server:8080"}'
     env_file:
       - .env
     depends_on:
@@ -26,6 +28,8 @@ services:
       - ./storage:/app/storage
       - ./static:/app/static
       - ./logs:/app/logs
+      - ./newrelic.ini:/app/newrelic.ini:ro
+      - ./config:/app/config
     restart: unless-stopped
     networks:
       - osu-network
@@ -52,10 +56,9 @@ services:
       - osu-network
 
   spectator:
-    image:  ghcr.io/googuteam/osu-server-spectator:latest
+    image:  ghcr.io/googuteam/osu-server-spectator:master
     pull_policy: never
     environment:
-      - SAVE_REPLAYS=${SAVE_REPLAYS:-}
       - REPLAY_UPLOAD_THREADS=${REPLAY_UPLOAD_THREADS:-1}
       - TRACK_BUILD_USER_COUNTS=${TRACK_BUILD_USER_COUNTS:-}
       - SERVER_PORT=${SERVER_PORT:-80}
@@ -63,7 +66,8 @@ services:
       - SENTRY_DSN=${SENTRY_DSN:-}
       - SHARED_INTEROP_DOMAIN=http://app:8000
       - SHARED_INTEROP_SECRET=${SHARED_INTEROP_SECRET:-}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
     env_file:
       - .env
     depends_on:
@@ -99,6 +103,15 @@ services:
     networks:
       - osu-network
     command: redis-server --appendonly yes
+
+  # performance-server:
+  #   image: ghcr.io/googuteam/osu-performance-server:custom-rulesets
+  #   container_name: performance_server
+  #   environment:
+  #     - SAVE_BEATMAP_FILES=false
+  #   restart: unless-stopped
+  #   networks:
+  #     - osu-network
 
 volumes:
   mysql_data:
