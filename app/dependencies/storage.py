@@ -1,6 +1,4 @@
-from __future__ import annotations
-
-from typing import cast
+from typing import Annotated, cast
 
 from app.config import (
     AWSS3StorageSettings,
@@ -9,11 +7,13 @@ from app.config import (
     StorageServiceType,
     settings,
 )
-from app.storage import StorageService
+from app.storage import StorageService as OriginStorageService
 from app.storage.cloudflare_r2 import AWSS3StorageService, CloudflareR2StorageService
 from app.storage.local import LocalStorageService
 
-storage: StorageService | None = None
+from fastapi import Depends
+
+storage: OriginStorageService | None = None
 
 
 def init_storage_service():
@@ -50,3 +50,6 @@ def get_storage_service():
     if storage is None:
         return init_storage_service()
     return storage
+
+
+StorageService = Annotated[OriginStorageService, Depends(get_storage_service)]

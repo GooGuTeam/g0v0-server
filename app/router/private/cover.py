@@ -1,25 +1,23 @@
-from __future__ import annotations
-
 import hashlib
+from typing import Annotated
 
-from app.database.lazer_user import User, UserProfileCover
+from app.database.user import UserProfileCover
 from app.dependencies.database import Database
-from app.dependencies.storage import get_storage_service
-from app.dependencies.user import get_client_user
-from app.storage.base import StorageService
+from app.dependencies.storage import StorageService
+from app.dependencies.user import ClientUser
 from app.utils import check_image
 
 from .router import router
 
-from fastapi import Depends, File, Security
+from fastapi import File, HTTPException
 
 
 @router.post("/cover/upload", name="上传头图", tags=["用户", "g0v0 API"])
 async def upload_cover(
     session: Database,
-    content: bytes = File(...),
-    current_user: User = Security(get_client_user),
-    storage: StorageService = Depends(get_storage_service),
+    content: Annotated[bytes, File(...)],
+    current_user: ClientUser,
+    storage: StorageService,
 ):
     """上传用户头图
 
@@ -33,6 +31,8 @@ async def upload_cover(
     返回:
     - 头图 URL 和文件哈希值
     """
+    if await current_user.is_restricted(session):
+        raise HTTPException(status_code=403, detail="Your account is restricted and cannot perform this action.")
 
     # check file
     format_ = check_image(content, 10 * 1024 * 1024, 3000, 2000)

@@ -107,6 +107,6 @@
     80,
     8080
   ],
-  "postCreateCommand": "uv sync --dev && uv run alembic upgrade head && uv run pre-commit install && cd packages/msgpack_lazer_api && cargo check && cd ../../spectator-server && dotnet restore",
+  "postCreateCommand": "uv sync --dev && uv run alembic upgrade head && uv run pre-commit install && cd spectator-server && dotnet restore",
   "remoteUser": "vscode"
 }

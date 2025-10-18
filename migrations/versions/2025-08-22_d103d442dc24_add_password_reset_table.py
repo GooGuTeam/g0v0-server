@@ -1,3 +1,4 @@
+# ruff: noqa
 """add_password_reset_table
 
 Revision ID: d103d442dc24
@@ -5,8 +6,6 @@ Revises: 0f96348cdfd2
 Create Date: 2025-08-22 08:27:58.468119
 
 """
-
-from __future__ import annotations
 
 from collections.abc import Sequence
 

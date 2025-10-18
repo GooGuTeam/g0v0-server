@@ -1,16 +1,16 @@
-from __future__ import annotations
+from typing import Annotated
 
 from app.database import Relationship, RelationshipResp, RelationshipType, User
-from app.database.lazer_user import UserResp
+from app.database.user import UserResp
 from app.dependencies.api_version import APIVersion
 from app.dependencies.database import Database
-from app.dependencies.user import get_client_user, get_current_user
+from app.dependencies.user import ClientUser, get_current_user
 
 from .router import router
 
 from fastapi import HTTPException, Path, Query, Request, Security
 from pydantic import BaseModel
-from sqlmodel import exists, select
+from sqlmodel import col, exists, select
 
 
 @router.get(
@@ -56,13 +56,14 @@ async def get_relationship(
     db: Database,
     request: Request,
     api_version: APIVersion,
-    current_user: User = Security(get_current_user, scopes=["friends.read"]),
+    current_user: Annotated[User, Security(get_current_user, scopes=["friends.read"])],
 ):
     relationship_type = RelationshipType.FOLLOW if request.url.path.endswith("/friends") else RelationshipType.BLOCK
     relationships = await db.exec(
         select(Relationship).where(
             Relationship.user_id == current_user.id,
             Relationship.type == relationship_type,
+            ~User.is_restricted_query(col(Relationship.target_id)),
         )
     )
     if api_version >= 20241022 or relationship_type == RelationshipType.BLOCK:
@@ -107,10 +108,14 @@ class AddFriendResp(BaseModel):
 async def add_relationship(
     db: Database,
     request: Request,
-    target: int = Query(description="目标用户 ID"),
-    current_user: User = Security(get_client_user),
+    target: Annotated[int, Query(description="目标用户 ID")],
+    current_user: ClientUser,
 ):
-    if not (await db.exec(select(exists()).where(User.id == target))).first():
+    if await current_user.is_restricted(db):
+        raise HTTPException(403, "Your account is restricted and cannot perform this action.")
+    if not (
+        await db.exec(select(exists()).where((User.id == target) & ~User.is_restricted_query(col(User.id))))
+    ).first():
         raise HTTPException(404, "Target user not found")
 
     relationship_type = RelationshipType.FOLLOW if request.url.path.endswith("/friends") else RelationshipType.BLOCK
@@ -176,10 +181,14 @@ async def add_relationship(
 async def delete_relationship(
     db: Database,
     request: Request,
-    target: int = Path(..., description="目标用户 ID"),
-    current_user: User = Security(get_client_user),
+    target: Annotated[int, Path(..., description="目标用户 ID")],
+    current_user: ClientUser,
 ):
-    if not (await db.exec(select(exists()).where(User.id == target))).first():
+    if await current_user.is_restricted(db):
+        raise HTTPException(403, "Your account is restricted and cannot perform this action.")
+    if not (
+        await db.exec(select(exists()).where((User.id == target) & ~User.is_restricted_query(col(User.id))))
+    ).first():
         raise HTTPException(404, "Target user not found")
 
     relationship_type = RelationshipType.BLOCK if "/blocks/" in request.url.path else RelationshipType.FOLLOW

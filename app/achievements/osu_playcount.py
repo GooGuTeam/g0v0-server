@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from functools import partial
 
 from app.database import UserStatistics
@@ -35,11 +33,7 @@ async def process_playcount(
     ).first()
     if not stats:
         return False
-    if pc <= stats.play_count < next_pc:
-        return True
-    elif next_pc == 0 and stats.play_count >= pc:
-        return True
-    return False
+    return bool(pc <= stats.play_count < next_pc or (next_pc == 0 and stats.play_count >= pc))
 
 
 MEDALS: Medals = {

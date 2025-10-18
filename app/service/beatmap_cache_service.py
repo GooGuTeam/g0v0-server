@@ -3,8 +3,6 @@ Beatmap缓存预取服务
 用于提前缓存热门beatmap，减少成绩计算时的获取延迟
 """
 
-from __future__ import annotations
-
 import asyncio
 from datetime import timedelta
 from typing import TYPE_CHECKING
@@ -113,6 +111,7 @@ class BeatmapCacheService:
                     if size:
                         total_size += size
                 except Exception:
+                    logger.debug(f"Failed to get size for key {key}")
                     continue
 
             return {
@@ -156,8 +155,7 @@ async def schedule_preload_task(session: AsyncSession, redis: Redis, fetcher: "F
     定时预加载任务
     """
     # 默认启用预加载，除非明确禁用
-    enable_preload = getattr(settings, "enable_beatmap_preload", True)
-    if not enable_preload:
+    if not settings.enable_beatmap_preload:
         return
 
     cache_service = get_beatmap_cache_service(redis, fetcher)

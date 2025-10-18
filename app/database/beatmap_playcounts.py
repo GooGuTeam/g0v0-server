@@ -20,7 +20,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 if TYPE_CHECKING:
     from .beatmap import Beatmap, BeatmapResp
     from .beatmapset import BeatmapsetResp
-    from .lazer_user import User
+    from .user import User
 
 
 class BeatmapPlaycounts(AsyncAttrs, SQLModel, table=True):

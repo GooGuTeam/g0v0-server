@@ -2,8 +2,6 @@
 密码重置服务
 """
 
-from __future__ import annotations
-
 from datetime import datetime
 import json
 import secrets
@@ -105,13 +103,13 @@ class PasswordResetService:
                 email_sent = await self.send_password_reset_email(email=email, code=reset_code, username=user.username)
 
                 if email_sent:
-                    logger.info(f"[Password Reset] Sent reset code to user {user.id} ({email})")
+                    logger.info(f"Sent reset code to user {user.id} ({email})")
                     return True, "密码重置邮件已发送，请查收邮箱"
                 else:
                     # 邮件发送失败，清理Redis中的数据
                     await redis.delete(reset_code_key)
                     await redis.delete(rate_limit_key)
-                    logger.warning(f"[Password Reset] Email sending failed, cleaned up Redis data for {email}")
+                    logger.warning(f"Email sending failed, cleaned up Redis data for {email}")
                     return False, "邮件发送失败，请稍后重试"
 
             except Exception:
@@ -120,8 +118,8 @@ class PasswordResetService:
                     await redis.delete(reset_code_key)
                     await redis.delete(rate_limit_key)
                 except Exception:
-                    pass
-                logger.exception("[Password Reset] Redis operation failed")
+                    logger.warning("Failed to clean up Redis data after error")
+                logger.exception("Redis operation failed")
                 return False, "服务暂时不可用，请稍后重试"
 
     async def send_password_reset_email(self, email: str, code: str, username: str) -> bool:
@@ -141,7 +139,7 @@ class PasswordResetService:
             line-height: 1.6;
         }}
         .header {{
-            background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+            background: #ED8EA6;
             color: white;
             padding: 20px;
             text-align: center;
@@ -154,7 +152,7 @@ class PasswordResetService:
         }}
         .code {{
             background: #fff;
-            border: 2px solid #ff6b6b;
+            border: 2px solid #ED8EA6;
             border-radius: 8px;
             padding: 15px;
             text-align: center;
@@ -269,11 +267,11 @@ class PasswordResetService:
                 metadata=metadata,
             )
 
-            logger.info(f"[Password Reset] Enqueued reset code email to {email}")
+            logger.info(f"Enqueued reset code email to {email}")
             return True
 
         except Exception as e:
-            logger.error(f"[Password Reset] Failed to enqueue email: {e}")
+            logger.error(f"Failed to enqueue email: {e}")
             return False
 
     async def reset_password(
@@ -366,7 +364,7 @@ class PasswordResetService:
                 await redis.setex(reset_code_key, 300, json.dumps(reset_data))  # 保留5分钟用于日志记录
 
                 logger.info(
-                    f"[Password Reset] User {user_id} ({email}) successfully reset password from IP {ip_address},"
+                    f"User {user_id} ({email}) successfully reset password from IP {ip_address},"
                     f" invalidated {tokens_deleted} tokens"
                 )
                 return True, "密码重置成功，所有设备已被登出"
@@ -374,7 +372,7 @@ class PasswordResetService:
             except Exception as e:
                 # 不要在异常处理中访问user.id，可能触发数据库操作
                 user_id = reset_data.get("user_id", "未知")
-                logger.error(f"[Password Reset] Failed to reset password for user {user_id}: {e}")
+                logger.error(f"Failed to reset password for user {user_id}: {e}")
                 await session.rollback()
 
                 # 数据库回滚时，需要恢复Redis中的验证码状态
@@ -401,14 +399,14 @@ class PasswordResetService:
                             remaining_ttl,
                             json.dumps(original_reset_data),
                         )
-                        logger.info(f"[Password Reset] Restored Redis state after database rollback for {email}")
+                        logger.info(f"Restored Redis state after database rollback for {email}")
                     else:
                         # 如果已经过期，直接删除
                         await redis.delete(reset_code_key)
-                        logger.info(f"[Password Reset] Removed expired reset code after database rollback for {email}")
+                        logger.info(f"Removed expired reset code after database rollback for {email}")
 
                 except Exception as redis_error:
-                    logger.error(f"[Password Reset] Failed to restore Redis state after rollback: {redis_error}")
+                    logger.error(f"Failed to restore Redis state after rollback: {redis_error}")
 
                 return False, "密码重置失败，请稍后重试"
 
@@ -428,7 +426,7 @@ class PasswordResetService:
             ttl = await redis.ttl(rate_limit_key)
             return 1 if ttl > 0 else 0
         except Exception as e:
-            logger.error(f"[Password Reset] Failed to get attempts count: {e}")
+            logger.error(f"Failed to get attempts count: {e}")
             return 0
 
 

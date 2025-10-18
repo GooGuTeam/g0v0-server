@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import datetime
 
 from app.database.beatmap import calculate_beatmap_attributes
@@ -68,9 +66,7 @@ async def to_the_core(
     if ("Nightcore" not in beatmap.beatmapset.title) and "Nightcore" not in beatmap.beatmapset.artist:
         return False
     mods_ = mod_to_save(score.mods)
-    if "DT" not in mods_ or "NC" not in mods_:
-        return False
-    return True
+    return not ("DT" not in mods_ or "NC" not in mods_)
 
 
 async def wysi(
@@ -83,9 +79,7 @@ async def wysi(
         return False
     if str(round(score.accuracy, ndigits=4))[3:] != "727":
         return False
-    if "xi" not in beatmap.beatmapset.artist:
-        return False
-    return True
+    return "xi" in beatmap.beatmapset.artist
 
 
 async def prepared(
@@ -97,9 +91,7 @@ async def prepared(
     if score.rank != Rank.X and score.rank != Rank.XH:
         return False
     mods_ = mod_to_save(score.mods)
-    if "NF" not in mods_:
-        return False
-    return True
+    return "NF" in mods_
 
 
 async def reckless_adandon(
@@ -117,9 +109,7 @@ async def reckless_adandon(
     redis = get_redis()
     mods_ = score.mods.copy()
     attribute = await calculate_beatmap_attributes(beatmap.id, score.gamemode, mods_, redis, fetcher)
-    if attribute.star_rating < 3:
-        return False
-    return True
+    return not attribute.star_rating < 3
 
 
 async def lights_out(
@@ -413,11 +403,10 @@ async def by_the_skin_of_the_teeth(
         return False
 
     for mod in score.mods:
-        if mod.get("acronym") == "AC":
-            if "settings" in mod and "minimum_accuracy" in mod["settings"]:
-                target_accuracy = mod["settings"]["minimum_accuracy"]
-                if isinstance(target_accuracy, int | float):
-                    return abs(score.accuracy - float(target_accuracy)) < 0.0001
+        if mod.get("acronym") == "AC" and "settings" in mod and "minimum_accuracy" in mod["settings"]:
+            target_accuracy = mod["settings"]["minimum_accuracy"]
+            if isinstance(target_accuracy, int | float):
+                return abs(score.accuracy - float(target_accuracy)) < 0.0001
     return False
 
 

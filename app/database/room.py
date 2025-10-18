@@ -1,9 +1,8 @@
 from datetime import datetime
 
-from app.database.playlist_attempts import PlaylistAggregateScore
+from app.database.item_attempts_count import PlaylistAggregateScore
 from app.database.room_participated_user import RoomParticipatedUser
 from app.models.model import UTCBaseModel
-from app.models.multiplayer_hub import ServerMultiplayerRoom
 from app.models.room import (
     MatchType,
     QueueMode,
@@ -14,8 +13,8 @@ from app.models.room import (
 )
 from app.utils import utcnow
 
-from .lazer_user import User, UserResp
 from .playlists import Playlist, PlaylistResp
+from .user import User, UserResp
 
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import (
@@ -158,25 +157,6 @@ class RoomResp(RoomBase):
         resp.host = await UserResp.from_db(await room.awaitable_attrs.host, session, include=["statistics"])
         if "current_user_score" in include and user:
             resp.current_user_score = await PlaylistAggregateScore.from_db(room.id, user.id, session)
-        return resp
-
-    @classmethod
-    async def from_hub(cls, server_room: ServerMultiplayerRoom) -> "RoomResp":
-        room = server_room.room
-        resp = cls(
-            id=room.room_id,
-            name=room.settings.name,
-            type=room.settings.match_type,
-            queue_mode=room.settings.queue_mode,
-            auto_skip=room.settings.auto_skip,
-            auto_start_duration=int(room.settings.auto_start_duration.total_seconds()),
-            status=server_room.status,
-            category=server_room.category,
-            # duration = room.settings.duration,
-            starts_at=server_room.start_at,
-            participant_count=len(room.users),
-            channel_id=server_room.room.channel_id or 0,
-        )
         return resp
 
 

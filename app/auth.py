@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import timedelta
 import hashlib
 import re
@@ -13,7 +11,7 @@ from app.database import (
     User,
 )
 from app.database.auth import TotpKeys
-from app.log import logger
+from app.log import log
 from app.models.totp import FinishStatus, StartCreateTotpKeyResp
 from app.utils import utcnow
 
@@ -22,7 +20,7 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 import pyotp
 from redis.asyncio import Redis
-from sqlmodel import select
+from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 # 密码哈希上下文
@@ -30,6 +28,8 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # bcrypt 缓存（模拟应用状态缓存）
 bcrypt_cache = {}
+
+logger = log("Auth")
 
 
 def validate_username(username: str) -> list[str]:
@@ -60,6 +60,20 @@ def validate_username(username: str) -> list[str]:
     return errors
 
 
+def validate_password(password: str) -> list[str]:
+    """验证密码"""
+    errors = []
+
+    if not password:
+        errors.append("Password is required")
+        return errors
+
+    if len(password) < 8:
+        errors.append("Password must be at least 8 characters long")
+
+    return errors
+
+
 def verify_password_legacy(plain_password: str, bcrypt_hash: str) -> bool:
     """
     验证密码 - 使用 osu! 的验证方式
@@ -67,7 +81,7 @@ def verify_password_legacy(plain_password: str, bcrypt_hash: str) -> bool:
     2. MD5哈希 -> bcrypt验证
     """
     # 1. 明文密码转 MD5
-    pw_md5 = hashlib.md5(plain_password.encode()).hexdigest().encode()
+    pw_md5 = hashlib.md5(plain_password.encode()).hexdigest().encode()  # noqa: S324
 
     # 2. 检查缓存
     if bcrypt_hash in bcrypt_cache:
@@ -101,7 +115,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def get_password_hash(password: str) -> str:
     """生成密码哈希 - 使用 osu! 的方式"""
     # 1. 明文密码 -> MD5
-    pw_md5 = hashlib.md5(password.encode()).hexdigest().encode()
+    pw_md5 = hashlib.md5(password.encode()).hexdigest().encode()  # noqa: S324
     # 2. MD5 -> bcrypt
     pw_bcrypt = bcrypt.hashpw(pw_md5, bcrypt.gensalt())
     return pw_bcrypt.decode()
@@ -112,7 +126,7 @@ async def authenticate_user_legacy(db: AsyncSession, name: str, password: str) -
     验证用户身份 - 使用类似 from_login 的逻辑
     """
     # 1. 明文密码转 MD5
-    pw_md5 = hashlib.md5(password.encode()).hexdigest()
+    pw_md5 = hashlib.md5(password.encode()).hexdigest()  # noqa: S324
 
     # 2. 根据用户名查找用户
     user = None
@@ -217,15 +231,43 @@ async def store_token(
     access_token: str,
     refresh_token: str,
     expires_in: int,
+    refresh_token_expires_in: int,
+    allow_multiple_devices: bool = True,
 ) -> OAuthToken:
-    """存储令牌到数据库"""
+    """存储令牌到数据库（支持多设备）"""
     expires_at = utcnow() + timedelta(seconds=expires_in)
+    refresh_token_expires_at = utcnow() + timedelta(seconds=refresh_token_expires_in)
 
-    # 删除用户的旧令牌
-    statement = select(OAuthToken).where(OAuthToken.user_id == user_id, OAuthToken.client_id == client_id)
-    old_tokens = (await db.exec(statement)).all()
-    for token in old_tokens:
-        await db.delete(token)
+    if not allow_multiple_devices:
+        # 旧的行为：删除用户的旧令牌（单设备模式）
+        statement = select(OAuthToken).where(OAuthToken.user_id == user_id, OAuthToken.client_id == client_id)
+        old_tokens = (await db.exec(statement)).all()
+        for token in old_tokens:
+            await db.delete(token)
+    else:
+        # 新的行为：只删除过期的令牌，保留有效的令牌（多设备模式）
+        statement = select(OAuthToken).where(
+            OAuthToken.user_id == user_id, OAuthToken.client_id == client_id, OAuthToken.expires_at <= utcnow()
+        )
+        expired_tokens = (await db.exec(statement)).all()
+        for token in expired_tokens:
+            await db.delete(token)
+
+        # 限制每个用户每个客户端的最大令牌数量（防止无限增长）
+        max_tokens_per_client = settings.max_tokens_per_client
+        statement = (
+            select(OAuthToken)
+            .where(OAuthToken.user_id == user_id, OAuthToken.client_id == client_id, OAuthToken.expires_at > utcnow())
+            .order_by(col(OAuthToken.created_at).desc())
+        )
+
+        active_tokens = (await db.exec(statement)).all()
+        if len(active_tokens) >= max_tokens_per_client:
+            # 删除最旧的令牌
+            tokens_to_delete = active_tokens[max_tokens_per_client - 1 :]
+            for token in tokens_to_delete:
+                await db.delete(token)
+            logger.info(f"Cleaned up {len(tokens_to_delete)} old tokens for user {user_id}")
 
     # 检查是否有重复的 access_token
     duplicate_token = (await db.exec(select(OAuthToken).where(OAuthToken.access_token == access_token))).first()
@@ -240,10 +282,13 @@ async def store_token(
         scope=",".join(scopes),
         refresh_token=refresh_token,
         expires_at=expires_at,
+        refresh_token_expires_at=refresh_token_expires_at,
     )
     db.add(token_record)
     await db.commit()
     await db.refresh(token_record)
+
+    logger.info(f"Created new token for user {user_id}, client {client_id} (multi-device: {allow_multiple_devices})")
     return token_record
 
 
@@ -260,7 +305,7 @@ async def get_token_by_refresh_token(db: AsyncSession, refresh_token: str) -> OA
     """根据刷新令牌获取令牌记录"""
     statement = select(OAuthToken).where(
         OAuthToken.refresh_token == refresh_token,
-        OAuthToken.expires_at > utcnow(),
+        OAuthToken.refresh_token_expires_at > utcnow(),
     )
     return (await db.exec(statement)).first()
 
@@ -287,18 +332,66 @@ def totp_redis_key(user: User) -> str:
     return f"totp:setup:{user.email}"
 
 
+def _generate_totp_account_label(user: User) -> str:
+    """生成TOTP账户标签
+
+    根据配置选择使用用户名或邮箱，并添加服务器信息使标签更具描述性
+    """
+    primary_identifier = user.username if settings.totp_use_username_in_label else user.email
+
+    # 如果配置了服务名称，添加到标签中以便在认证器中区分
+    if settings.totp_service_name:
+        return f"{primary_identifier} ({settings.totp_service_name})"
+    else:
+        return primary_identifier
+
+
+def _generate_totp_issuer_name() -> str:
+    """生成TOTP发行者名称
+
+    优先使用自定义的totp_issuer，否则使用服务名称
+    """
+    if settings.totp_issuer:
+        return settings.totp_issuer
+    elif settings.totp_service_name:
+        return settings.totp_service_name
+    else:
+        # 回退到默认值
+        return "osu! Private Server"
+
+
 async def start_create_totp_key(user: User, redis: Redis) -> StartCreateTotpKeyResp:
     secret = pyotp.random_base32()
     await redis.hset(totp_redis_key(user), mapping={"secret": secret, "fails": 0})  # pyright: ignore[reportGeneralTypeIssues]
     await redis.expire(totp_redis_key(user), 300)
+
+    # 生成更完整的账户标签和issuer信息
+    account_label = _generate_totp_account_label(user)
+    issuer_name = _generate_totp_issuer_name()
+
     return StartCreateTotpKeyResp(
         secret=secret,
-        uri=pyotp.totp.TOTP(secret).provisioning_uri(name=user.email, issuer_name=settings.totp_issuer),
+        uri=pyotp.totp.TOTP(secret).provisioning_uri(name=account_label, issuer_name=issuer_name),
     )
 
 
 def verify_totp_key(secret: str, code: str) -> bool:
     return pyotp.TOTP(secret).verify(code, valid_window=1)
+
+
+async def verify_totp_key_with_replay_protection(user_id: int, secret: str, code: str, redis: Redis) -> bool:
+    """验证TOTP密钥，并防止密钥重放攻击"""
+    if not pyotp.TOTP(secret).verify(code, valid_window=1):
+        return False
+
+    # 防止120秒内重复使用同一密钥（参考osu-web实现）
+    cache_key = f"totp:{user_id}:{code}"
+    if await redis.exists(cache_key):
+        return False
+
+    # 设置120秒过期时间
+    await redis.setex(cache_key, 120, "1")
+    return True
 
 
 def _generate_backup_codes(count=10, length=BACKUP_CODE_LENGTH) -> list[str]:

@@ -18,7 +18,7 @@ from sqlmodel import (
 )
 
 if TYPE_CHECKING:
-    from .lazer_user import User
+    from .user import User
 
 
 class EventType(str, Enum):

@@ -32,8 +32,8 @@ class LocalStorageService(StorageService):
         self,
         file_path: str,
         content: bytes,
-        content_type: str = "application/octet-stream",
-        cache_control: str = "public, max-age=31536000",
+        content_type: str = "application/octet-stream",  # noqa: ARG002
+        cache_control: str = "public, max-age=31536000",  # noqa: ARG002
     ) -> None:
         full_path = self._get_file_path(file_path)
         full_path.parent.mkdir(parents=True, exist_ok=True)

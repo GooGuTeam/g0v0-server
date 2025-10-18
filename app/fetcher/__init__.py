@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .beatmap import BeatmapFetcher
 from .beatmap_raw import BeatmapRawFetcher
 from .beatmapset import BeatmapsetFetcher

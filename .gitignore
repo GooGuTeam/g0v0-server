@@ -222,4 +222,11 @@ newrelic.ini
 logs/
 osu-server-spectator-master/*
 spectator-server/
-.github/copilot-instructions.md
+osu-web-master/*
+osu-web-master/.env.dusk.local.example
+osu-web-master/.env.example
+osu-web-master/.env.testing.example
+config/*
+!config/
+!config/.gitkeep
+osu-web-master/*

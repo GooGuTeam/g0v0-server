@@ -1,10 +1,9 @@
-from __future__ import annotations
-
+import asyncio
 import time
 from urllib.parse import quote
 
 from app.dependencies.database import get_redis
-from app.log import logger
+from app.log import fetcher_logger
 
 from httpx import AsyncClient
 
@@ -13,6 +12,9 @@ class TokenAuthError(Exception):
     """Token 授权失败异常"""
 
     pass
+
+
+logger = fetcher_logger("Fetcher")
 
 
 class BaseFetcher:
@@ -30,6 +32,7 @@ class BaseFetcher:
         self.token_expiry: int = 0
         self.callback_url: str = callback_url
         self.scope = scope
+        self._token_lock = asyncio.Lock()
 
     @property
     def authorize_url(self) -> str:
@@ -50,29 +53,33 @@ class BaseFetcher:
         """
         发送 API 请求
         """
-        # 检查 token 是否过期，如果过期则刷新
-        if self.is_token_expired():
-            await self.refresh_access_token()
+        await self._ensure_valid_access_token()
 
-        header = kwargs.pop("headers", {})
-        header.update(self.header)
+        headers = kwargs.pop("headers", {}).copy()
+        attempt = 0
 
-        async with AsyncClient() as client:
-            response = await client.request(
-                method,
-                url,
-                headers=header,
-                **kwargs,
-            )
+        while attempt < 2:
+            request_headers = {**headers, **self.header}
+            request_kwargs = kwargs.copy()
 
-            # 处理 401 错误
-            if response.status_code == 401:
-                logger.warning(f"Received 401 error for {url}")
-                await self._clear_tokens()
-                raise TokenAuthError(f"Authentication failed. Please re-authorize using: {self.authorize_url}")
+            async with AsyncClient() as client:
+                response = await client.request(
+                    method,
+                    url,
+                    headers=request_headers,
+                    **request_kwargs,
+                )
 
-            response.raise_for_status()
-            return response.json()
+            if response.status_code != 401:
+                response.raise_for_status()
+                return response.json()
+
+            attempt += 1
+            logger.warning(f"Received 401 error for {url}, attempt {attempt}")
+            await self._handle_unauthorized()
+
+        await self._clear_tokens()
+        raise TokenAuthError(f"Authentication failed. Please re-authorize using: {self.authorize_url}")
 
     def is_token_expired(self) -> bool:
         return self.token_expiry <= int(time.time())
@@ -105,40 +112,71 @@ class BaseFetcher:
                 self.refresh_token,
             )
 
-    async def refresh_access_token(self) -> None:
-        try:
-            logger.info(f"Refreshing access token for client {self.client_id}")
-            async with AsyncClient() as client:
-                response = await client.post(
-                    "https://osu.ppy.sh/oauth/token",
-                    data={
-                        "client_id": self.client_id,
-                        "client_secret": self.client_secret,
-                        "grant_type": "refresh_token",
-                        "refresh_token": self.refresh_token,
-                    },
-                )
-                response.raise_for_status()
-                token_data = response.json()
-                self.access_token = token_data["access_token"]
-                self.refresh_token = token_data.get("refresh_token", "")
-                self.token_expiry = int(time.time()) + token_data["expires_in"]
-                redis = get_redis()
-                await redis.set(
-                    f"fetcher:access_token:{self.client_id}",
-                    self.access_token,
-                    ex=token_data["expires_in"],
-                )
-                await redis.set(
-                    f"fetcher:refresh_token:{self.client_id}",
-                    self.refresh_token,
-                )
-                logger.info(f"Successfully refreshed access token for client {self.client_id}")
-        except Exception as e:
-            logger.error(f"Failed to refresh access token for client {self.client_id}: {e}")
-            await self._clear_tokens()
-            logger.warning(f"Cleared invalid tokens. Please re-authorize: {self.authorize_url}")
-            raise
+    async def refresh_access_token(self, *, force: bool = False) -> None:
+        if not force and not self.is_token_expired():
+            return
+
+        async with self._token_lock:
+            if not force and not self.is_token_expired():
+                return
+
+            if force:
+                await self._clear_access_token()
+
+            if not self.refresh_token:
+                logger.error(f"Missing refresh token for client {self.client_id}")
+                await self._clear_tokens()
+                raise TokenAuthError(f"Missing refresh token. Please re-authorize using: {self.authorize_url}")
+
+            try:
+                logger.info(f"Refreshing access token for client {self.client_id}")
+                async with AsyncClient() as client:
+                    response = await client.post(
+                        "https://osu.ppy.sh/oauth/token",
+                        data={
+                            "client_id": self.client_id,
+                            "client_secret": self.client_secret,
+                            "grant_type": "refresh_token",
+                            "refresh_token": self.refresh_token,
+                        },
+                    )
+                    response.raise_for_status()
+                    token_data = response.json()
+                    self.access_token = token_data["access_token"]
+                    self.refresh_token = token_data.get("refresh_token", self.refresh_token)
+                    self.token_expiry = int(time.time()) + token_data["expires_in"]
+                    redis = get_redis()
+                    await redis.set(
+                        f"fetcher:access_token:{self.client_id}",
+                        self.access_token,
+                        ex=token_data["expires_in"],
+                    )
+                    await redis.set(
+                        f"fetcher:refresh_token:{self.client_id}",
+                        self.refresh_token,
+                    )
+                    logger.info(f"Successfully refreshed access token for client {self.client_id}")
+            except Exception as e:
+                logger.error(f"Failed to refresh access token for client {self.client_id}: {e}")
+                await self._clear_tokens()
+                logger.warning(f"Cleared invalid tokens. Please re-authorize: {self.authorize_url}")
+                raise
+
+    async def _ensure_valid_access_token(self) -> None:
+        if self.is_token_expired():
+            await self.refresh_access_token()
+
+    async def _handle_unauthorized(self) -> None:
+        await self.refresh_access_token(force=True)
+
+    async def _clear_access_token(self) -> None:
+        logger.warning(f"Clearing access token for client {self.client_id}")
+
+        self.access_token = ""
+        self.token_expiry = 0
+
+        redis = get_redis()
+        await redis.delete(f"fetcher:access_token:{self.client_id}")
 
     async def _clear_tokens(self) -> None:
         """

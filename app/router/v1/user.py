@@ -1,25 +1,17 @@
-from __future__ import annotations
-
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from app.database.lazer_user import User
 from app.database.statistics import UserStatistics, UserStatisticsResp
+from app.database.user import User
 from app.dependencies.database import Database, get_redis
 from app.log import logger
 from app.models.score import GameMode
-from app.models.v1_user import (
-    PlayerEventItem,
-    PlayerInfo,
-    PlayerModeStats,
-    PlayerStatsHistory,
-)
 from app.service.user_cache_service import get_user_cache_service
 
 from .router import AllStrModel, router
 
 from fastapi import BackgroundTasks, HTTPException, Query
-from sqlmodel import select
+from sqlmodel import col, select
 
 
 class V1User(AllStrModel):
@@ -55,10 +47,6 @@ class V1User(AllStrModel):
 
     @classmethod
     async def from_db(cls, session: Database, db_user: User, ruleset: GameMode | None = None) -> "V1User":
-        # 确保 user_id 不为 None
-        if db_user.id is None:
-            raise ValueError("User ID cannot be None")
-
         ruleset = ruleset or db_user.playmode
         current_statistics: UserStatistics | None = None
         for i in await db_user.awaitable_attrs.statistics:
@@ -104,10 +92,10 @@ class V1User(AllStrModel):
 async def get_user(
     session: Database,
     background_tasks: BackgroundTasks,
-    user: str = Query(..., alias="u", description="用户"),
-    ruleset_id: int | None = Query(None, alias="m", description="Ruleset ID", ge=0),
-    type: Literal["string", "id"] | None = Query(None, description="用户类型：string 用户名称 / id 用户 ID"),
-    event_days: int = Query(default=1, ge=1, le=31, description="从现在起所有事件的最大天数"),
+    user: Annotated[str, Query(..., alias="u", description="用户")],
+    ruleset_id: Annotated[int | None, Query(alias="m", description="Ruleset ID", ge=0)] = None,
+    type: Annotated[Literal["string", "id"] | None, Query(description="用户类型：string 用户名称 / id 用户 ID")] = None,
+    event_days: Annotated[int, Query(ge=1, le=31, description="从现在起所有事件的最大天数")] = 1,
 ):
     redis = get_redis()
     cache_service = get_user_cache_service(redis)
@@ -136,6 +124,7 @@ async def get_user(
         await session.exec(
             select(User).where(
                 User.id == user if is_id_query else User.username == user,
+                ~User.is_restricted_query(col(User.id)),
             )
         )
     ).first()
@@ -170,7 +159,11 @@ async def _get_pp_history_for_mode(session: Database, user_id: int, mode: GameMo
         # 获取最近 30 天的排名历史（由于没有 PP 历史，我们使用当前的 PP 填充）
         stats = (
             await session.exec(
-                select(UserStatistics).where(UserStatistics.user_id == user_id, UserStatistics.mode == mode)
+                select(UserStatistics).where(
+                    UserStatistics.user_id == user_id,
+                    UserStatistics.mode == mode,
+                    ~User.is_restricted_query(col(UserStatistics.user_id)),
+                )
             )
         ).first()
 
@@ -180,128 +173,3 @@ async def _get_pp_history_for_mode(session: Database, user_id: int, mode: GameMo
     except Exception as e:
         logger.error(f"Error getting PP history for user {user_id}, mode {mode}: {e}")
         return [0.0] * days
-
-
-async def _create_player_mode_stats(
-    session: Database, user: User, mode: GameMode, user_statistics: list[UserStatistics]
-) -> PlayerModeStats:
-    """创建单个模式的玩家统计数据"""
-    # 查找对应模式的统计数据
-    stats = None
-    for stat in user_statistics:
-        if stat.mode == mode:
-            stats = stat
-            break
-
-    if not stats:
-        # 如果没有统计数据，创建默认数据
-        pp_history = [0.0] * 30
-        return PlayerModeStats(
-            id=user.id,
-            mode=int(mode),
-            tscore=0,
-            rscore=0,
-            pp=0.0,
-            plays=0,
-            playtime=0,
-            acc=0.0,
-            max_combo=0,
-            total_hits=0,
-            replay_views=0,
-            xh_count=0,
-            x_count=0,
-            sh_count=0,
-            s_count=0,
-            a_count=0,
-            level=1,
-            level_progress=0,
-            rank=0,
-            country_rank=0,
-            history=PlayerStatsHistory(pp=pp_history),
-        )
-
-    # 获取排名信息
-    try:
-        from app.database.statistics import get_rank
-
-        global_rank = await get_rank(session, stats) or 0
-        country_rank = await get_rank(session, stats, user.country_code) or 0
-    except Exception as e:
-        logger.error(f"Error getting rank for user {user.id}: {e}")
-        global_rank = 0
-        country_rank = 0
-
-    # 获取 PP 历史
-    pp_history = await _get_pp_history_for_mode(session, user.id, mode)
-
-    # 计算等级进度
-    level_current = int(stats.level_current)
-    level_progress = int((stats.level_current - level_current) * 100)
-
-    return PlayerModeStats(
-        id=user.id,
-        mode=int(mode),
-        tscore=stats.total_score,
-        rscore=stats.ranked_score,
-        pp=stats.pp,
-        plays=stats.play_count,
-        playtime=stats.play_time,
-        acc=stats.hit_accuracy,
-        max_combo=stats.maximum_combo,
-        total_hits=stats.total_hits,
-        replay_views=stats.replays_watched_by_others,
-        xh_count=stats.grade_ssh,
-        x_count=stats.grade_ss,
-        sh_count=stats.grade_sh,
-        s_count=stats.grade_s,
-        a_count=stats.grade_a,
-        level=level_current,
-        level_progress=level_progress,
-        rank=global_rank,
-        country_rank=country_rank,
-        history=PlayerStatsHistory(pp=pp_history),
-    )
-
-
-async def _get_player_events(session: Database, user_id: int, event_days: int = 1) -> list[PlayerEventItem]:
-    """获取玩家事件"""
-    try:
-        # 这里暂时返回空列表，因为事件系统需要更多的实现
-        # TODO: 实现真正的事件查询
-        return []
-    except Exception as e:
-        logger.error(f"Error getting events for user {user_id}: {e}")
-        return []
-
-
-async def _create_player_info(user: User) -> PlayerInfo:
-    """创建玩家基本信息"""
-    return PlayerInfo(
-        id=user.id,
-        name=user.username,
-        safe_name=user.username.lower(),  # 使用 username 转小写作为 safe_name
-        priv=user.priv,
-        country=user.country_code,
-        silence_end=int(user.silence_end_at.timestamp()) if user.silence_end_at else 0,
-        donor_end=int(user.donor_end_at.timestamp()) if user.donor_end_at else 0,
-        creation_time=int(user.join_date.timestamp()),
-        latest_activity=int(user.last_visit.timestamp()) if user.last_visit else 0,
-        clan_id=0,  # TODO: 实现战队系统
-        clan_priv=0,
-        preferred_mode=int(user.playmode),
-        preferred_type=0,
-        play_style=0,
-        custom_badge_enabled=0,
-        custom_badge_name="",
-        custom_badge_icon="",
-        custom_badge_color="white",
-        userpage_content=user.page.get("html", "") if user.page else "",
-        recentFailed=0,
-        social_discord=user.discord,
-        social_youtube=None,
-        social_twitter=user.twitter,
-        social_twitch=None,
-        social_github=None,
-        social_osu=None,
-        username_history=user.previous_usernames or [],
-    )

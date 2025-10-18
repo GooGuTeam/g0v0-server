@@ -19,7 +19,7 @@ from sqlmodel import (
 )
 
 if TYPE_CHECKING:
-    from .lazer_user import User
+    from .user import User
 
 
 class OAuthToken(UTCBaseModel, SQLModel, table=True):
@@ -32,7 +32,8 @@ class OAuthToken(UTCBaseModel, SQLModel, table=True):
     refresh_token: str = Field(max_length=500, unique=True)
     token_type: str = Field(default="Bearer", max_length=20)
     scope: str = Field(default="*", max_length=100)
-    expires_at: datetime = Field(sa_column=Column(DateTime))
+    expires_at: datetime = Field(sa_column=Column(DateTime, index=True))
+    refresh_token_expires_at: datetime = Field(sa_column=Column(DateTime, index=True))
     created_at: datetime = Field(default_factory=utcnow, sa_column=Column(DateTime))
 
     user: "User" = Relationship()

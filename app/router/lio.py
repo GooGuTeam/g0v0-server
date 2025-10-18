@@ -1,35 +1,31 @@
 """LIO (Legacy IO) router for osu-server-spectator compatibility."""
 
-from __future__ import annotations
-
 import base64
 import json
 from typing import Any
 
 from app.database.chat import ChannelType, ChatChannel  # ChatChannel 模型 & 枚举
-from app.database.lazer_user import User
 from app.database.playlists import Playlist as DBPlaylist
 from app.database.room import Room
 from app.database.room_participated_user import RoomParticipatedUser
-from app.dependencies.database import Database, get_redis
-from app.dependencies.fetcher import get_fetcher
-from app.dependencies.storage import get_storage_service
-from app.fetcher import Fetcher
-from app.log import logger
-from app.models.multiplayer_hub import PlaylistItem as HubPlaylistItem
+from app.database.user import User
+from app.dependencies.database import Database, Redis
+from app.dependencies.fetcher import Fetcher
+from app.dependencies.storage import StorageService
+from app.log import log
+from app.models.playlist import PlaylistItem
 from app.models.room import MatchType, QueueMode, RoomCategory, RoomStatus
-from app.storage.base import StorageService
 from app.utils import utcnow
 
 from .notification.server import server
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
-from redis.asyncio import Redis
 from sqlalchemy import update
 from sqlmodel import col, select
 
 router = APIRouter(prefix="/_lio", include_in_schema=False)
+logger = log("LegacyIO")
 
 
 async def _ensure_room_chat_channel(
@@ -132,7 +128,7 @@ def _coerce_playlist_item(item_data: dict[str, Any], default_order: int, host_us
         "allowed_mods": item_data.get("allowed_mods", []),
         "expired": bool(item_data.get("expired", False)),
         "playlist_order": item_data.get("playlist_order", default_order),
-        "played_at": item_data.get("played_at", None),
+        "played_at": item_data.get("played_at"),
         "freestyle": bool(item_data.get("freestyle", True)),
         "beatmap_checksum": item_data.get("beatmap_checksum", ""),
         "star_rating": item_data.get("star_rating", 0.0),
@@ -218,7 +214,7 @@ async def _add_playlist_items(db: Database, room_id: int, room_data: dict[str, A
 
     # Insert playlist items
     for item_data in items_raw:
-        hub_item = HubPlaylistItem(
+        playlist_item = PlaylistItem(
             id=-1,  # Placeholder, will be assigned by add_to_db
             owner_id=item_data["owner_id"],
             ruleset_id=item_data["ruleset_id"],
@@ -232,7 +228,7 @@ async def _add_playlist_items(db: Database, room_id: int, room_data: dict[str, A
             beatmap_checksum=item_data["beatmap_checksum"],
             star_rating=item_data["star_rating"],
         )
-        await DBPlaylist.add_to_db(hub_item, room_id=room_id, session=db)
+        await DBPlaylist.add_to_db(playlist_item, room_id=room_id, session=db)
 
 
 async def _add_host_as_participant(db: Database, room_id: int, host_user_id: int) -> None:
@@ -637,8 +633,8 @@ async def add_user_to_room(
 async def ensure_beatmap_present(
     beatmap_data: BeatmapEnsureRequest,
     db: Database,
-    redis: Redis = Depends(get_redis),
-    fetcher: Fetcher = Depends(get_fetcher),
+    redis: Redis,
+    fetcher: Fetcher,
 ) -> dict[str, Any]:
     """
     确保谱面在服务器中存在（包括元数据和原始文件缓存）。
@@ -677,7 +673,7 @@ class ReplayDataRequest(BaseModel):
 @router.post("/scores/replay")
 async def save_replay(
     req: ReplayDataRequest,
-    storage_service: StorageService = Depends(get_storage_service),
+    storage_service: StorageService,
 ):
     replay_data = req.mreplay
     replay_path = f"replays/{req.score_id}_{req.beatmap_id}_{req.user_id}_lazer_replay.osr"

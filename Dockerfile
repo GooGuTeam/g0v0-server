@@ -14,7 +14,6 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV UV_PROJECT_ENVIRONMENT=/app/.venv
 
 COPY pyproject.toml uv.lock ./
-COPY packages/ ./packages/
 
 RUN uv sync --frozen --no-dev
 

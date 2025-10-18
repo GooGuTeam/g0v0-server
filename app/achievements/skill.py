@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from functools import partial
 from typing import Literal, cast
 
@@ -47,9 +45,7 @@ async def process_skill(
     attribute = await calculate_beatmap_attributes(beatmap.id, score.gamemode, mods_, redis, fetcher)
     if attribute.star_rating < star or attribute.star_rating >= star + 1:
         return False
-    if type == "fc" and not score.is_perfect_combo:
-        return False
-    return True
+    return not (type == "fc" and not score.is_perfect_combo)
 
 
 MEDALS: Medals = {

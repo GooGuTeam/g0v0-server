@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from .lazer_user import User
+from .user import User
 
 from redis.asyncio import Redis
 from sqlmodel import (

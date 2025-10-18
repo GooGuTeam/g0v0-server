@@ -1,7 +1,5 @@
-from __future__ import annotations
-
 from app.database.beatmapset import Beatmapset
-from app.database.lazer_user import User
+from app.database.user import User
 
 from sqlmodel import BigInteger, Column, Field, ForeignKey, Relationship, SQLModel
 

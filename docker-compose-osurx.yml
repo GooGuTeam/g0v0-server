@@ -11,12 +11,14 @@ services:
     environment:
       - MYSQL_HOST=mysql
       - MYSQL_PORT=3306
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=redis://redis:6379
       - ENABLE_OSU_RX=true
       - ENABLE_OSU_AP=true
       - ENABLE_ALL_MODS_PP=true
       - ENABLE_SUPPORTER_FOR_ALL_USERS=true
       - ENABLE_ALL_BEATMAP_LEADERBOARD=true
+      # - CALCULATOR=performance_server
+      # - CALCULATOR_CONFIG='{"server_url":"http://performance-server:8080"}'
     env_file:
       - .env
     depends_on:
@@ -30,6 +32,7 @@ services:
       - ./static:/app/static
       - ./logs:/app/logs
       - ./newrelic.ini:/app/newrelic.ini:ro
+      - ./config:/app/config
     restart: unless-stopped
     networks:
       - osu-network
@@ -107,6 +110,15 @@ services:
     restart: unless-stopped
     networks:
       - osu-network
+
+  # performance-server:
+  #   image: ghcr.io/googuteam/osu-performance-server-osurx:custom-rulesets
+  #   container_name: performance_server_osurx
+  #   environment:
+  #     - SAVE_BEATMAP_FILES=false
+  #   restart: unless-stopped
+  #   networks:
+  #     - osu-network
 
 volumes:
   mysql_data:

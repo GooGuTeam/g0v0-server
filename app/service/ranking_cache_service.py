@@ -3,8 +3,6 @@
 用于缓存用户排行榜数据，减轻数据库压力
 """
 
-from __future__ import annotations
-
 import asyncio
 from datetime import datetime
 import json
@@ -12,9 +10,9 @@ from typing import TYPE_CHECKING, Literal
 
 from app.config import settings
 from app.database.statistics import UserStatistics, UserStatisticsResp
+from app.helpers.asset_proxy_helper import replace_asset_urls
 from app.log import logger
 from app.models.score import GameMode
-from app.service.asset_proxy_service import get_asset_proxy_service
 from app.utils import utcnow
 
 from redis.asyncio import Redis
@@ -330,6 +328,7 @@ class RankingCacheService:
 
             # 计算统计信息
             stats = {
+                "total": total_users,
                 "total_users": total_users,
                 "last_updated": utcnow().isoformat(),
                 "type": type,
@@ -356,16 +355,15 @@ class RankingCacheService:
                     for statistics in statistics_data:
                         user_stats_resp = await UserStatisticsResp.from_db(statistics, session, None, include)
 
+                        user_dict = user_stats_resp.model_dump()
+
                         # 应用资源代理处理
                         if settings.enable_asset_proxy:
                             try:
-                                asset_proxy_service = get_asset_proxy_service()
-                                user_stats_resp = await asset_proxy_service.replace_asset_urls(user_stats_resp)
+                                user_dict = await replace_asset_urls(user_dict)
                             except Exception as e:
                                 logger.warning(f"Asset proxy processing failed for ranking cache: {e}")
 
-                        # 将 UserStatisticsResp 转换为字典，处理所有序列化问题
-                        user_dict = json.loads(user_stats_resp.model_dump_json())
                         ranking_data.append(user_dict)
 
                     # 缓存这一页的数据
@@ -592,10 +590,7 @@ class RankingCacheService:
     async def invalidate_country_cache(self, ruleset: GameMode | None = None) -> None:
         """使地区排行榜缓存失效"""
         try:
-            if ruleset:
-                pattern = f"country_ranking:{ruleset}:*"
-            else:
-                pattern = "country_ranking:*"
+            pattern = f"country_ranking:{ruleset}:*" if ruleset else "country_ranking:*"
 
             keys = await self.redis.keys(pattern)
             if keys:
@@ -607,10 +602,7 @@ class RankingCacheService:
     async def invalidate_team_cache(self, ruleset: GameMode | None = None) -> None:
         """使战队排行榜缓存失效"""
         try:
-            if ruleset:
-                pattern = f"team_ranking:{ruleset}:*"
-            else:
-                pattern = "team_ranking:*"
+            pattern = f"team_ranking:{ruleset}:*" if ruleset else "team_ranking:*"
 
             keys = await self.redis.keys(pattern)
             if keys:
@@ -636,6 +628,7 @@ class RankingCacheService:
                     if size:
                         total_size += size
                 except Exception:
+                    logger.warning(f"Failed to get memory usage for key {key}")
                     continue
 
             return {
@@ -665,8 +658,7 @@ def get_ranking_cache_service(redis: Redis) -> RankingCacheService:
 async def schedule_ranking_refresh_task(session: AsyncSession, redis: Redis):
     """定时排行榜刷新任务"""
     # 默认启用排行榜缓存，除非明确禁用
-    enable_ranking_cache = getattr(settings, "enable_ranking_cache", True)
-    if not enable_ranking_cache:
+    if not settings.enable_ranking_cache:
         return
 
     cache_service = get_ranking_cache_service(redis)

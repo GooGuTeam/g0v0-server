@@ -3,8 +3,6 @@
 用于缓存用户信息，提供热缓存和实时刷新功能
 """
 
-from __future__ import annotations
-
 from datetime import datetime
 import json
 from typing import TYPE_CHECKING, Any
@@ -12,11 +10,12 @@ from typing import TYPE_CHECKING, Any
 from app.config import settings
 from app.const import BANCHOBOT_ID
 from app.database import User, UserResp
-from app.database.lazer_user import SEARCH_INCLUDED
 from app.database.score import LegacyScoreResp, ScoreResp
+from app.database.user import SEARCH_INCLUDED
+from app.dependencies.database import with_db
+from app.helpers.asset_proxy_helper import replace_asset_urls
 from app.log import logger
 from app.models.score import GameMode
-from app.service.asset_proxy_service import get_asset_proxy_service
 
 from redis.asyncio import Redis
 from sqlmodel import col, select
@@ -317,8 +316,7 @@ class UserCacheService:
             # 应用资源代理处理
             if settings.enable_asset_proxy:
                 try:
-                    asset_proxy_service = get_asset_proxy_service()
-                    user_resp = await asset_proxy_service.replace_asset_urls(user_resp)
+                    user_resp = await replace_asset_urls(user_resp)
                 except Exception as e:
                     logger.warning(f"Asset proxy processing failed for user cache {user.id}: {e}")
 
@@ -356,6 +354,7 @@ class UserCacheService:
                     if size:
                         total_size += size
                 except Exception:
+                    logger.warning(f"Failed to get memory usage for key {key}")
                     continue
 
             return {
@@ -382,3 +381,14 @@ def get_user_cache_service(redis: Redis) -> UserCacheService:
     if _user_cache_service is None:
         _user_cache_service = UserCacheService(redis)
     return _user_cache_service
+
+
+async def refresh_user_cache_background(redis: Redis, user_id: int, mode: GameMode):
+    """后台任务：刷新用户缓存"""
+    try:
+        user_cache_service = get_user_cache_service(redis)
+        # 创建独立的数据库会话
+        async with with_db() as session:
+            await user_cache_service.refresh_user_cache_on_score_submit(session, user_id, mode)
+    except Exception as e:
+        logger.error(f"Failed to refresh user cache after score submit: {e}")

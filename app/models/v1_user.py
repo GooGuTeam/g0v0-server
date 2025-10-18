@@ -1,7 +1,5 @@
 """V1 API 用户相关模型"""
 
-from __future__ import annotations
-
 from pydantic import BaseModel, Field
 
 
@@ -46,10 +44,10 @@ class PlayerStatsResponse(BaseModel):
 class PlayerEventItem(BaseModel):
     """玩家事件项目"""
 
-    userId: int
+    userId: int  # noqa: N815
     name: str
-    mapId: int | None = None
-    setId: int | None = None
+    mapId: int | None = None  # noqa: N815
+    setId: int | None = None  # noqa: N815
     artist: str | None = None
     title: str | None = None
     version: str | None = None
@@ -88,7 +86,7 @@ class PlayerInfo(BaseModel):
     custom_badge_icon: str
     custom_badge_color: str
     userpage_content: str
-    recentFailed: int
+    recentFailed: int  # noqa: N815
     social_discord: str | None = None
     social_youtube: str | None = None
     social_twitter: str | None = None

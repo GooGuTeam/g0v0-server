@@ -1,16 +1,14 @@
-from __future__ import annotations
+from app.dependencies.storage import StorageService as StorageServiceDep
+from app.storage import LocalStorageService
 
-from app.dependencies.storage import get_storage_service
-from app.storage import LocalStorageService, StorageService
-
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
 file_router = APIRouter(prefix="/file", include_in_schema=False)
 
 
 @file_router.get("/{path:path}")
-async def get_file(path: str, storage: StorageService = Depends(get_storage_service)):
+async def get_file(path: str, storage: StorageServiceDep):
     if not isinstance(storage, LocalStorageService):
         raise HTTPException(404, "Not Found")
     if not await storage.is_exists(path):

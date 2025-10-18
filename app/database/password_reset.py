@@ -2,8 +2,6 @@
 密码重置相关数据库模型
 """
 
-from __future__ import annotations
-
 from datetime import datetime
 
 from app.utils import utcnow

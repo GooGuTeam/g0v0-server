@@ -1,16 +1,13 @@
-from __future__ import annotations
-
 import base64
 from datetime import date
-from typing import Literal
+from typing import Annotated, Literal
 
 from app.database.counts import ReplayWatchedCount
 from app.database.score import Score
 from app.dependencies.database import Database
-from app.dependencies.storage import get_storage_service
+from app.dependencies.storage import StorageService
 from app.models.mods import int_to_mods
 from app.models.score import GameMode
-from app.storage import StorageService
 
 from .router import router
 
@@ -34,18 +31,20 @@ class ReplayModel(BaseModel):
 )
 async def download_replay(
     session: Database,
-    beatmap: int = Query(..., alias="b", description="谱面 ID"),
-    user: str = Query(..., alias="u", description="用户"),
-    ruleset_id: int | None = Query(
-        None,
-        alias="m",
-        description="Ruleset ID",
-        ge=0,
-    ),
-    score_id: int | None = Query(None, alias="s", description="成绩 ID"),
-    type: Literal["string", "id"] | None = Query(None, description="用户类型：string 用户名称 / id 用户 ID"),
-    mods: int = Query(0, description="成绩的 MOD"),
-    storage_service: StorageService = Depends(get_storage_service),
+    beatmap: Annotated[int, Query(..., alias="b", description="谱面 ID")],
+    user: Annotated[str, Query(..., alias="u", description="用户")],
+    storage_service: StorageService,
+    ruleset_id: Annotated[
+        int | None,
+        Query(
+            alias="m",
+            description="Ruleset ID",
+            ge=0,
+        ),
+    ] = None,
+    score_id: Annotated[int | None, Query(alias="s", description="成绩 ID")] = None,
+    type: Annotated[Literal["string", "id"] | None, Query(description="用户类型：string 用户名称 / id 用户 ID")] = None,
+    mods: Annotated[int, Query(description="成绩的 MOD")] = 0,
 ):
     mods_ = int_to_mods(mods)
     if score_id is not None:
@@ -69,7 +68,7 @@ async def download_replay(
         except KeyError:
             raise HTTPException(status_code=400, detail="Invalid request")
 
-    filepath = f"replays/{score_record.id}_{score_record.beatmap_id}_{score_record.user_id}_lazer_replay.osr"
+    filepath = score_record.replay_filename
     if not await storage_service.is_exists(filepath):
         raise HTTPException(status_code=404, detail="Replay file not found")
 

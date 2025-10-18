@@ -1,46 +1,50 @@
-from __future__ import annotations
-
 import hashlib
+from typing import Annotated
 
-from app.database.lazer_user import BASE_INCLUDES, User, UserResp
-from app.database.team import Team, TeamMember, TeamRequest
-from app.dependencies.database import Database, get_redis
-from app.dependencies.storage import get_storage_service
-from app.dependencies.user import get_client_user
+from app.database.team import Team, TeamMember, TeamRequest, TeamResp
+from app.database.user import BASE_INCLUDES, User, UserResp
+from app.dependencies.database import Database, Redis
+from app.dependencies.storage import StorageService
+from app.dependencies.user import ClientUser
 from app.models.notification import (
     TeamApplicationAccept,
     TeamApplicationReject,
     TeamApplicationStore,
 )
+from app.models.score import GameMode
 from app.router.notification import server
 from app.service.ranking_cache_service import get_ranking_cache_service
-from app.storage.base import StorageService
 from app.utils import check_image, utcnow
 
 from .router import router
 
-from fastapi import Depends, File, Form, HTTPException, Path, Request, Security
+from fastapi import File, Form, HTTPException, Path, Query, Request
 from pydantic import BaseModel
-from redis.asyncio import Redis
-from sqlmodel import exists, select
+from sqlmodel import col, exists, select
 
 
 @router.post("/team", name="创建战队", response_model=Team, tags=["战队", "g0v0 API"])
 async def create_team(
     session: Database,
-    storage: StorageService = Depends(get_storage_service),
-    current_user: User = Security(get_client_user),
-    flag: bytes = File(..., description="战队图标文件"),
-    cover: bytes = File(..., description="战队头图文件"),
-    name: str = Form(max_length=100, description="战队名称"),
-    short_name: str = Form(max_length=10, description="战队缩写"),
-    redis: Redis = Depends(get_redis),
+    storage: StorageService,
+    current_user: ClientUser,
+    flag: Annotated[bytes, File(..., description="战队图标文件")],
+    cover: Annotated[bytes, File(..., description="战队头图文件")],
+    name: Annotated[str, Form(max_length=100, description="战队名称")],
+    short_name: Annotated[str, Form(max_length=10, description="战队缩写")],
+    redis: Redis,
+    playmode: Annotated[GameMode, Form(description="战队游戏模式")] = GameMode.OSU,
+    description: Annotated[str | None, Form(description="战队简介")] = None,
+    website: Annotated[str | None, Form(description="战队网址")] = None,
 ):
     """创建战队。
 
     flag 限制 240x120, 2MB; cover 限制 3000x2000, 10MB
     支持的图片格式: PNG、JPEG、GIF
     """
+    if await current_user.is_restricted(session):
+        raise HTTPException(status_code=403, detail="Your account is restricted and cannot perform this action.")
+
     user_id = current_user.id
     if (await current_user.awaitable_attrs.team_membership) is not None:
         raise HTTPException(status_code=403, detail="You are already in a team")
@@ -55,8 +59,19 @@ async def create_team(
     flag_format = check_image(flag, 2 * 1024 * 1024, 240, 120)
     cover_format = check_image(cover, 10 * 1024 * 1024, 3000, 2000)
 
+    if website and not (website.startswith("http://") or website.startswith("https://")):
+        website = "https://" + website
+
     now = utcnow()
-    team = Team(name=name, short_name=short_name, leader_id=user_id, created_at=now)
+    team = Team(
+        name=name,
+        short_name=short_name,
+        leader_id=user_id,
+        created_at=now,
+        playmode=playmode,
+        description=description,
+        website=website,
+    )
     session.add(team)
     await session.commit()
     await session.refresh(team)
@@ -88,19 +103,25 @@ async def create_team(
 async def update_team(
     team_id: int,
     session: Database,
-    storage: StorageService = Depends(get_storage_service),
-    current_user: User = Security(get_client_user),
-    flag: bytes | None = File(default=None, description="战队图标文件"),
-    cover: bytes | None = File(default=None, description="战队头图文件"),
-    name: str | None = Form(default=None, max_length=100, description="战队名称"),
-    short_name: str | None = Form(default=None, max_length=10, description="战队缩写"),
-    leader_id: int | None = Form(default=None, description="战队队长 ID"),
+    storage: StorageService,
+    current_user: ClientUser,
+    flag: Annotated[bytes | None, File(description="战队图标文件")] = None,
+    cover: Annotated[bytes | None, File(description="战队头图文件")] = None,
+    name: Annotated[str | None, Form(max_length=100, description="战队名称")] = None,
+    short_name: Annotated[str | None, Form(max_length=10, description="战队缩写")] = None,
+    leader_id: Annotated[int | None, Form(description="战队队长 ID")] = None,
+    playmode: Annotated[GameMode, Form(description="战队游戏模式")] = GameMode.OSU,
+    description: Annotated[str | None, Form(description="战队简介")] = None,
+    website: Annotated[str | None, Form(description="战队网址")] = None,
 ):
     """修改战队。
 
     flag 限制 240x120, 2MB; cover 限制 3000x2000, 10MB
     支持的图片格式: PNG、JPEG、GIF
     """
+    if await current_user.is_restricted(session):
+        raise HTTPException(status_code=403, detail="Your account is restricted and cannot perform this action.")
+
     team = await session.get(Team, team_id)
     user_id = current_user.id
     if not team:
@@ -118,6 +139,13 @@ async def update_team(
             raise HTTPException(status_code=409, detail="Short name already exists")
         else:
             team.short_name = short_name
+
+    team.playmode = playmode or team.playmode
+    team.description = description
+    if website is not None:
+        if website and not (website.startswith("http://") or website.startswith("https://")):
+            website = "https://" + website
+        team.website = website
 
     if flag:
         format_ = check_image(flag, 2 * 1024 * 1024, 240, 120)
@@ -161,10 +189,13 @@ async def update_team(
 @router.delete("/team/{team_id}", name="删除战队", status_code=204, tags=["战队", "g0v0 API"])
 async def delete_team(
     session: Database,
-    team_id: int = Path(..., description="战队 ID"),
-    current_user: User = Security(get_client_user),
-    redis: Redis = Depends(get_redis),
+    team_id: Annotated[int, Path(..., description="战队 ID")],
+    current_user: ClientUser,
+    redis: Redis,
 ):
+    if await current_user.is_restricted(session):
+        raise HTTPException(status_code=403, detail="Your account is restricted and cannot perform this action.")
+
     team = await session.get(Team, team_id)
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
@@ -184,18 +215,26 @@ async def delete_team(
 
 
 class TeamQueryResp(BaseModel):
-    team: Team
+    team: TeamResp
     members: list[UserResp]
 
 
 @router.get("/team/{team_id}", name="查询战队", response_model=TeamQueryResp, tags=["战队", "g0v0 API"])
 async def get_team(
     session: Database,
-    team_id: int = Path(..., description="战队 ID"),
+    team_id: Annotated[int, Path(..., description="战队 ID")],
+    gamemode: Annotated[GameMode | None, Query(description="游戏模式")] = None,
 ):
-    members = (await session.exec(select(TeamMember).where(TeamMember.team_id == team_id))).all()
+    members = (
+        await session.exec(
+            select(TeamMember).where(
+                TeamMember.team_id == team_id,
+                ~User.is_restricted_query(col(TeamMember.user_id)),
+            )
+        )
+    ).all()
     return TeamQueryResp(
-        team=members[0].team,
+        team=await TeamResp.from_db(members[0].team, session, gamemode),
         members=[await UserResp.from_db(m.user, session, include=BASE_INCLUDES) for m in members],
     )
 
@@ -203,9 +242,12 @@ async def get_team(
 @router.post("/team/{team_id}/request", name="请求加入战队", status_code=204, tags=["战队", "g0v0 API"])
 async def request_join_team(
     session: Database,
-    team_id: int = Path(..., description="战队 ID"),
-    current_user: User = Security(get_client_user),
+    team_id: Annotated[int, Path(..., description="战队 ID")],
+    current_user: ClientUser,
 ):
+    if await current_user.is_restricted(session):
+        raise HTTPException(status_code=403, detail="Your account is restricted and cannot perform this action.")
+
     team = await session.get(Team, team_id)
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
@@ -231,11 +273,14 @@ async def request_join_team(
 async def handle_request(
     req: Request,
     session: Database,
-    team_id: int = Path(..., description="战队 ID"),
-    user_id: int = Path(..., description="用户 ID"),
-    current_user: User = Security(get_client_user),
-    redis: Redis = Depends(get_redis),
+    team_id: Annotated[int, Path(..., description="战队 ID")],
+    user_id: Annotated[int, Path(..., description="用户 ID")],
+    current_user: ClientUser,
+    redis: Redis,
 ):
+    if await current_user.is_restricted(session):
+        raise HTTPException(status_code=403, detail="Your account is restricted and cannot perform this action.")
+
     team = await session.get(Team, team_id)
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
@@ -272,11 +317,14 @@ async def handle_request(
 @router.delete("/team/{team_id}/{user_id}", name="踢出成员 / 退出战队", status_code=204, tags=["战队", "g0v0 API"])
 async def kick_member(
     session: Database,
-    team_id: int = Path(..., description="战队 ID"),
-    user_id: int = Path(..., description="用户 ID"),
-    current_user: User = Security(get_client_user),
-    redis: Redis = Depends(get_redis),
+    team_id: Annotated[int, Path(..., description="战队 ID")],
+    user_id: Annotated[int, Path(..., description="用户 ID")],
+    current_user: ClientUser,
+    redis: Redis,
 ):
+    if await current_user.is_restricted(session):
+        raise HTTPException(status_code=403, detail="Your account is restricted and cannot perform this action.")
+
     team = await session.get(Team, team_id)
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")

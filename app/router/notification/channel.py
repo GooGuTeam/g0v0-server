@@ -1,6 +1,4 @@
-from __future__ import annotations
-
-from typing import Any, Literal, Self
+from typing import Annotated, Any, Literal, Self
 
 from app.database.chat import (
     ChannelType,
@@ -10,8 +8,8 @@ from app.database.chat import (
     SilenceUser,
     UserSilenceResp,
 )
-from app.database.lazer_user import User, UserResp
-from app.dependencies.database import Database, get_redis
+from app.database.user import User, UserResp
+from app.dependencies.database import Database, Redis
 from app.dependencies.param import BodyOrForm
 from app.dependencies.user import get_current_user
 from app.router.v2 import api_v2_router as router
@@ -20,7 +18,6 @@ from .server import server
 
 from fastapi import Depends, HTTPException, Path, Query, Security
 from pydantic import BaseModel, Field, model_validator
-from redis.asyncio import Redis
 from sqlmodel import col, select
 
 
@@ -38,11 +35,14 @@ class UpdateResponse(BaseModel):
 )
 async def get_update(
     session: Database,
-    history_since: int | None = Query(None, description="获取自此禁言 ID 之后的禁言记录"),
-    since: int | None = Query(None, description="获取自此消息 ID 之后的禁言记录"),
-    includes: list[str] = Query(["presence", "silences"], alias="includes[]", description="要包含的更新类型"),
-    current_user: User = Security(get_current_user, scopes=["chat.read"]),
-    redis: Redis = Depends(get_redis),
+    current_user: Annotated[User, Security(get_current_user, scopes=["chat.read"])],
+    redis: Redis,
+    history_since: Annotated[int | None, Query(description="获取自此禁言 ID 之后的禁言记录")] = None,
+    since: Annotated[int | None, Query(description="获取自此消息 ID 之后的禁言记录")] = None,
+    includes: Annotated[
+        list[str],
+        Query(alias="includes[]", description="要包含的更新类型"),
+    ] = ["presence", "silences"],
 ):
     resp = UpdateResponse()
     if "presence" in includes:
@@ -86,10 +86,13 @@ async def get_update(
 )
 async def join_channel(
     session: Database,
-    channel: str = Path(..., description="频道 ID/名称"),
-    user: str = Path(..., description="用户 ID"),
-    current_user: User = Security(get_current_user, scopes=["chat.write_manage"]),
+    channel: Annotated[str, Path(..., description="频道 ID/名称")],
+    user: Annotated[str, Path(..., description="用户 ID")],
+    current_user: Annotated[User, Security(get_current_user, scopes=["chat.write_manage"])],
 ):
+    if await current_user.is_restricted(session):
+        raise HTTPException(status_code=403, detail="You are restricted from sending messages")
+
     # 使用明确的查询避免延迟加载
     if channel.isdigit():
         db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.channel_id == int(channel)))).first()
@@ -110,10 +113,13 @@ async def join_channel(
 )
 async def leave_channel(
     session: Database,
-    channel: str = Path(..., description="频道 ID/名称"),
-    user: str = Path(..., description="用户 ID"),
-    current_user: User = Security(get_current_user, scopes=["chat.write_manage"]),
+    channel: Annotated[str, Path(..., description="频道 ID/名称")],
+    user: Annotated[str, Path(..., description="用户 ID")],
+    current_user: Annotated[User, Security(get_current_user, scopes=["chat.write_manage"])],
 ):
+    if await current_user.is_restricted(session):
+        raise HTTPException(status_code=403, detail="You are restricted from sending messages")
+
     # 使用明确的查询避免延迟加载
     if channel.isdigit():
         db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.channel_id == int(channel)))).first()
@@ -135,8 +141,8 @@ async def leave_channel(
 )
 async def get_channel_list(
     session: Database,
-    current_user: User = Security(get_current_user, scopes=["chat.read"]),
-    redis: Redis = Depends(get_redis),
+    current_user: Annotated[User, Security(get_current_user, scopes=["chat.read"])],
+    redis: Redis,
 ):
     channels = (await session.exec(select(ChatChannel).where(ChatChannel.type == ChannelType.PUBLIC))).all()
     results = []
@@ -171,9 +177,9 @@ class GetChannelResp(BaseModel):
 )
 async def get_channel(
     session: Database,
-    channel: str = Path(..., description="频道 ID/名称"),
-    current_user: User = Security(get_current_user, scopes=["chat.read"]),
-    redis: Redis = Depends(get_redis),
+    channel: Annotated[str, Path(..., description="频道 ID/名称")],
+    current_user: Annotated[User, Security(get_current_user, scopes=["chat.read"])],
+    redis: Redis,
 ):
     # 使用明确的查询避免延迟加载
     if channel.isdigit():
@@ -198,7 +204,7 @@ async def get_channel(
             if int(id_) == current_user.id:
                 continue
             target_user = await session.get(User, int(id_))
-            if target_user is None:
+            if target_user is None or await target_user.is_restricted(session):
                 raise HTTPException(status_code=404, detail="Target user not found")
             users.extend([target_user, current_user])
             break
@@ -245,13 +251,16 @@ class CreateChannelReq(BaseModel):
 )
 async def create_channel(
     session: Database,
-    req: CreateChannelReq = Depends(BodyOrForm(CreateChannelReq)),
-    current_user: User = Security(get_current_user, scopes=["chat.write_manage"]),
-    redis: Redis = Depends(get_redis),
+    req: Annotated[CreateChannelReq, Depends(BodyOrForm(CreateChannelReq))],
+    current_user: Annotated[User, Security(get_current_user, scopes=["chat.write_manage"])],
+    redis: Redis,
 ):
+    if await current_user.is_restricted(session):
+        raise HTTPException(status_code=403, detail="You are restricted from sending messages")
+
     if req.type == "PM":
         target = await session.get(User, req.target_id)
-        if not target:
+        if not target or await target.is_restricted(session):
             raise HTTPException(status_code=404, detail="Target user not found")
         is_can_pm, block = await target.is_user_can_pm(current_user, session)
         if not is_can_pm:

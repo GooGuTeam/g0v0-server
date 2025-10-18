@@ -1,10 +1,14 @@
 from datetime import datetime
 from enum import Enum
+from typing import TYPE_CHECKING
 
 from app.models.model import UTCBaseModel
 from app.utils import utcnow
 
-from sqlmodel import BigInteger, Column, Field, ForeignKey, Integer, SQLModel
+from sqlmodel import BigInteger, Column, Field, ForeignKey, Integer, Relationship, SQLModel
+
+if TYPE_CHECKING:
+    from .user import User
 
 
 class UserAccountHistoryType(str, Enum):
@@ -34,6 +38,8 @@ class UserAccountHistory(UserAccountHistoryBase, table=True):
         )
     )
     user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
+
+    user: "User" = Relationship(back_populates="account_history")
 
 
 class UserAccountHistoryResp(UserAccountHistoryBase):

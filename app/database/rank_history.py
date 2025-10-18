@@ -21,7 +21,7 @@ from sqlmodel import (
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 if TYPE_CHECKING:
-    from .lazer_user import User
+    from .user import User
 
 
 class RankHistory(SQLModel, table=True):

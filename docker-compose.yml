@@ -13,7 +13,9 @@ services:
     environment:
       - MYSQL_HOST=mysql
       - MYSQL_PORT=3306
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=redis://redis:6379
+      # - CALCULATOR=performance_server
+      # - CALCULATOR_CONFIG='{"server_url":"http://performance-server:8080"}'
     env_file:
       - .env
     depends_on:
@@ -27,6 +29,7 @@ services:
       - ./static:/app/static
       - ./logs:/app/logs
       - ./newrelic.ini:/app/newrelic.ini:ro
+      - ./config:/app/config
     restart: unless-stopped
     networks:
       - osu-network
@@ -100,6 +103,15 @@ services:
     networks:
       - osu-network
     command: redis-server --appendonly yes
+
+  # performance-server:
+  #   image: ghcr.io/googuteam/osu-performance-server:custom-rulesets
+  #   container_name: performance_server
+  #   environment:
+  #     - SAVE_BEATMAP_FILES=false
+  #   restart: unless-stopped
+  #   networks:
+  #     - osu-network
 
 volumes:
   mysql_data:

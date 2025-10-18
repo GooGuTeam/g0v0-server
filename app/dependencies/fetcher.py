@@ -1,17 +1,19 @@
-from __future__ import annotations
+from typing import Annotated
 
 from app.config import settings
 from app.dependencies.database import get_redis
-from app.fetcher import Fetcher
-from app.log import logger
+from app.fetcher import Fetcher as OriginFetcher
+from app.log import fetcher_logger
 
-fetcher: Fetcher | None = None
+from fastapi import Depends
+
+fetcher: OriginFetcher | None = None
 
 
-async def get_fetcher() -> Fetcher:
+async def get_fetcher() -> OriginFetcher:
     global fetcher
     if fetcher is None:
-        fetcher = Fetcher(
+        fetcher = OriginFetcher(
             settings.fetcher_client_id,
             settings.fetcher_client_secret,
             settings.fetcher_scopes,
@@ -25,5 +27,10 @@ async def get_fetcher() -> Fetcher:
         if refresh_token:
             fetcher.refresh_token = str(refresh_token)
         if not fetcher.access_token or not fetcher.refresh_token:
-            logger.opt(colors=True).info(f"Login to initialize fetcher: <y>{fetcher.authorize_url}</y>")
+            fetcher_logger("Fetcher").opt(colors=True).info(
+                f"Login to initialize fetcher: <y>{fetcher.authorize_url}</y>"
+            )
     return fetcher
+
+
+Fetcher = Annotated[OriginFetcher, Depends(get_fetcher)]

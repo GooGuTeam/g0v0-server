@@ -1,7 +1,7 @@
 [project]
 name = "g0v0-server"
 version = "0.1.0"
-description = "3rd-party osu!lazer server which supports the latest osu!lazer."
+description = "3rd-party osu!lazer private server which supports the latest osu!lazer."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -16,9 +16,10 @@ dependencies = [
     "fastapi>=0.104.1",
     "fastapi-limiter>=0.1.6",
     "httpx>=0.28.1",
+    "jinja2>=3.1.0",
     "loguru>=0.7.3",
+    "mailersend>=2.0.0",
     "maxminddb>=2.8.2",
-    "msgpack-lazer-api",
     "newrelic>=10.1.0",
     "osupyparser>=1.0.7",
     "passlib[bcrypt]>=1.7.4",
@@ -56,12 +57,20 @@ select = [
   "ASYNC", # flake8-async
   "C4",    # flake8-comprehensions
   "T10",   # flake8-debugger
-  # "T20",   # flake8-print
   "PYI",   # flake8-pyi
   "PT",    # flake8-pytest-style
   "Q",     # flake8-quotes
   "TID",   # flake8-tidy-imports
   "RUF",   # Ruff-specific rules
+  "FAST",  # FastAPI
+  "YTT",   # flake8-2020
+  "S",     # flake8-bandit
+  "INP",   # flake8-no-pep420
+  "SIM",   # flake8-simplify
+  "ARG",   # flake8-unused-arguments
+  "PTH",   # flake8-use-pathlib
+  "N",     # pep8-naming
+  "FURB"   # refurb
 ]
 ignore = [
   "E402",   # module-import-not-at-top-of-file
@@ -69,10 +78,16 @@ ignore = [
   "RUF001", # ambiguous-unicode-character-string
   "RUF002", # ambiguous-unicode-character-docstring
   "RUF003", # ambiguous-unicode-character-comment
+  "S101",   # assert
+  "S311",   # suspicious-non-cryptographic-random-usage
 ]
 
 [tool.ruff.lint.extend-per-file-ignores]
-"app/database/**/*.py" = ["I002"]
+"tools/*.py" = ["PTH", "INP001"]
+"migrations/**/*.py" = ["INP001"]
+".github/**/*.py" = ["INP001"]
+"app/achievements/*.py" = ["INP001", "ARG"]
+"app/router/**/*.py" = ["ARG001"]
 
 [tool.ruff.lint.isort]
 force-sort-within-sections = true
@@ -80,7 +95,6 @@ force-wrap-aliases = true
 combine-as-imports = true
 order-by-type = true
 relative-imports-order = "closest-to-furthest"
-required-imports = ["from __future__ import annotations"]
 extra-standard-library = ["typing_extensions"]
 section-order = ["future", "standard-library", "first-party", "local-folder", "third-party"]
 
@@ -103,20 +117,14 @@ exclude = ["migrations/", ".venv/", "venv/"]
 
 [tool.uv.workspace]
 members = [
-    "packages/msgpack_lazer_api",
     "packages/osupyparser",
 ]
 
 [tool.uv.sources]
-msgpack-lazer-api = { workspace = true }
 osupyparser = { git = "https://github.com/MingxuanGame/osupyparser.git" }
-
-[tool.uv]
-cache-keys = [{file = "pyproject.toml"}, {file = "packages/msgpack_lazer_api/Cargo.toml"}, {file = "**/*.rs"}]
 
 [dependency-groups]
 dev = [
-    "maturin>=1.9.2",
     "pre-commit>=4.2.0",
     "pyright>=1.1.404",
     "ruff>=0.12.4",

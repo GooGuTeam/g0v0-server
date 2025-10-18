@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Self
 
-from app.database.lazer_user import RANKING_INCLUDES, User, UserResp
+from app.database.user import RANKING_INCLUDES, User, UserResp
 from app.models.model import UTCBaseModel
 from app.utils import utcnow
 
@@ -105,17 +105,11 @@ class ChatChannelResp(ChatChannelBase):
             )
         ).first()
 
-        last_msg = await redis.get(f"chat:{channel.channel_id}:last_msg")
-        if last_msg and last_msg.isdigit():
-            last_msg = int(last_msg)
-        else:
-            last_msg = None
+        last_msg_raw = await redis.get(f"chat:{channel.channel_id}:last_msg")
+        last_msg = int(last_msg_raw) if last_msg_raw and last_msg_raw.isdigit() else None
 
-        last_read_id = await redis.get(f"chat:{channel.channel_id}:last_read:{user.id}")
-        if last_read_id and last_read_id.isdigit():
-            last_read_id = int(last_read_id)
-        else:
-            last_read_id = last_msg
+        last_read_id_raw = await redis.get(f"chat:{channel.channel_id}:last_read:{user.id}")
+        last_read_id = int(last_read_id_raw) if last_read_id_raw and last_read_id_raw.isdigit() else last_msg
 
         if silence is not None:
             attribute = ChatUserAttributes(

@@ -1,6 +1,5 @@
-from __future__ import annotations
-
 from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from datetime import datetime
 import json
@@ -10,7 +9,6 @@ from app.config import settings
 
 from fastapi import Depends
 from pydantic import BaseModel
-import redis as sync_redis
 import redis.asyncio as redis
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlmodel import SQLModel
@@ -37,10 +35,16 @@ engine = create_async_engine(
 )
 
 # Redis 连接
-redis_client = redis.from_url(settings.redis_url, decode_responses=True)
+redis_client = redis.from_url(settings.redis_url, decode_responses=True, db=0)
 
-# Redis 消息缓存连接 (db1) - 使用同步客户端在线程池中执行
-redis_message_client = sync_redis.from_url(settings.redis_url, decode_responses=True, db=1)
+# Redis 消息缓存连接 (db1)
+redis_message_client = redis.from_url(settings.redis_url, decode_responses=True, db=1)
+
+# Redis 二进制数据连接 (不自动解码响应，用于存储音频等二进制数据，db2)
+redis_binary_client = redis.from_url(settings.redis_url, decode_responses=False, db=2)
+
+# Redis 限流连接 (db3)
+redis_rate_limit_client = redis.from_url(settings.redis_url, decode_responses=True, db=3)
 
 
 # 数据库依赖
@@ -61,8 +65,13 @@ async def get_db():
         yield session
 
 
-def with_db():
-    return AsyncSession(engine)
+@asynccontextmanager
+async def with_db():
+    async with AsyncSession(engine) as session:
+        try:
+            yield session
+        finally:
+            await session.close()
 
 
 DBFactory = Callable[[], AsyncIterator[AsyncSession]]
@@ -82,7 +91,15 @@ def get_redis():
     return redis_client
 
 
-def get_redis_message():
+Redis = Annotated[redis.Redis, Depends(get_redis)]
+
+
+def get_redis_binary():
+    """获取二进制数据专用的 Redis 客户端 (不自动解码响应)"""
+    return redis_binary_client
+
+
+def get_redis_message() -> redis.Redis:
     """获取消息专用的 Redis 客户端 (db1)"""
     return redis_message_client
 

@@ -1,9 +1,9 @@
-from __future__ import annotations
-
 from app.database.beatmap import BeatmapResp
-from app.log import logger
+from app.log import fetcher_logger
 
 from ._base import BaseFetcher
+
+logger = fetcher_logger("BeatmapFetcher")
 
 
 class BeatmapFetcher(BaseFetcher):
@@ -14,7 +14,7 @@ class BeatmapFetcher(BaseFetcher):
             params = {"checksum": beatmap_checksum}
         else:
             raise ValueError("Either beatmap_id or beatmap_checksum must be provided.")
-        logger.opt(colors=True).debug(f"<blue>[BeatmapFetcher]</blue> get_beatmap: <y>{params}</y>")
+        logger.opt(colors=True).debug(f"get_beatmap: <y>{params}</y>")
 
         return BeatmapResp.model_validate(
             await self.request_api(

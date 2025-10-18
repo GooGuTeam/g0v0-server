@@ -1,13 +1,12 @@
-from __future__ import annotations
-
 import datetime
 from enum import Enum
 import importlib.util
+from inspect import isclass
 import json
 from pathlib import Path
 import sys
 from types import NoneType, UnionType
-from typing import Any, Union, get_origin
+from typing import Any, Literal, Union, get_origin
 
 from pydantic import AliasChoices, BaseModel, HttpUrl
 from pydantic_settings import BaseSettings
@@ -66,6 +65,7 @@ BASE_TYPE_MAPPING = {
     dict: "object",
     NoneType: "null",
     HttpUrl: "string (url)",
+    Any: "any",
 }
 
 
@@ -83,9 +83,16 @@ def mapping_type(typ: type) -> str:
         if len(args) == 1:
             return f"array[{mapping_type(args[0])}]"
         return "array"
-    if issubclass(typ, Enum):
+    elif get_origin(typ) is dict:
+        args = typ.__args__
+        if len(args) == 2:
+            return f"object[{mapping_type(args[0])}, {mapping_type(args[1])}]"
+        return "object"
+    elif get_origin(typ) is Literal:
+        return f"enum({', '.join([str(n) for n in typ.__args__])})"
+    elif isclass(typ) and issubclass(typ, Enum):
         return f"enum({', '.join([e.value for e in typ])})"
-    elif issubclass(typ, BaseSettings):
+    elif isclass(typ) and issubclass(typ, BaseSettings):
         return typ.__name__
     return "unknown"
 
@@ -128,7 +135,7 @@ doc.extend(
     [
         module.SPECTATOR_DOC,
         "",
-        f"> 上次生成：{datetime.datetime.now(datetime.UTC).strftime('%Y-%m-%d %H:%M:%S %Z')}"
+        f"> 上次生成：{datetime.datetime.now(datetime.UTC).strftime('%Y-%m-%d %H:%M:%S %Z')} "
         f"于提交 {f'[`{commit}`](https://github.com/GooGuTeam/g0v0-server/commit/{commit})' if commit != 'unknown' else 'unknown'}",  # noqa: E501
         "",
         "> **注意: 在生产环境中，请务必更改默认的密钥和密码！**",

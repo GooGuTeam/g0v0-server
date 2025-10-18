@@ -1,4 +1,4 @@
-from __future__ import annotations
+# ruff: noqa: ARG002
 
 from abc import abstractmethod
 from enum import Enum
@@ -118,10 +118,7 @@ class ChannelMessageBase(NotificationDetail):
         channel_type: "ChannelType",
     ) -> Self:
         try:
-            avatar_url = (
-                getattr(user, "avatar_url", "https://lazer-data.g0v0.top/default.jpg")
-                or "https://lazer-data.g0v0.top/default.jpg"
-            )
+            avatar_url = user.avatar_url or "https://lazer-data.g0v0.top/default.jpg"
         except Exception:
             avatar_url = "https://lazer-data.g0v0.top/default.jpg"
         instance = cls(
@@ -160,7 +157,7 @@ class ChannelMessageTeam(ChannelMessageBase):
         cls,
         message: "ChatMessage",
         user: "User",
-    ) -> ChannelMessageTeam:
+    ) -> Self:
         from app.database import ChannelType
 
         return super().init(message, user, [], ChannelType.TEAM)

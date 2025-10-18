@@ -6,8 +6,6 @@ Rate limiter for osu! API requests to avoid abuse detection.
 - 建议：每分钟不超过 60 次请求以避免滥用检测
 """
 
-from __future__ import annotations
-
 import asyncio
 from collections import deque
 import time

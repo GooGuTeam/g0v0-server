@@ -15,8 +15,8 @@ from sqlmodel import (
 )
 
 if TYPE_CHECKING:
-    from .lazer_user import User
     from .room import Room
+    from .user import User
 
 
 class RoomParticipatedUser(AsyncAttrs, SQLModel, table=True):
