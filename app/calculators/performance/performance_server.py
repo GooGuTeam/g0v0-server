@@ -51,6 +51,7 @@ class PerformanceCalculator(BasePerformanceCalculator):
                             "small_tick_hit": score.nsmall_tick_hit or 0,
                             "slider_tail_hit": score.nslider_tail_hit or 0,
                         },
+                        "ruleset": score.gamemode.value,
                     },
                 )
                 if resp.status_code != 200:
@@ -79,8 +80,8 @@ class PerformanceCalculator(BasePerformanceCalculator):
                 if resp.status_code != 200:
                     raise DifficultyError(f"Failed to calculate difficulty: {resp.text}")
                 data = resp.json()
-                ruleset_id = data.pop("ruleset_id", 0)
-                return DIFFICULTY_CLASS.get(GameMode.from_int(ruleset_id), BeatmapAttributes).model_validate(data)
+                ruleset_id = data.pop("ruleset", "osu")
+                return DIFFICULTY_CLASS.get(GameMode(ruleset_id), BeatmapAttributes).model_validate(data)
             except HTTPError as e:
                 raise DifficultyError(f"Failed to calculate difficulty: {e}") from e
             except Exception as e:
