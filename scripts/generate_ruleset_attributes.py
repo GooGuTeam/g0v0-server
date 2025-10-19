@@ -43,11 +43,11 @@ def generate_model(schema_file: Path):
     temp_file.unlink(missing_ok=True)
 
     subprocess.run(
-        ["uv", "run", "ruff", "check", "--fix", "app/models/performance.py"],  # noqa: B607, RUF100, S607
+        ["uv", "run", "ruff", "check", "--fix", "app/models/performance.py"],  # nosec B607  # noqa: S607
         capture_output=True,
     )
     subprocess.run(
-        ["uv", "run", "ruff", "format", "app/models/performance.py"],  # noqa: B607, RUF100, S607
+        ["uv", "run", "ruff", "format", "app/models/performance.py"],  # nosec B607  # noqa: S607
         capture_output=True,
     )
 
