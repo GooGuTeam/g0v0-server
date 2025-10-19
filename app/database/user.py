@@ -42,6 +42,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 if TYPE_CHECKING:
     from .favourite_beatmapset import FavouriteBeatmapset
+    from .matchmaking import MatchmakingUserStats
     from .relationship import RelationshipResp
 
 
@@ -154,6 +155,7 @@ class User(AsyncAttrs, UserBase, table=True):
     achievement: list[UserAchievement] = Relationship(back_populates="user")
     team_membership: TeamMember | None = Relationship(back_populates="user")
     daily_challenge_stats: DailyChallengeStats | None = Relationship(back_populates="user")
+    matchmaking_stats: list["MatchmakingUserStats"] = Relationship(back_populates="user")
     monthly_playcounts: list[MonthlyPlaycounts] = Relationship(back_populates="user")
     replays_watched_counts: list[ReplayWatchedCount] = Relationship(back_populates="user")
     favourite_beatmapsets: list["FavouriteBeatmapset"] = Relationship(back_populates="user")

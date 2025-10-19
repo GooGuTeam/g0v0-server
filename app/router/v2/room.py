@@ -12,7 +12,7 @@ from app.database.score import Score
 from app.database.user import User, UserResp
 from app.dependencies.database import Database, Redis
 from app.dependencies.user import ClientUser, get_current_user
-from app.models.room import RoomCategory, RoomStatus
+from app.models.room import MatchType, RoomCategory, RoomStatus
 from app.service.room import create_playlist_room_from_api
 from app.utils import utcnow
 
@@ -50,7 +50,7 @@ async def get_all_rooms(
     status: Annotated[RoomStatus | None, Query(description="房间状态（可选）")] = None,
 ):
     resp_list: list[RoomResp] = []
-    where_clauses: list[ColumnElement[bool]] = [col(Room.category) == category]
+    where_clauses: list[ColumnElement[bool]] = [col(Room.category) == category, col(Room.type) != MatchType.MATCHMAKING]
     now = utcnow()
 
     if status is not None:

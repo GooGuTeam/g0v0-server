@@ -51,6 +51,14 @@ SPECTATOR_DOC = """
 | `SHARED_INTEROP_DOMAIN` | API 服务器（即本服务）地址 | string (url) | `http://localhost:8000` |
 | `SERVER_PORT` | 旁观服务器端口 | integer | `8006` |
 | `SP_SENTRY_DSN` | 旁观服务器的 Sentry DSN | string | `null` |
+| `MATCHMAKING_ROOM_SIZE` | 匹配对战房间大小，设置为 `0` 将允许满足任何房间大小 | integer | 8 |
+| `MATCHMAKING_ROOM_ROUNDS` | 匹配对战房间的回合数 | integer | 5 |
+| `MATCHMAKING_ALLOW_SKIP` | 是否允许用户跳过匹配阶段 | boolean | false |
+| `MATCHMAKING_LOBBY_UPDATE_RATE` | 更新匹配大厅的频率（以秒为单位） | integer | 5 |
+| `MATCHMAKING_QUEUE_UPDATE_RATE` | 更新匹配队列的频率（以秒为单位） | integer | 1 |
+| `MATCHMAKING_RATING_INITIAL_RADIUS` | 初始 ELO 搜索半径 | integer | 20 |
+| `MATCHMAKING_RATING_RADIUS_INCREASE_TIME` | 每次翻倍 ELO 搜索半径之前的时间（以秒为单位） | integer | 15 |
+| `MATCHMAKING_POOL_SIZE` | 每个匹配房间的谱面数量 | integer | 50 |
 """
 
 
