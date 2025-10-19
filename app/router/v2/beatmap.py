@@ -11,7 +11,10 @@ from app.dependencies.fetcher import Fetcher
 from app.dependencies.user import get_current_user
 from app.helpers.asset_proxy_helper import asset_proxy_response
 from app.models.mods import APIMod, int_to_mods
-from app.models.performance import BeatmapAttributes, OsuBeatmapAttributes, TaikoBeatmapAttributes
+from app.models.performance import (
+    DifficultyAttributes,
+    DifficultyAttributesUnion,
+)
 from app.models.score import (
     GameMode,
 )
@@ -127,7 +130,7 @@ async def batch_get_beatmaps(
     "/beatmaps/{beatmap_id}/attributes",
     tags=["谱面"],
     name="计算谱面属性",
-    response_model=BeatmapAttributes | OsuBeatmapAttributes | TaikoBeatmapAttributes,
+    response_model=DifficultyAttributesUnion,
     description=("计算谱面指定 mods / ruleset 下谱面的难度属性 (难度/PP 相关属性)。"),
 )
 async def get_beatmap_attributes(
@@ -166,7 +169,7 @@ async def get_beatmap_attributes(
         f"{hashlib.md5(str(mods_).encode(), usedforsecurity=False).hexdigest()}:attributes"
     )
     if await redis.exists(key):
-        return BeatmapAttributes.model_validate_json(await redis.get(key))  # pyright: ignore[reportArgumentType]
+        return DifficultyAttributes.model_validate_json(await redis.get(key))  # pyright: ignore[reportArgumentType]
     try:
         return await calculate_beatmap_attributes(beatmap_id, ruleset, mods_, redis, fetcher)
     except HTTPStatusError:

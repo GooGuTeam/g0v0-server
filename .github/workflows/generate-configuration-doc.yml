@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - "app/config.py"
-      - ".github/scripts/generate_config_doc.py"
+      - "scripts/generate_config_doc.py"
   workflow_dispatch:
 
 permissions:
@@ -42,7 +42,7 @@ jobs:
       - name: Generate Markdown
         run: |
           cd project
-          python ./.github/scripts/generate_config_doc.py ${{ github.sha }} > ../wiki/Configuration.md
+          python ./scripts/generate_config_doc.py ${{ github.sha }} > ../wiki/Configuration.md
 
       - name: Commit and push to Wiki
         run: |

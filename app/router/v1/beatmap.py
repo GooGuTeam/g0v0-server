@@ -10,7 +10,7 @@ from app.dependencies.database import Database, Redis
 from app.dependencies.fetcher import Fetcher
 from app.models.beatmap import BeatmapRankStatus, Genre, Language
 from app.models.mods import int_to_mods
-from app.models.performance import OsuBeatmapAttributes
+from app.models.performance import OsuDifficultyAttributes
 from app.models.score import GameMode
 
 from .router import AllStrModel, router
@@ -196,7 +196,7 @@ async def get_beatmaps(
                 )
                 aim_diff = None
                 speed_diff = None
-                if isinstance(attrs, OsuBeatmapAttributes):
+                if isinstance(attrs, OsuDifficultyAttributes):
                     aim_diff = attrs.aim_difficulty
                     speed_diff = attrs.speed_difficulty
                 results.append(await V1Beatmap.from_db(session, beatmap, aim_diff, speed_diff))

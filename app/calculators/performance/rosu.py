@@ -5,14 +5,12 @@ from typing import TYPE_CHECKING
 from app.calculator import clamp
 from app.models.mods import APIMod, parse_enum_to_str
 from app.models.performance import (
-    DIFFICULTY_CLASS,
-    PERFORMANCE_CLASS,
-    BeatmapAttributes,
+    DifficultyAttributes,
     ManiaPerformanceAttributes,
-    OsuBeatmapAttributes,
+    OsuDifficultyAttributes,
     OsuPerformanceAttributes,
     PerformanceAttributes,
-    TaikoBeatmapAttributes,
+    TaikoDifficultyAttributes,
     TaikoPerformanceAttributes,
 )
 from app.models.score import GameMode
@@ -37,6 +35,16 @@ except ImportError:
         "   Official: uv add rosu-pp-py\n"
         "   gu: uv add git+https://github.com/GooGuTeam/gu-pp-py.git"
     )
+
+PERFORMANCE_CLASS = {
+    GameMode.OSU: OsuPerformanceAttributes,
+    GameMode.TAIKO: TaikoPerformanceAttributes,
+    GameMode.MANIA: ManiaPerformanceAttributes,
+}
+DIFFICULTY_CLASS = {
+    GameMode.OSU: OsuDifficultyAttributes,
+    GameMode.TAIKO: TaikoDifficultyAttributes,
+}
 
 
 class PerformanceCalculator(BasePerformanceCalculator):
@@ -75,6 +83,10 @@ class PerformanceCalculator(BasePerformanceCalculator):
                 flashlight=attr.pp_flashlight or 0,
                 effective_miss_count=attr.effective_miss_count or 0,
                 speed_deviation=attr.speed_deviation,
+                combo_based_estimated_miss_count=0,
+                score_based_estimated_miss_count=0,
+                aim_estimated_slider_breaks=0,
+                speed_estimated_slider_breaks=0,
             )
         elif attr_class is TaikoPerformanceAttributes:
             return TaikoPerformanceAttributes(
@@ -120,11 +132,11 @@ class PerformanceCalculator(BasePerformanceCalculator):
             raise CalculateError(f"Unknown error: {e}") from e
 
     @classmethod
-    def _diff_attr_to_model(cls, diff: rosu.DifficultyAttributes, gamemode: GameMode) -> BeatmapAttributes:
-        attr_class = DIFFICULTY_CLASS.get(gamemode, BeatmapAttributes)
+    def _diff_attr_to_model(cls, diff: rosu.DifficultyAttributes, gamemode: GameMode) -> DifficultyAttributes:
+        attr_class = DIFFICULTY_CLASS.get(gamemode, DifficultyAttributes)
 
-        if attr_class is OsuBeatmapAttributes:
-            return OsuBeatmapAttributes(
+        if attr_class is OsuDifficultyAttributes:
+            return OsuDifficultyAttributes(
                 star_rating=diff.stars,
                 max_combo=diff.max_combo,
                 aim_difficulty=diff.aim or 0,
@@ -135,23 +147,29 @@ class PerformanceCalculator(BasePerformanceCalculator):
                 aim_difficult_strain_count=diff.aim_difficult_strain_count or 0,
                 speed_difficult_strain_count=diff.speed_difficult_strain_count or 0,
                 flashlight_difficulty=diff.flashlight or 0,
+                aim_top_weighted_slider_factor=0,
+                speed_top_weighted_slider_factor=0,
+                nested_score_per_object=0,
+                legacy_score_base_multiplier=0,
+                maximum_legacy_combo_score=0,
             )
-        elif attr_class is TaikoBeatmapAttributes:
-            return TaikoBeatmapAttributes(
+        elif attr_class is TaikoDifficultyAttributes:
+            return TaikoDifficultyAttributes(
                 star_rating=diff.stars,
                 max_combo=diff.max_combo,
                 rhythm_difficulty=diff.rhythm or 0,
                 mono_stamina_factor=diff.stamina or 0,
+                consistency_factor=0,
             )
         else:
-            return BeatmapAttributes(
+            return DifficultyAttributes(
                 star_rating=diff.stars,
                 max_combo=diff.max_combo,
             )
 
     async def calculate_difficulty(
         self, beatmap_raw: str, mods: list[APIMod] | None = None, gamemode: GameMode | None = None
-    ) -> BeatmapAttributes:
+    ) -> DifficultyAttributes:
         try:
             map = rosu.Beatmap(content=beatmap_raw)
             if gamemode is not None:

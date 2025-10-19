@@ -8,13 +8,13 @@ from app.database.beatmap_tags import BeatmapTagVote
 from app.database.failtime import FailTime, FailTimeResp
 from app.models.beatmap import BeatmapRankStatus
 from app.models.mods import APIMod
-from app.models.performance import DIFFICULTY_CLASS, BeatmapAttributes
+from app.models.performance import DifficultyAttributesUnion
 from app.models.score import GameMode
 
 from .beatmap_playcounts import BeatmapPlaycounts
 from .beatmapset import Beatmapset, BeatmapsetResp
 
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter
 from redis.asyncio import Redis
 from sqlalchemy import Column, DateTime
 from sqlmodel import VARCHAR, Field, Relationship, SQLModel, col, exists, func, select
@@ -246,12 +246,10 @@ async def calculate_beatmap_attributes(
     mods_: list[APIMod],
     redis: Redis,
     fetcher: "Fetcher",
-):
-    attr_class = DIFFICULTY_CLASS.get(ruleset, BeatmapAttributes)
-
+) -> DifficultyAttributesUnion:
     key = f"beatmap:{beatmap_id}:{ruleset}:{hashlib.sha256(str(mods_).encode()).hexdigest()}:attributes"
     if await redis.exists(key):
-        return attr_class.model_validate_json(await redis.get(key))
+        return TypeAdapter(DifficultyAttributesUnion).validate_json(await redis.get(key))
     resp = await fetcher.get_or_fetch_beatmap_raw(redis, beatmap_id)
 
     attr = await get_calculator().calculate_difficulty(resp, mods_, ruleset)

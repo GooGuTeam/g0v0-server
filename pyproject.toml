@@ -85,7 +85,7 @@ ignore = [
 [tool.ruff.lint.extend-per-file-ignores]
 "tools/*.py" = ["PTH", "INP001"]
 "migrations/**/*.py" = ["INP001"]
-".github/**/*.py" = ["INP001"]
+"scripts/**/*.py" = ["INP001"]
 "app/achievements/*.py" = ["INP001", "ARG"]
 "app/router/**/*.py" = ["ARG001"]
 
@@ -125,6 +125,7 @@ osupyparser = { git = "https://github.com/MingxuanGame/osupyparser.git" }
 
 [dependency-groups]
 dev = [
+    "datamodel-code-generator>=0.35.0",
     "pre-commit>=4.2.0",
     "pyright>=1.1.404",
     "ruff>=0.12.4",
