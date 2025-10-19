@@ -41,8 +41,7 @@ class OsuDifficultyAttributes(DifficultyAttributes):
     aim_difficult_slider_count: float = Field(..., description="The number of Sliders weighted by difficulty.")
     speed_difficulty: float = Field(..., description="The difficulty corresponding to the speed skill.")
     speed_note_count: float = Field(
-        ...,
-        description="The number of clickable objects weighted by difficulty.\nRelated to SpeedDifficulty",
+        ..., description="The number of clickable objects weighted by difficulty.\nRelated to SpeedDifficulty"
     )
     flashlight_difficulty: float = Field(..., description="The difficulty corresponding to the flashlight skill.")
     slider_factor: float = Field(
