@@ -150,7 +150,7 @@ def _validate_playlist_items(items: list[dict[str, Any]]) -> None:
             )
 
         ruleset_id = item["ruleset_id"]
-        if not isinstance(ruleset_id, int) or not (0 <= ruleset_id <= 3):
+        if not isinstance(ruleset_id, int):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Playlist item at index {idx} has invalid ruleset_id {ruleset_id}",

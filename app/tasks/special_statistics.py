@@ -57,3 +57,34 @@ async def create_rx_statistics():
             logger.success(
                 f"Created {rx_created} RX statistics rows and {ap_created} AP statistics rows during backfill"
             )
+
+
+async def create_custom_ruleset_statistics():
+    async with with_db() as session:
+        users = (await session.exec(select(User.id))).all()
+        total_users = len(users)
+        logger.info(f"Ensuring custom ruleset statistics exist for {total_users} users")
+        created_count = 0
+        for i in users:
+            if i == BANCHOBOT_ID:
+                continue
+
+            for mode in GameMode:
+                if not mode.is_custom_ruleset():
+                    continue
+
+                is_exist = (
+                    await session.exec(
+                        select(exists()).where(
+                            UserStatistics.user_id == i,
+                            UserStatistics.mode == mode,
+                        )
+                    )
+                ).first()
+                if not is_exist:
+                    statistics = UserStatistics(mode=mode, user_id=i)
+                    session.add(statistics)
+                    created_count += 1
+        await session.commit()
+        if created_count:
+            logger.success(f"Created {created_count} custom ruleset statistics rows during backfill")

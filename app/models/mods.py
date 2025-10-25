@@ -335,7 +335,7 @@ def _mods_can_get_pp(ruleset_id: int, mods: list[APIMod], ranked_mods: RankedMod
             continue
         if app_settings.enable_ap and mod["acronym"] == "AP" and ruleset_id == 0:
             continue
-        check_settings_result = check_settings(mod, ranked_mods[ruleset_id])
+        check_settings_result = check_settings(mod, ranked_mods.get(ruleset_id, {}))
         if not check_settings_result:
             return False
     return True

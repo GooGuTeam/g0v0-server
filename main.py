@@ -37,6 +37,7 @@ from app.service.redis_message_system import redis_message_system
 from app.tasks import (
     calculate_user_rank,
     create_banchobot,
+    create_custom_ruleset_statistics,
     create_rx_statistics,
     daily_challenge_job,
     init_geoip,
@@ -74,6 +75,7 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
 
     # init game server
     await create_rx_statistics()
+    await create_custom_ruleset_statistics()
     await calculate_user_rank(True)
     await daily_challenge_job()
     await process_daily_challenge_top()

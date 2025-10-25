@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Literal, TypedDict, cast
+from typing import TypedDict, cast
 
 from app.config import settings
 
@@ -13,10 +13,17 @@ class GameMode(str, Enum):
     TAIKO = "taiko"
     FRUITS = "fruits"
     MANIA = "mania"
+
     OSURX = "osurx"
     OSUAP = "osuap"
     TAIKORX = "taikorx"
     FRUITSRX = "fruitsrx"
+
+    SENTAKKI = "Sentakki"
+    TAU = "tau"
+    RUSH = "rush"
+    HISHIGATA = "hishigata"
+    SOYOKAZE = "soyokaze"
 
     def __int__(self) -> int:
         return {
@@ -28,6 +35,11 @@ class GameMode(str, Enum):
             GameMode.OSUAP: 0,
             GameMode.TAIKORX: 1,
             GameMode.FRUITSRX: 2,
+            GameMode.SENTAKKI: 10,
+            GameMode.TAU: 11,
+            GameMode.RUSH: 12,
+            GameMode.HISHIGATA: 13,
+            GameMode.SOYOKAZE: 14,
         }[self]
 
     def __str__(self) -> str:
@@ -40,20 +52,22 @@ class GameMode(str, Enum):
             1: GameMode.TAIKO,
             2: GameMode.FRUITS,
             3: GameMode.MANIA,
+            10: GameMode.SENTAKKI,
+            11: GameMode.TAU,
+            12: GameMode.RUSH,
+            13: GameMode.HISHIGATA,
+            14: GameMode.SOYOKAZE,
         }[v]
 
     @classmethod
     def from_int_extra(cls, v: int) -> "GameMode":
-        return {
-            0: GameMode.OSU,
-            1: GameMode.TAIKO,
-            2: GameMode.FRUITS,
-            3: GameMode.MANIA,
+        gamemode = {
             4: GameMode.OSURX,
             5: GameMode.OSUAP,
             6: GameMode.TAIKORX,
             7: GameMode.FRUITSRX,
-        }[v]
+        }.get(v)
+        return gamemode or cls.from_int(v)
 
     def readable(self) -> str:
         return {
@@ -65,7 +79,26 @@ class GameMode(str, Enum):
             GameMode.OSUAP: "osu!autopilot",
             GameMode.TAIKORX: "taiko relax",
             GameMode.FRUITSRX: "catch relax",
+            GameMode.SENTAKKI: "sentakki",
+            GameMode.TAU: "tau",
+            GameMode.RUSH: "Rush!",
+            GameMode.HISHIGATA: "hishigata",
+            GameMode.SOYOKAZE: "soyokaze!",
         }[self]
+
+    def is_official(self) -> bool:
+        return self in {
+            GameMode.OSU,
+            GameMode.TAIKO,
+            GameMode.FRUITS,
+            GameMode.MANIA,
+            GameMode.OSURX,
+            GameMode.TAIKORX,
+            GameMode.FRUITSRX,
+        }
+
+    def is_custom_ruleset(self) -> bool:
+        return not self.is_official()
 
     def to_base_ruleset(self) -> "GameMode":
         gamemode = {
@@ -74,7 +107,7 @@ class GameMode(str, Enum):
             GameMode.TAIKORX: GameMode.TAIKO,
             GameMode.FRUITSRX: GameMode.FRUITS,
         }.get(self)
-        return gamemode if gamemode else self
+        return gamemode or self
 
     def to_special_mode(self, mods: list[APIMod] | list[str]) -> "GameMode":
         if self not in (GameMode.OSU, GameMode.TAIKO, GameMode.FRUITS):
@@ -189,7 +222,7 @@ class SoloScoreSubmissionInfo(BaseModel):
     accuracy: float = Field(ge=0, le=1)
     pp: float = Field(default=0, ge=0, le=2**31 - 1)
     max_combo: int = 0
-    ruleset_id: Literal[0, 1, 2, 3]
+    ruleset_id: int
     passed: bool = False
     mods: list[APIMod] = Field(default_factory=list)
     statistics: ScoreStatistics = Field(default_factory=dict)

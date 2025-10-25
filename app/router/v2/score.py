@@ -374,7 +374,7 @@ async def create_solo_score(
     db: Database,
     beatmap_id: Annotated[int, Path(description="谱面 ID")],
     beatmap_hash: Annotated[str, Form(description="谱面文件哈希")],
-    ruleset_id: Annotated[int, Form(..., ge=0, le=3, description="ruleset 数字 ID (0-3)")],
+    ruleset_id: Annotated[int, Form(..., description="ruleset 数字 ID (0-3)")],
     current_user: ClientUser,
     version_hash: Annotated[str, Form(description="游戏版本哈希")] = "",
 ):
@@ -428,7 +428,7 @@ async def create_playlist_score(
     playlist_id: int,
     beatmap_id: Annotated[int, Form(description="谱面 ID")],
     beatmap_hash: Annotated[str, Form(description="游戏版本哈希")],
-    ruleset_id: Annotated[int, Form(..., ge=0, le=3, description="ruleset 数字 ID (0-3)")],
+    ruleset_id: Annotated[int, Form(..., description="ruleset 数字 ID (0-3)")],
     current_user: ClientUser,
     version_hash: Annotated[str, Form(description="谱面版本哈希")] = "",
 ):

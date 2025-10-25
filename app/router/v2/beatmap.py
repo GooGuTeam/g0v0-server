@@ -147,7 +147,7 @@ async def get_beatmap_attributes(
     redis: Redis,
     fetcher: Fetcher,
     ruleset: Annotated[GameMode | None, Query(description="指定 ruleset；为空则使用谱面自身模式")] = None,
-    ruleset_id: Annotated[int | None, Query(description="以数字指定 ruleset （与 ruleset 二选一）", ge=0, le=3)] = None,
+    ruleset_id: Annotated[int | None, Query(description="以数字指定 ruleset （与 ruleset 二选一）")] = None,
 ):
     mods_ = []
     if mods and mods[0].isdigit():

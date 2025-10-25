@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 class PlaylistBase(SQLModel, UTCBaseModel):
     id: int = Field(index=True)
     owner_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id")))
-    ruleset_id: int = Field(ge=0, le=3)
+    ruleset_id: int
     expired: bool = Field(default=False)
     playlist_order: int = Field(default=0)
     played_at: datetime | None = Field(
