@@ -33,7 +33,7 @@ class BaseFetcher:
         self.scope = scope
         self._token_lock = asyncio.Lock()
 
-    # TODO: use for user-based fetchers
+    # NOTE: Reserve for user-based fetchers
     # @property
     # def authorize_url(self) -> str:
     #     return (
@@ -53,7 +53,7 @@ class BaseFetcher:
         """
         发送 API 请求
         """
-        await self._ensure_valid_access_token()
+        await self.ensure_valid_access_token()
 
         headers = kwargs.pop("headers", {}).copy()
         attempt = 0
@@ -81,9 +81,11 @@ class BaseFetcher:
         await self._clear_access_token()
         logger.warning(f"Failed to authorize after retries for {url}, cleaned up tokens")
         await self.grant_access_token()
-        return {}
+        raise TokenAuthError(f"Failed to authorize after retries for {url}")
 
     def is_token_expired(self) -> bool:
+        if not isinstance(self.token_expiry, int) or self.token_expiry == 0:
+            return True
         return self.token_expiry <= int(time.time()) or not self.access_token
 
     async def grant_access_token(self) -> None:
@@ -109,14 +111,14 @@ class BaseFetcher:
             )
             await redis.set(
                 f"fetcher:expire_at:{self.client_id}",
-                time.time() + token_data["expires_in"],
+                self.token_expiry,
                 ex=token_data["expires_in"],
             )
             logger.success(
                 f"Granted new access token for client {self.client_id}, expires in {token_data['expires_in']} seconds"
             )
 
-    async def _ensure_valid_access_token(self) -> None:
+    async def ensure_valid_access_token(self) -> None:
         if self.is_token_expired():
             await self.grant_access_token()
 
@@ -131,10 +133,4 @@ class BaseFetcher:
 
         redis = get_redis()
         await redis.delete(f"fetcher:access_token:{self.client_id}")
-
-    async def _clear_tokens(self) -> None:
-        """
-        清除所有 token
-        """
-        logger.warning(f"Clearing tokens for client {self.client_id}")
-        await self._clear_access_token()
+        await redis.delete(f"fetcher:expire_at:{self.client_id}")

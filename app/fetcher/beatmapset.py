@@ -25,6 +25,9 @@ class RateLimitError(Exception):
 logger = fetcher_logger("BeatmapsetFetcher")
 
 
+MAX_RETRY_ATTEMPTS = 3
+
+
 class BeatmapsetFetcher(BaseFetcher):
     @staticmethod
     def _get_homepage_queries() -> list[tuple[SearchQueryModel, Cursor]]:
@@ -49,7 +52,7 @@ class BeatmapsetFetcher(BaseFetcher):
     async def request_api(self, url: str, method: str = "GET", *, retry_times: int = 0, **kwargs) -> dict:
         """覆盖基类方法，添加速率限制和429错误处理"""
         # 在请求前获取速率限制许可
-        if retry_times > 3:
+        if retry_times > MAX_RETRY_ATTEMPTS:
             raise RuntimeError("Maximum retry attempts reached")
 
         await osu_api_rate_limiter.acquire()
@@ -73,11 +76,11 @@ class BeatmapsetFetcher(BaseFetcher):
             if response.status_code == 429:
                 logger.warning(f"Rate limit exceeded (429) for {url}")
                 raise RateLimitError(f"Rate limit exceeded for {url}. Please try again later.")
-
-            # 处理 401 错误
             if response.status_code == 401:
                 logger.warning(f"Received 401 error for {url}")
-                await self._clear_tokens()
+                await self._clear_access_token()
+                if retry_times >= MAX_RETRY_ATTEMPTS:
+                    raise RuntimeError("Maximum retry attempts reached after repeated 401 errors")
                 return await self.request_api(url, method, retry_times=retry_times + 1, **kwargs)
 
             response.raise_for_status()

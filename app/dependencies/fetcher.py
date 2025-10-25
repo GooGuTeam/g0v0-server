@@ -23,7 +23,7 @@ async def get_fetcher() -> OriginFetcher:
             fetcher.token_expiry = int(float(expire_at))
         if access_token:
             fetcher.access_token = str(access_token)
-            await fetcher._ensure_valid_access_token()
+            await fetcher.ensure_valid_access_token()
         if not fetcher.access_token:
             await fetcher.grant_access_token()
     return fetcher
