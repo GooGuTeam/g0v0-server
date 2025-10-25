@@ -84,7 +84,7 @@ class BaseFetcher:
         raise TokenAuthError(f"Failed to authorize after retries for {url}")
 
     def is_token_expired(self) -> bool:
-        if not isinstance(self.token_expiry, int) or self.token_expiry == 0:
+        if not isinstance(self.token_expiry, int):
             return True
         return self.token_expiry <= int(time.time()) or not self.access_token
 
