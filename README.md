@@ -83,10 +83,10 @@ docker-compose -f docker-compose-osurx.yml up -d
 ## 贡献者
 
 <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
-[![All Contributors](https://img.shields.io/badge/all_contributors-4-orange.svg?style=flat-square)](#contributors-)
+![All Contributors](https://img.shields.io/badge/all_contributors-4-orange.svg?style=flat-square)
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
 
-感谢所有参与此项目的贡献者！ ([emoji key](https://allcontributors.org/docs/en/emoji-key)):
+感谢所有参与此项目的贡献者！ ([emoji key](https://allcontributors.org/docs/en/emoji-key))
 
 <!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
 <!-- prettier-ignore-start -->
