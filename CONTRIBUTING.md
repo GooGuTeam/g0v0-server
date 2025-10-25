@@ -243,4 +243,8 @@ pre-commit 不提供 pyright 的 hook，您需要手动运行 `pyright` 检查�
 - Pyright Lint
 - pre-commit
 
+## 添加贡献者
+
+仓库维护者需要使用 [all-contributors-bot](https://allcontributors.org/docs/en/bot/usage) 添加有效贡献者。
+
 感谢您的贡献！

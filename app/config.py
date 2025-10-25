@@ -8,7 +8,7 @@ from pydantic import (
     ValidationInfo,
     field_validator,
 )
-from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class AWSS3StorageSettings(BaseSettings):
@@ -302,16 +302,26 @@ CALCULATOR_CONFIG='{
         Field(default="", description="Fetcher 客户端密钥"),
         "Fetcher 设置",
     ]
-    fetcher_scopes: Annotated[
-        list[str],
-        Field(default=["public"], description="Fetcher 权限范围，以逗号分隔每个权限"),
-        "Fetcher 设置",
-        NoDecode,
-    ]
 
-    @property
-    def fetcher_callback_url(self) -> str:
-        return f"{self.server_url}fetcher/callback"
+    # NOTE: Reserve for user-based-fetcher
+
+    # fetcher_scopes: Annotated[
+    #     list[str],
+    #     Field(default=["public"], description="Fetcher 权限范围，以逗号分隔每个权限"),
+    #     "Fetcher 设置",
+    #     NoDecode,
+    # ]
+
+    # @field_validator("fetcher_scopes", mode="before")
+    # @classmethod
+    # def validate_fetcher_scopes(cls, v: Any) -> list[str]:
+    #     if isinstance(v, str):
+    #         return v.split(",")
+    #     return v
+
+    # @property
+    # def fetcher_callback_url(self) -> str:
+    #     return f"{self.server_url}fetcher/callback"
 
     # 日志设置
     log_level: Annotated[
@@ -689,13 +699,6 @@ CALCULATOR_CONFIG='{
         Field(default=LocalStorageSettings(), description="存储服务配置 (JSON 格式)"),
         "存储服务设置",
     ]
-
-    @field_validator("fetcher_scopes", mode="before")
-    @classmethod
-    def validate_fetcher_scopes(cls, v: Any) -> list[str]:
-        if isinstance(v, str):
-            return v.split(",")
-        return v
 
     @field_validator("storage_settings", mode="after")
     @classmethod

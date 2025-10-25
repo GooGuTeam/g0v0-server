@@ -2,7 +2,7 @@ import abc
 from typing import TYPE_CHECKING
 
 from app.models.mods import APIMod
-from app.models.performance import BeatmapAttributes, PerformanceAttributes
+from app.models.performance import DifficultyAttributes, PerformanceAttributes
 from app.models.score import GameMode
 
 if TYPE_CHECKING:
@@ -33,5 +33,5 @@ class PerformanceCalculator(abc.ABC):
     @abc.abstractmethod
     async def calculate_difficulty(
         self, beatmap_raw: str, mods: list[APIMod] | None = None, gamemode: GameMode | None = None
-    ) -> BeatmapAttributes:
+    ) -> DifficultyAttributes:
         raise NotImplementedError

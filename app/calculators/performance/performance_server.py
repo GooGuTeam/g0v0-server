@@ -2,10 +2,10 @@ from typing import TYPE_CHECKING
 
 from app.models.mods import APIMod
 from app.models.performance import (
-    DIFFICULTY_CLASS,
-    PERFORMANCE_CLASS,
-    BeatmapAttributes,
+    DifficultyAttributes,
+    DifficultyAttributesUnion,
     PerformanceAttributes,
+    PerformanceAttributesUnion,
 )
 from app.models.score import GameMode
 
@@ -17,6 +17,7 @@ from ._base import (
 )
 
 from httpx import AsyncClient, HTTPError
+from pydantic import TypeAdapter
 
 if TYPE_CHECKING:
     from app.database.score import Score
@@ -56,8 +57,7 @@ class PerformanceCalculator(BasePerformanceCalculator):
                 )
                 if resp.status_code != 200:
                     raise PerformanceError(f"Failed to calculate performance: {resp.text}")
-                data = resp.json()
-                return PERFORMANCE_CLASS.get(score.gamemode, PerformanceAttributes).model_validate(data)
+                return TypeAdapter(PerformanceAttributesUnion).validate_json(resp.text)
             except HTTPError as e:
                 raise PerformanceError(f"Failed to calculate performance: {e}") from e
             except Exception as e:
@@ -65,7 +65,7 @@ class PerformanceCalculator(BasePerformanceCalculator):
 
     async def calculate_difficulty(
         self, beatmap_raw: str, mods: list[APIMod] | None = None, gamemode: GameMode | None = None
-    ) -> BeatmapAttributes:
+    ) -> DifficultyAttributes:
         # https://github.com/GooGuTeam/osu-performance-server#post-difficulty
         async with AsyncClient() as client:
             try:
@@ -79,9 +79,7 @@ class PerformanceCalculator(BasePerformanceCalculator):
                 )
                 if resp.status_code != 200:
                     raise DifficultyError(f"Failed to calculate difficulty: {resp.text}")
-                data = resp.json()
-                ruleset_id = data.pop("ruleset", "osu")
-                return DIFFICULTY_CLASS.get(GameMode(ruleset_id), BeatmapAttributes).model_validate(data)
+                return TypeAdapter(DifficultyAttributesUnion).validate_json(resp.text)
             except HTTPError as e:
                 raise DifficultyError(f"Failed to calculate difficulty: {e}") from e
             except Exception as e:

@@ -3,7 +3,6 @@ from typing import Annotated
 from app.config import settings
 from app.dependencies.database import get_redis
 from app.fetcher import Fetcher as OriginFetcher
-from app.log import fetcher_logger
 
 from fastapi import Depends
 
@@ -16,20 +15,16 @@ async def get_fetcher() -> OriginFetcher:
         fetcher = OriginFetcher(
             settings.fetcher_client_id,
             settings.fetcher_client_secret,
-            settings.fetcher_scopes,
-            settings.fetcher_callback_url,
         )
         redis = get_redis()
         access_token = await redis.get(f"fetcher:access_token:{fetcher.client_id}")
+        expire_at = await redis.get(f"fetcher:expire_at:{fetcher.client_id}")
+        if expire_at:
+            fetcher.token_expiry = int(float(expire_at))
         if access_token:
             fetcher.access_token = str(access_token)
-        refresh_token = await redis.get(f"fetcher:refresh_token:{fetcher.client_id}")
-        if refresh_token:
-            fetcher.refresh_token = str(refresh_token)
-        if not fetcher.access_token or not fetcher.refresh_token:
-            fetcher_logger("Fetcher").opt(colors=True).info(
-                f"Login to initialize fetcher: <y>{fetcher.authorize_url}</y>"
-            )
+        # Always ensure the access token is valid, regardless of initial state
+        await fetcher.ensure_valid_access_token()
     return fetcher
 
 

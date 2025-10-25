@@ -1,0 +1,54 @@
+{
+  "projectName": "g0v0-server",
+  "projectOwner": "GooGuTeam",
+  "repoType": "github",
+  "repoHost": "https://github.com",
+  "files": [
+    "README.md",
+    "README.en.md"
+  ],
+  "imageSize": 100,
+  "commit": true,
+  "commitConvention": "angular",
+  "contributors": [
+    {
+      "login": "GooGuJiang",
+      "name": "咕谷酱",
+      "avatar_url": "https://avatars.githubusercontent.com/u/74496778?v=4",
+      "profile": "https://github.com/GooGuJiang",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "MingxuanGame",
+      "name": "MingxuanGame",
+      "avatar_url": "https://avatars.githubusercontent.com/u/68982190?v=4",
+      "profile": "https://blog.mxgame.top/",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "chenjintang-shrimp",
+      "name": "陈晋瑭",
+      "avatar_url": "https://avatars.githubusercontent.com/u/110657724?v=4",
+      "profile": "https://github.com/chenjintang-shrimp",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "4aya",
+      "name": "4ayo",
+      "avatar_url": "https://avatars.githubusercontent.com/u/115783539?v=4",
+      "profile": "https://4ayo.ovh",
+      "contributions": [
+        "ideas"
+      ]
+    }
+  ],
+  "contributorsPerLine": 7,
+  "linkToUsage": false,
+  "commitType": "docs"
+}
