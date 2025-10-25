@@ -23,7 +23,6 @@ from app.router import (
     api_v2_router,
     auth_router,
     chat_router,
-    fetcher_router,
     file_router,
     lio_router,
     private_router,
@@ -184,7 +183,7 @@ app.include_router(api_v1_router)
 app.include_router(api_v1_public_router)
 app.include_router(chat_router)
 app.include_router(redirect_api_router)
-app.include_router(fetcher_router)
+# app.include_router(fetcher_router)
 app.include_router(file_router)
 app.include_router(auth_router)
 app.include_router(private_router)
