@@ -18,6 +18,7 @@ from app.dependencies.scheduler import start_scheduler, stop_scheduler
 from app.log import system_logger
 from app.middleware.verify_session import VerifySessionMiddleware
 from app.models.mods import init_mods, init_ranked_mods
+from app.models.score import init_ruleset_version_hash
 from app.router import (
     api_v1_router,
     api_v2_router,
@@ -62,6 +63,7 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
     # init mods, achievements and performance calculator
     init_mods()
     init_ranked_mods()
+    init_ruleset_version_hash()
     load_achievements()
     init_calculator()
 

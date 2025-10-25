@@ -1,0 +1,32 @@
+{
+  "Sentakki": {
+    "latest-version": "2025.1012.1",
+    "versions": {
+      "2025.1012.1": "66e02af2097f446246b146641295573a"
+    }
+  },
+  "tau": {
+    "latest-version": "2025.1012.1",
+    "versions": {
+      "2025.1012.1": "3a2dd168c2e520a3620a5dfd7b3c0b73"
+    }
+  },
+  "rush": {
+    "latest-version": "2025.1012.1",
+    "versions": {
+      "2025.1012.1": "df0c211c8c40f42feb119a3a11549a6f"
+    }
+  },
+  "hishigata": {
+    "latest-version": "2025.1012.1",
+    "versions": {
+      "2025.1012.1": "af26c2946cd0b2258ac52f5cce91958c"
+    }
+  },
+  "soyokaze": {
+    "latest-version": "2025.1012.1",
+    "versions": {
+      "2025.1012.1": "fea5c97b8b436305ba98ef8b39b133b6"
+    }
+  }
+}

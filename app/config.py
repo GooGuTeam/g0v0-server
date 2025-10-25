@@ -687,6 +687,11 @@ CALCULATOR_CONFIG='{
         Field(default=False, description="允许用户删除自己的成绩"),
         "反作弊设置",
     ]
+    check_ruleset_version: Annotated[
+        bool,
+        Field(default=True, description="检查自定义 ruleset 版本"),
+        "反作弊设置",
+    ]
 
     # 存储设置
     storage_service: Annotated[

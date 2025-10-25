@@ -1,11 +1,37 @@
 from enum import Enum
-from typing import TypedDict, cast
+import json
+from typing import NamedTuple, TypedDict, cast
 
 from app.config import settings
+from app.path import STATIC_DIR
 
 from .mods import API_MODS, APIMod
 
 from pydantic import BaseModel, Field, ValidationInfo, field_serializer, field_validator
+
+VersionEntry = TypedDict("VersionEntry", {"latest-version": str, "versions": dict[str, str]})
+DOWNLOAD_URL = "https://github.com/GooGuTeam/custom-rulesets/releases/tag/{version}"
+
+
+class RulesetCheckResult(NamedTuple):
+    is_current: bool
+    latest_version: str = ""
+    current_version: str | None = None
+    download_url: str | None = None
+
+    def __bool__(self) -> bool:
+        return self.is_current
+
+    @property
+    def error_msg(self) -> str | None:
+        if self.is_current:
+            return None
+        msg = f"Ruleset is outdated. Latest version: {self.latest_version}."
+        if self.current_version:
+            msg += f" Current version: {self.current_version}."
+        if self.download_url:
+            msg += f" Download at: {self.download_url}"
+        return msg
 
 
 class GameMode(str, Enum):
@@ -125,6 +151,27 @@ class GameMode(str, Enum):
                 GameMode.FRUITS: GameMode.FRUITSRX,
             }[self]
         return self
+
+    def check_ruleset_version(self, hash: str) -> RulesetCheckResult:
+        if not settings.check_ruleset_version or self.is_official():
+            return RulesetCheckResult(True)
+
+        entry = RULESETS_VERSION_HASH.get(self)
+        if not entry:
+            return RulesetCheckResult(True)
+        latest_version = entry["latest-version"]
+        current_version = None
+        for version, version_hash in entry["versions"].items():
+            if version_hash == hash:
+                current_version = version
+                break
+        is_current = current_version == latest_version
+        return RulesetCheckResult(
+            is_current=is_current,
+            latest_version=latest_version,
+            current_version=current_version,
+            download_url=DOWNLOAD_URL.format(version=latest_version) if not is_current else None,
+        )
 
     @classmethod
     def parse(cls, v: str | int) -> "GameMode | None":
@@ -274,3 +321,18 @@ class LegacyReplaySoloScoreInfo(TypedDict):
     rank: Rank
     user_id: int
     total_score_without_mods: int
+
+
+RULESETS_VERSION_HASH: dict[GameMode, VersionEntry] = {}
+
+
+def init_ruleset_version_hash() -> None:
+    hash_file = STATIC_DIR / "custom_ruleset_version_hash.json"
+    if not hash_file.exists() and settings.check_ruleset_version:
+        raise RuntimeError("Custom ruleset version hash file is missing")
+    rulesets = json.loads(hash_file.read_text(encoding="utf-8"))
+    for mode_str, entry in rulesets.items():
+        mode = GameMode.parse(mode_str)
+        if mode is None:
+            continue
+        RULESETS_VERSION_HASH[mode] = entry

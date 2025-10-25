@@ -16,7 +16,7 @@ def generate_model(schema_file: Path, version: str = ""):
         temp_file.unlink()
     temp_file.touch()
 
-    version = version or datetime.datetime.now().strftime("%Y.%m.%d")
+    version = version or f"{datetime.datetime.now().strftime('%Y.%m%d')}.0"
 
     generate(
         input_=schema_file,
