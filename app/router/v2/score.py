@@ -394,7 +394,7 @@ async def create_solo_score(
         )
         raise HTTPException(
             status_code=422,
-            detail=result.error_msg,
+            detail=result.error_msg or "Ruleset version check failed",
         )
 
     background_task.add_task(_preload_beatmap_for_pp_calculation, beatmap_id)
@@ -461,7 +461,7 @@ async def create_playlist_score(
         )
         raise HTTPException(
             status_code=422,
-            detail=result.error_msg,
+            detail=result.error_msg or "Ruleset version check failed",
         )
 
     if await current_user.is_restricted(session):

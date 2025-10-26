@@ -92,7 +92,7 @@ async def calculate_pp(score: "Score", beatmap: str, session: AsyncSession) -> f
 
     if not (await get_calculator().can_calculate_performance(score.gamemode)):
         if not settings.fallback_no_calculator_pp:
-            pp = 0
+            return 0
         star_rating = -1
         if await get_calculator().can_calculate_difficulty(score.gamemode):
             star_rating = (await get_calculator().calculate_difficulty(beatmap, score.mods, score.gamemode)).star_rating
