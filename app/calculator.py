@@ -52,6 +52,28 @@ def clamp[T: int | float](n: T, min_value: T, max_value: T) -> T:
         return n
 
 
+def calculate_pp_for_no_calculator(score: "Score", star_rating: float) -> float:
+    # TODO: Improve this algorithm
+    # https://www.desmos.com/calculator/i2aa7qm3o6
+    k = 4.0
+
+    pmax = 1.4 * (star_rating**2.8)
+    b = 0.95 - 0.33 * ((clamp(star_rating, 1, 8) - 1) / 7)
+
+    x = score.total_score / 1000000
+
+    print(f"{star_rating=} {pmax=}, {b=}, {x=}")
+    if x < b:
+        # Linear section
+        return pmax * x
+    else:
+        # Exponential reward section
+        x = (x - b) / (1 - b)
+        exp_part = (math.exp(k * x) - 1) / (math.exp(k) - 1)
+        print(f"{exp_part=}, {x=}")
+        return pmax * (b + (1 - b) * exp_part)
+
+
 async def calculate_pp(score: "Score", beatmap: str, session: AsyncSession) -> float:
     from app.database.beatmap import BannedBeatmaps
 
@@ -71,9 +93,17 @@ async def calculate_pp(score: "Score", beatmap: str, session: AsyncSession) -> f
             logger.exception(f"Error checking if beatmap {score.beatmap_id} is suspicious")
 
     if not (await get_calculator().can_calculate_performance(score.gamemode)):
-        return 0
-    attrs = await get_calculator().calculate_performance(beatmap, score)
-    pp = attrs.pp
+        if not settings.fallback_no_calculator_pp:
+            pp = 0
+        star_rating = -1
+        if await get_calculator().can_calculate_difficulty(score.gamemode):
+            star_rating = (await get_calculator().calculate_difficulty(beatmap, score.mods, score.gamemode)).star_rating
+        if star_rating < 0:
+            star_rating = (await score.awaitable_attrs.beatmap).difficulty_rating
+        pp = calculate_pp_for_no_calculator(score, star_rating)
+    else:
+        attrs = await get_calculator().calculate_performance(beatmap, score)
+        pp = attrs.pp
 
     if settings.suspicious_score_check and (pp > 3000):
         logger.warning(

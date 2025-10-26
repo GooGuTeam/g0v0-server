@@ -536,6 +536,11 @@ CALCULATOR_CONFIG='{
         ),
         "表现计算设置",
     ]
+    fallback_no_calculator_pp: Annotated[
+        bool,
+        Field(default=False, description="当计算器不支持某个模式时，使用简化的 pp 计算方法作为后备"),
+        "表现计算设置",
+    ]
 
     # 谱面缓存设置
     enable_beatmap_preload: Annotated[

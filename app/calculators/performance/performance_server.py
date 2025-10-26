@@ -128,7 +128,7 @@ class PerformanceServerPerformanceCalculator(BasePerformanceCalculator):
                     json={
                         "beatmap_file": beatmap_raw,
                         "mods": mods or [],
-                        "ruleset": int(gamemode) if gamemode else None,
+                        "ruleset": gamemode.value if gamemode else None,
                     },
                 )
                 if resp.status_code != 200:
