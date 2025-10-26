@@ -1,5 +1,6 @@
 from datetime import datetime
 
+from app.calculator import get_calculator
 from app.database.beatmap import calculate_beatmap_attributes
 from app.database.score import Beatmap, Score
 from app.dependencies.database import get_redis
@@ -7,9 +8,22 @@ from app.dependencies.fetcher import get_fetcher
 from app.models.achievement import Achievement, Medals
 from app.models.beatmap import BeatmapRankStatus
 from app.models.mods import get_speed_rate, mod_to_save
+from app.models.performance import DifficultyAttributesUnion
 from app.models.score import Rank
 
 from sqlmodel.ext.asyncio.session import AsyncSession
+
+
+async def _calculate_attributes(score: Score, beatmap: Beatmap) -> DifficultyAttributesUnion | None:
+    fetcher = await get_fetcher()
+    redis = get_redis()
+    mods_ = score.mods.copy()
+
+    if await get_calculator().can_calculate_difficulty(score.gamemode) is False:
+        return None
+
+    attribute = await calculate_beatmap_attributes(beatmap.id, score.gamemode, mods_, redis, fetcher)
+    return attribute
 
 
 async def jackpot(
@@ -105,10 +119,10 @@ async def reckless_adandon(
     mods_ = mod_to_save(score.mods)
     if "HR" not in mods_ or "SD" not in mods_:
         return False
-    fetcher = await get_fetcher()
-    redis = get_redis()
-    mods_ = score.mods.copy()
-    attribute = await calculate_beatmap_attributes(beatmap.id, score.gamemode, mods_, redis, fetcher)
+
+    attribute = await _calculate_attributes(score, beatmap)
+    if attribute is None:
+        return False
     return not attribute.star_rating < 3
 
 
@@ -169,10 +183,10 @@ async def slow_and_steady(
     mods_ = mod_to_save(score.mods)
     if "HT" not in mods_ or "PF" not in mods_:
         return False
-    fetcher = await get_fetcher()
-    redis = get_redis()
-    mods_ = score.mods.copy()
-    attribute = await calculate_beatmap_attributes(beatmap.id, score.gamemode, mods_, redis, fetcher)
+
+    attribute = await _calculate_attributes(score, beatmap)
+    if attribute is None:
+        return False
     return attribute.star_rating >= 3
 
 
@@ -231,10 +245,10 @@ async def impeccable(
     # DT and NC interchangeable
     if not ("DT" in mods_ or "NC" in mods_) or "PF" not in mods_:
         return False
-    fetcher = await get_fetcher()
-    redis = get_redis()
-    mods_ = score.mods.copy()
-    attribute = await calculate_beatmap_attributes(beatmap.id, score.gamemode, mods_, redis, fetcher)
+
+    attribute = await _calculate_attributes(score, beatmap)
+    if attribute is None:
+        return False
     return attribute.star_rating >= 4
 
 
@@ -255,10 +269,10 @@ async def aeon(
         return False
     if beatmap.total_length < 180:
         return False
-    fetcher = await get_fetcher()
-    redis = get_redis()
-    mods_ = score.mods.copy()
-    attribute = await calculate_beatmap_attributes(beatmap.id, score.gamemode, mods_, redis, fetcher)
+
+    attribute = await _calculate_attributes(score, beatmap)
+    if attribute is None:
+        return False
     return attribute.star_rating >= 4
 
 
@@ -345,10 +359,9 @@ async def deliberation(
     if not beatmap.beatmap_status.has_pp() and beatmap.beatmap_status != BeatmapRankStatus.LOVED:
         return False
 
-    fetcher = await get_fetcher()
-    redis = get_redis()
-    mods_copy = score.mods.copy()
-    attribute = await calculate_beatmap_attributes(beatmap.id, score.gamemode, mods_copy, redis, fetcher)
+    attribute = await _calculate_attributes(score, beatmap)
+    if attribute is None:
+        return False
     return attribute.star_rating >= 6
 
 
