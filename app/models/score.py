@@ -328,9 +328,12 @@ RULESETS_VERSION_HASH: dict[GameMode, VersionEntry] = {}
 
 def init_ruleset_version_hash() -> None:
     hash_file = STATIC_DIR / "custom_ruleset_version_hash.json"
-    if not hash_file.exists() and settings.check_ruleset_version:
-        raise RuntimeError("Custom ruleset version hash file is missing")
-    rulesets = json.loads(hash_file.read_text(encoding="utf-8"))
+    if not hash_file.exists():
+        if settings.check_ruleset_version:
+            raise RuntimeError("Custom ruleset version hash file is missing")
+        rulesets = {}
+    else:
+        rulesets = json.loads(hash_file.read_text(encoding="utf-8"))
     for mode_str, entry in rulesets.items():
         mode = GameMode.parse(mode_str)
         if mode is None:
