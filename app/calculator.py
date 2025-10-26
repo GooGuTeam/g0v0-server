@@ -62,7 +62,6 @@ def calculate_pp_for_no_calculator(score: "Score", star_rating: float) -> float:
 
     x = score.total_score / 1000000
 
-    print(f"{star_rating=} {pmax=}, {b=}, {x=}")
     if x < b:
         # Linear section
         return pmax * x
@@ -70,7 +69,6 @@ def calculate_pp_for_no_calculator(score: "Score", star_rating: float) -> float:
         # Exponential reward section
         x = (x - b) / (1 - b)
         exp_part = (math.exp(k * x) - 1) / (math.exp(k) - 1)
-        print(f"{exp_part=}, {x=}")
         return pmax * (b + (1 - b) * exp_part)
 
 
