@@ -15,11 +15,31 @@ This is an osu! API server implemented with FastAPI + MySQL + Redis, supporting 
 
 -   **OAuth 2.0 Authentication**: Supports password and refresh token flows.
 -   **User Data Management**: Complete user information, statistics, achievements, etc.
--   **Multi-game Mode Support**: osu! (RX, AP), taiko (RX), catch (RX), mania.
+-   **Multi-game Mode Support**: osu! (RX, AP), taiko (RX), catch (RX), mania and custom rulesets (see below).
 -   **Database Persistence**: MySQL for storing user data.
 -   **Cache Support**: Redis for caching tokens and session information.
 -   **Multiple Storage Backends**: Supports local storage, Cloudflare R2, and AWS S3.
 -   **Containerized Deployment**: Docker and Docker Compose support.
+
+## Supported Rulesets
+
+**Ruleset**|**ID**|**ShortName**|**PP Algorithm (rosu)**|**PP Algorithm (performance-server)**
+:-----:|:-----:|:-----:|:-----:|:-----:
+osu!|`0`|`osu`|✅|✅
+osu!taiko|`1`|`taiko`|✅|✅
+osu!catch|`2`|`fruits`|✅|✅
+osu!mania|`3`|`mania`|✅|✅
+osu! (RX)|`4`|`osurx`|✅|✅
+osu! (AP)|`5`|`osuap`|✅|✅
+osu!taiko (RX)|`6`|`taikorx`|✅|✅
+osu!catch (RX)|`7`|`fruitsrx`|✅|✅
+[Sentakki](https://github.com/LumpBloom7/sentakki)|`10`|`Sentakki`|❌|❌
+[tau](https://github.com/taulazer/tau)|`11`|`tau`|❌|✅
+[Rush!](https://github.com/Beamographic/rush)|`12`|`rush`|❌|❌
+[hishigata](https://github.com/LumpBloom7/hishigata)|`13`|`hishigata`|❌|❌
+[soyokaze!](https://github.com/goodtrailer/soyokaze)|`14`|`soyokaze`|❌|✅
+
+Go to [custom-rulesets](https://github.com/GooGuTeam/custom-rulesets) to download the custom rulesets modified for g0v0-server.
 
 ## Quick Start
 
@@ -102,7 +122,7 @@ Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/d
 
 <!-- ALL-CONTRIBUTORS-LIST:END -->
 
-This project follows the [all-contributors](https://github.com/all-contributors/all-contributors) specification. Contributions of any kind welcome!⏎
+This project follows the [all-contributors](https://github.com/all-contributors/all-contributors) specification. Contributions of any kind welcome!
 
 ## Discussion
 

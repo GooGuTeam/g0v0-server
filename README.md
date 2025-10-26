@@ -15,12 +15,32 @@
 
 - **OAuth 2.0 认证**: 支持密码流和刷新令牌流
 - **用户数据管理**: 完整的用户信息、统计数据、成就等
-- **多游戏模式支持**: osu! (RX, AP), taiko (RX), catch (RX), mania
+- **多游戏模式支持**: osu! (RX, AP), taiko (RX), catch (RX), mania 和自定义 ruleset（见下）
 - **数据库持久化**: MySQL 存储用户数据
 - **缓存支持**: Redis 缓存令牌和会话信息
 - **多种存储后端**: 支持本地存储、Cloudflare R2、AWS S3
 - **容器化部署**: Docker 和 Docker Compose 支持
 - **资源文件反向代理**: 可以将 osu! 官方的资源链接（头像、谱面封面、音频等）替换为自定义域名。
+
+## 支持的 ruleset
+
+**Ruleset**|**ID**|**ShortName**|**PP 算法 (rosu)**|**PP 算法 (performance-server)**
+:-----:|:-----:|:-----:|:-----:|:-----:
+osu!|`0`|`osu`|✅|✅
+osu!taiko|`1`|`taiko`|✅|✅
+osu!catch|`2`|`fruits`|✅|✅
+osu!mania|`3`|`mania`|✅|✅
+osu! (RX)|`4`|`osurx`|✅|✅
+osu! (AP)|`5`|`osuap`|✅|✅
+osu!taiko (RX)|`6`|`taikorx`|✅|✅
+osu!catch (RX)|`7`|`fruitsrx`|✅|✅
+[Sentakki](https://github.com/LumpBloom7/sentakki)|`10`|`Sentakki`|❌|❌
+[tau](https://github.com/taulazer/tau)|`11`|`tau`|❌|✅
+[Rush!](https://github.com/Beamographic/rush)|`12`|`rush`|❌|❌
+[hishigata](https://github.com/LumpBloom7/hishigata)|`13`|`hishigata`|❌|❌
+[soyokaze!](https://github.com/goodtrailer/soyokaze)|`14`|`soyokaze`|❌|✅
+
+前往 [custom-rulesets](https://github.com/GooGuTeam/custom-rulesets/releases/latest) 下载为 g0v0-server 修改的自定义 ruleset。
 
 ## 快速开始
 
@@ -113,5 +133,3 @@ docker-compose -f docker-compose-osurx.yml up -d
 
 - QQ 群：`1059561526`
 - Discord: https://discord.gg/AhzJXXWYfF
-
-
