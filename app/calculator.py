@@ -25,11 +25,13 @@ logger = log("Calculator")
 CALCULATOR: PerformanceCalculator | None = None
 
 
-def init_calculator():
+async def init_calculator():
     global CALCULATOR
     try:
         module = importlib.import_module(f"app.calculators.performance.{settings.calculator}")
         CALCULATOR = module.PerformanceCalculator(**settings.calculator_config)
+        if CALCULATOR is not None:
+            await CALCULATOR.init()
     except (ImportError, AttributeError) as e:
         raise ImportError(f"Failed to import performance calculator for {settings.calculator}") from e
     return CALCULATOR
@@ -68,6 +70,8 @@ async def calculate_pp(score: "Score", beatmap: str, session: AsyncSession) -> f
         except Exception:
             logger.exception(f"Error checking if beatmap {score.beatmap_id} is suspicious")
 
+    if not (await get_calculator().can_calculate_performance(score.gamemode)):
+        return 0
     attrs = await get_calculator().calculate_performance(beatmap, score)
     pp = attrs.pp
 

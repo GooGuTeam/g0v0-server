@@ -12,7 +12,7 @@ import warnings
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from app.calculator import calculate_pp, calculate_score_to_level
+from app.calculator import calculate_pp, calculate_score_to_level, init_calculator
 from app.config import settings
 from app.const import BANCHOBOT_ID
 from app.database import TotalScoreBestScore, UserStatistics
@@ -546,6 +546,7 @@ async def recalculate(config: RecalculateConfig) -> None:
 
     init_mods()
     init_ranked_mods()
+    await init_calculator()
 
     targets = await determine_targets(config)
     if not targets:

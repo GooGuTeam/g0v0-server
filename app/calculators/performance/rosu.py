@@ -1,6 +1,6 @@
 from asyncio import get_event_loop
 from copy import deepcopy
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from app.calculator import clamp
 from app.models.mods import APIMod, parse_enum_to_str
@@ -16,6 +16,7 @@ from app.models.performance import (
 from app.models.score import GameMode
 
 from ._base import (
+    AvailableModes,
     CalculateError,
     ConvertError,
     DifficultyError,
@@ -47,7 +48,18 @@ DIFFICULTY_CLASS = {
 }
 
 
-class PerformanceCalculator(BasePerformanceCalculator):
+class RosuPerformanceCalculator(BasePerformanceCalculator):
+    SUPPORT_MODES: ClassVar[set[GameMode]] = {
+        GameMode.OSU,
+        GameMode.TAIKO,
+        GameMode.FRUITS,
+        GameMode.MANIA,
+        GameMode.OSURX,
+        GameMode.OSUAP,
+        GameMode.TAIKORX,
+        GameMode.FRUITSRX,
+    }
+
     @classmethod
     def _to_rosu_mode(cls, mode: GameMode) -> rosu.GameMode:
         return {
@@ -69,6 +81,12 @@ class PerformanceCalculator(BasePerformanceCalculator):
             rosu.GameMode.Catch: GameMode.FRUITS,
             rosu.GameMode.Mania: GameMode.MANIA,
         }[mode]
+
+    async def get_available_modes(self) -> AvailableModes:
+        return AvailableModes(
+            has_performance_calculator=self.SUPPORT_MODES,
+            has_difficulty_calculator=self.SUPPORT_MODES,
+        )
 
     @classmethod
     def _perf_attr_to_model(cls, attr: rosu.PerformanceAttributes, gamemode: GameMode) -> PerformanceAttributes:
@@ -185,3 +203,6 @@ class PerformanceCalculator(BasePerformanceCalculator):
             raise DifficultyError(f"Beatmap parse error: {e}")
         except Exception as e:
             raise CalculateError(f"Unknown error: {e}") from e
+
+
+PerformanceCalculator = RosuPerformanceCalculator

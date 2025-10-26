@@ -65,7 +65,7 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
     init_ranked_mods()
     init_ruleset_version_hash()
     load_achievements()
-    init_calculator()
+    await init_calculator()
 
     # init rate limiter
     await FastAPILimiter.init(redis_rate_limit_client)
