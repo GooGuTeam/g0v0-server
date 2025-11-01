@@ -1132,9 +1132,7 @@ async def _process_statistics(
     # pc, pt, tth, tts
     # Get display scores based on configured scoring mode
     current_display_score = score.get_display_score()
-    previous_display_score = (
-        previous_score_best.score.get_display_score() if previous_score_best else 0
-    )
+    previous_display_score = previous_score_best.score.get_display_score() if previous_score_best else 0
 
     statistics.total_score += current_display_score
     difference = current_display_score - previous_display_score

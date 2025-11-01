@@ -54,9 +54,7 @@ def clamp[T: int | float](n: T, min_value: T, max_value: T) -> T:
         return n
 
 
-def get_display_score(
-    ruleset_id: int, total_score: int, mode: ScoringMode, maximum_statistics: ScoreStatistics
-) -> int:
+def get_display_score(ruleset_id: int, total_score: int, mode: ScoringMode, maximum_statistics: ScoreStatistics) -> int:
     """
     Calculate the display score based on the scoring mode.
 
@@ -75,9 +73,7 @@ def get_display_score(
         return total_score
 
     # Calculate max basic judgements
-    max_basic_judgements = sum(
-        count for hit_result, count in maximum_statistics.items() if hit_result.is_basic()
-    )
+    max_basic_judgements = sum(count for hit_result, count in maximum_statistics.items() if hit_result.is_basic())
 
     return _convert_standardised_to_classic(ruleset_id, total_score, max_basic_judgements)
 
