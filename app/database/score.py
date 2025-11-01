@@ -74,6 +74,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 if TYPE_CHECKING:
     from app.fetcher import Fetcher
+    from app.models.scoring_mode import ScoringMode
 
 logger = log("Score")
 
@@ -222,6 +223,29 @@ class Score(ScoreBase, table=True):
     @property
     def replay_filename(self) -> str:
         return f"replays/{self.id}_{self.beatmap_id}_{self.user_id}_lazer_replay.osr"
+
+    def get_display_score(self, mode: "ScoringMode | None" = None) -> int:
+        """
+        Get the display score for this score based on the scoring mode.
+
+        Args:
+            mode: The scoring mode to use. If None, uses the global setting.
+
+        Returns:
+            The display score in the requested scoring mode
+        """
+        from app.calculator import get_display_score
+        from app.config import settings
+
+        if mode is None:
+            mode = settings.scoring_mode
+
+        return get_display_score(
+            ruleset_id=int(self.gamemode),
+            total_score=self.total_score,
+            mode=mode,
+            maximum_statistics=self.maximum_statistics,
+        )
 
     async def to_resp(self, session: AsyncSession, api_version: int) -> "ScoreResp | LegacyScoreResp":
         if api_version >= 20220705:
@@ -1108,12 +1132,19 @@ async def _process_statistics(
         raise ValueError(f"User {user.id} does not have statistics for mode {score.gamemode.value}")
 
     # pc, pt, tth, tts
-    statistics.total_score += score.total_score
-    difference = score.total_score - previous_score_best.total_score if previous_score_best else score.total_score
+    # Get display scores based on configured scoring mode
+    current_display_score = score.get_display_score()
+    previous_display_score = (
+        previous_score_best.score.get_display_score() if previous_score_best else 0
+    )
+
+    statistics.total_score += current_display_score
+    difference = current_display_score - previous_display_score
     logger.debug(
-        "Score delta computed for {score_id}: {difference}",
+        "Score delta computed for {score_id}: {difference} (display score in {mode} mode)",
         score_id=score.id,
         difference=difference,
+        mode=settings.scoring_mode,
     )
     if difference > 0 and score.passed and ranked:
         match score.rank:
@@ -1152,7 +1183,7 @@ async def _process_statistics(
                     beatmap_id=score.beatmap_id,
                     gamemode=score.gamemode,
                     score_id=score.id,
-                    total_score=score.total_score,
+                    total_score=current_display_score,
                     rank=score.rank,
                     mods=mod_for_save,
                 )
@@ -1166,14 +1197,14 @@ async def _process_statistics(
 
         # 情况3: 有最佳分数记录和该mod组合的记录，且是同一个记录，更新得分更高的情况
         elif previous_score_best.score_id == previous_score_best_mod.score_id and difference > 0:
-            previous_score_best.total_score = score.total_score
+            previous_score_best.total_score = current_display_score
             previous_score_best.rank = score.rank
             previous_score_best.score_id = score.id
             logger.info(
                 "Updated existing best score for user {user_id} | score_id={score_id} total={total}",
                 user_id=user.id,
                 score_id=score.id,
-                total=score.total_score,
+                total=current_display_score,
             )
 
         # 情况4: 有最佳分数记录和该mod组合的记录，但不是同一个记录
@@ -1189,9 +1220,10 @@ async def _process_statistics(
                 await session.delete(previous_score_best)
 
             # 更新mod特定最佳记录（如果新分数更高）
-            mod_diff = score.total_score - previous_score_best_mod.total_score
+            previous_mod_display_score = previous_score_best_mod.score.get_display_score()
+            mod_diff = current_display_score - previous_mod_display_score
             if mod_diff > 0:
-                previous_score_best_mod.total_score = score.total_score
+                previous_score_best_mod.total_score = current_display_score
                 previous_score_best_mod.rank = score.rank
                 previous_score_best_mod.score_id = score.id
                 logger.info(

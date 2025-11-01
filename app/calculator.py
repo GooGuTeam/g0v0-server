@@ -7,7 +7,8 @@ from typing import TYPE_CHECKING
 from app.calculators.performance import PerformanceCalculator
 from app.config import settings
 from app.log import log
-from app.models.score import GameMode
+from app.models.score import GameMode, HitResult, ScoreStatistics
+from app.models.scoring_mode import ScoringMode
 
 from osupyparser import HitObject, OsuFile
 from osupyparser.osu.objects import Slider
@@ -23,6 +24,9 @@ if TYPE_CHECKING:
 logger = log("Calculator")
 
 CALCULATOR: PerformanceCalculator | None = None
+
+# Maximum score in standardised scoring mode
+MAX_SCORE = 1000000
 
 
 async def init_calculator():
@@ -50,6 +54,82 @@ def clamp[T: int | float](n: T, min_value: T, max_value: T) -> T:
         return max_value
     else:
         return n
+
+
+def _is_hit_result_basic(hit_result: HitResult) -> bool:
+    """
+    Check if a HitResult is a basic (non-tick, non-bonus) result.
+
+    Based on: https://github.com/ppy/osu/blob/master/osu.Game/Rulesets/Scoring/HitResult.cs
+    """
+    if hit_result in {HitResult.LEGACY_COMBO_INCREASE, HitResult.COMBO_BREAK}:
+        return False
+
+    # Check if it's scorable and not a tick or bonus
+    is_tick = hit_result in {
+        HitResult.LARGE_TICK_HIT,
+        HitResult.LARGE_TICK_MISS,
+        HitResult.SMALL_TICK_HIT,
+        HitResult.SMALL_TICK_MISS,
+        HitResult.SLIDER_TAIL_HIT,
+    }
+
+    is_bonus = hit_result in {HitResult.SMALL_BONUS, HitResult.LARGE_BONUS}
+
+    return hit_result.is_scorable() and not is_tick and not is_bonus
+
+
+def get_display_score(
+    ruleset_id: int, total_score: int, mode: ScoringMode, maximum_statistics: ScoreStatistics
+) -> int:
+    """
+    Calculate the display score based on the scoring mode.
+
+    Based on: https://github.com/ppy/osu/blob/master/osu.Game/Scoring/Legacy/ScoreInfoExtensions.cs
+
+    Args:
+        ruleset_id: The ruleset ID (0=osu!, 1=taiko, 2=catch, 3=mania)
+        total_score: The standardised total score
+        mode: The scoring mode (standardised or classic)
+        maximum_statistics: Dictionary of maximum statistics for the score
+
+    Returns:
+        The display score in the requested scoring mode
+    """
+    if mode == ScoringMode.STANDARDISED:
+        return total_score
+
+    # Calculate max basic judgements
+    max_basic_judgements = sum(
+        count for hit_result, count in maximum_statistics.items() if _is_hit_result_basic(hit_result)
+    )
+
+    return _convert_standardised_to_classic(ruleset_id, total_score, max_basic_judgements)
+
+
+def _convert_standardised_to_classic(ruleset_id: int, standardised_total_score: int, object_count: int) -> int:
+    """
+    Convert a standardised score to classic score.
+
+    The coefficients were determined by a least-squares fit to minimise relative error
+    of maximum possible base score across all beatmaps.
+
+    Args:
+        ruleset_id: The ruleset ID (0=osu!, 1=taiko, 2=catch, 3=mania)
+        standardised_total_score: The standardised total score
+        object_count: The number of basic hit objects
+
+    Returns:
+        The classic score
+    """
+    if ruleset_id == 0:  # osu!
+        return round((object_count**2 * 32.57 + 100000) * standardised_total_score / MAX_SCORE)
+    elif ruleset_id == 1:  # taiko
+        return round((object_count * 1109 + 100000) * standardised_total_score / MAX_SCORE)
+    elif ruleset_id == 2:  # catch
+        return round((standardised_total_score / MAX_SCORE * object_count) ** 2 * 21.62 + standardised_total_score / 10)
+    else:  # mania (ruleset_id == 3) or default
+        return standardised_total_score
 
 
 def calculate_pp_for_no_calculator(score: "Score", star_rating: float) -> float:
