@@ -27,6 +27,7 @@ from app.models.model import (
     UTCBaseModel,
 )
 from app.models.mods import APIMod, get_speed_rate, mod_to_save, mods_can_get_pp
+from app.models.scoring_mode import ScoringMode
 from app.models.score import (
     GameMode,
     HitResult,
@@ -75,8 +76,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 if TYPE_CHECKING:
     from app.fetcher import Fetcher
-    from app.models.scoring_mode import ScoringMode
-
+    
 logger = log("Score")
 
 
@@ -225,7 +225,7 @@ class Score(ScoreBase, table=True):
     def replay_filename(self) -> str:
         return f"replays/{self.id}_{self.beatmap_id}_{self.user_id}_lazer_replay.osr"
 
-    def get_display_score(self, mode: "ScoringMode | None" = None) -> int:
+    def get_display_score(self, mode: ScoringMode | None = None) -> int:
         """
         Get the display score for this score based on the scoring mode.
 
