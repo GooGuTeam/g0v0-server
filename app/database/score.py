@@ -27,7 +27,6 @@ from app.models.model import (
     UTCBaseModel,
 )
 from app.models.mods import APIMod, get_speed_rate, mod_to_save, mods_can_get_pp
-from app.models.scoring_mode import ScoringMode
 from app.models.score import (
     GameMode,
     HitResult,
@@ -36,6 +35,7 @@ from app.models.score import (
     ScoreStatistics,
     SoloScoreSubmissionInfo,
 )
+from app.models.scoring_mode import ScoringMode
 from app.storage import StorageService
 from app.utils import utcnow
 
@@ -76,7 +76,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 if TYPE_CHECKING:
     from app.fetcher import Fetcher
-    
+
 logger = log("Score")
 
 
