@@ -1,6 +1,8 @@
 from enum import Enum
 from typing import Annotated, Any, Literal
 
+from app.models.scoring_mode import ScoringMode
+
 from pydantic import (
     AliasChoices,
     Field,
@@ -518,6 +520,14 @@ CALCULATOR_CONFIG='{
             description=(
                 "旧成绩处理模式<br/>strict: 删除所有相关的成绩、pp、统计信息、回放<br/>normal: 删除 pp 和排行榜成绩"
             ),
+        ),
+        "游戏设置",
+    ]
+    scoring_mode: Annotated[
+        ScoringMode,
+        Field(
+            default=ScoringMode.STANDARDISED,
+            description="分数计算模式：standardised（标准化）或 classic（经典）",
         ),
         "游戏设置",
     ]

@@ -11,6 +11,7 @@ from app.calculator import (
     calculate_weighted_acc,
     calculate_weighted_pp,
     clamp,
+    get_display_score,
     pre_fetch_and_calculate_pp,
 )
 from app.config import settings
@@ -34,6 +35,7 @@ from app.models.score import (
     ScoreStatistics,
     SoloScoreSubmissionInfo,
 )
+from app.models.scoring_mode import ScoringMode
 from app.storage import StorageService
 from app.utils import utcnow
 
@@ -222,6 +224,26 @@ class Score(ScoreBase, table=True):
     @property
     def replay_filename(self) -> str:
         return f"replays/{self.id}_{self.beatmap_id}_{self.user_id}_lazer_replay.osr"
+
+    def get_display_score(self, mode: ScoringMode | None = None) -> int:
+        """
+        Get the display score for this score based on the scoring mode.
+
+        Args:
+            mode: The scoring mode to use. If None, uses the global setting.
+
+        Returns:
+            The display score in the requested scoring mode
+        """
+        if mode is None:
+            mode = settings.scoring_mode
+
+        return get_display_score(
+            ruleset_id=int(self.gamemode),
+            total_score=self.total_score,
+            mode=mode,
+            maximum_statistics=self.maximum_statistics,
+        )
 
     async def to_resp(self, session: AsyncSession, api_version: int) -> "ScoreResp | LegacyScoreResp":
         if api_version >= 20220705:
@@ -1108,12 +1130,17 @@ async def _process_statistics(
         raise ValueError(f"User {user.id} does not have statistics for mode {score.gamemode.value}")
 
     # pc, pt, tth, tts
-    statistics.total_score += score.total_score
-    difference = score.total_score - previous_score_best.total_score if previous_score_best else score.total_score
+    # Get display scores based on configured scoring mode
+    current_display_score = score.get_display_score()
+    previous_display_score = previous_score_best.score.get_display_score() if previous_score_best else 0
+
+    statistics.total_score += current_display_score
+    difference = current_display_score - previous_display_score
     logger.debug(
-        "Score delta computed for {score_id}: {difference}",
+        "Score delta computed for {score_id}: {difference} (display score in {mode} mode)",
         score_id=score.id,
         difference=difference,
+        mode=settings.scoring_mode,
     )
     if difference > 0 and score.passed and ranked:
         match score.rank:
