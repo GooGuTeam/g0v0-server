@@ -11,6 +11,7 @@ from app.calculator import (
     calculate_weighted_acc,
     calculate_weighted_pp,
     clamp,
+    get_display_score,
     pre_fetch_and_calculate_pp,
 )
 from app.config import settings
@@ -234,9 +235,6 @@ class Score(ScoreBase, table=True):
         Returns:
             The display score in the requested scoring mode
         """
-        from app.calculator import get_display_score
-        from app.config import settings
-
         if mode is None:
             mode = settings.scoring_mode
 
@@ -1183,7 +1181,7 @@ async def _process_statistics(
                     beatmap_id=score.beatmap_id,
                     gamemode=score.gamemode,
                     score_id=score.id,
-                    total_score=current_display_score,
+                    total_score=score.total_score,
                     rank=score.rank,
                     mods=mod_for_save,
                 )
@@ -1197,14 +1195,14 @@ async def _process_statistics(
 
         # 情况3: 有最佳分数记录和该mod组合的记录，且是同一个记录，更新得分更高的情况
         elif previous_score_best.score_id == previous_score_best_mod.score_id and difference > 0:
-            previous_score_best.total_score = current_display_score
+            previous_score_best.total_score = score.total_score
             previous_score_best.rank = score.rank
             previous_score_best.score_id = score.id
             logger.info(
                 "Updated existing best score for user {user_id} | score_id={score_id} total={total}",
                 user_id=user.id,
                 score_id=score.id,
-                total=current_display_score,
+                total=score.total_score,
             )
 
         # 情况4: 有最佳分数记录和该mod组合的记录，但不是同一个记录
@@ -1220,10 +1218,9 @@ async def _process_statistics(
                 await session.delete(previous_score_best)
 
             # 更新mod特定最佳记录（如果新分数更高）
-            previous_mod_display_score = previous_score_best_mod.score.get_display_score()
-            mod_diff = current_display_score - previous_mod_display_score
+            mod_diff = score.total_score - previous_score_best_mod.total_score
             if mod_diff > 0:
-                previous_score_best_mod.total_score = current_display_score
+                previous_score_best_mod.total_score = score.total_score
                 previous_score_best_mod.rank = score.rank
                 previous_score_best_mod.score_id = score.id
                 logger.info(

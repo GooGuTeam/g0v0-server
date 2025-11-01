@@ -374,7 +374,9 @@ async def _recalculate_statistics(
             continue
 
         statistics.play_count += 1
-        statistics.total_score += score.total_score
+        # Use display score based on configured scoring mode
+        display_score = score.get_display_score()
+        statistics.total_score += display_score
 
         playtime, is_valid = calculate_playtime(score, beatmap.hit_length)
         if is_valid:
@@ -390,7 +392,9 @@ async def _recalculate_statistics(
         if ranked and score.passed:
             statistics.maximum_combo = max(statistics.maximum_combo, score.max_combo)
             previous = cached_best.get(score.beatmap_id)
-            difference = score.total_score - (previous.total_score if previous else 0)
+            # Calculate difference using display scores
+            previous_display = previous.get_display_score() if previous else 0
+            difference = display_score - previous_display
             if difference > 0:
                 cached_best[score.beatmap_id] = score
                 statistics.ranked_score += difference

@@ -6,8 +6,9 @@ from typing import TYPE_CHECKING
 
 from app.calculators.performance import PerformanceCalculator
 from app.config import settings
+from app.const import MAX_SCORE
 from app.log import log
-from app.models.score import GameMode, HitResult, ScoreStatistics
+from app.models.score import GameMode, ScoreStatistics
 from app.models.scoring_mode import ScoringMode
 
 from osupyparser import HitObject, OsuFile
@@ -24,9 +25,6 @@ if TYPE_CHECKING:
 logger = log("Calculator")
 
 CALCULATOR: PerformanceCalculator | None = None
-
-# Maximum score in standardised scoring mode
-MAX_SCORE = 1000000
 
 
 async def init_calculator():
@@ -56,29 +54,6 @@ def clamp[T: int | float](n: T, min_value: T, max_value: T) -> T:
         return n
 
 
-def _is_hit_result_basic(hit_result: HitResult) -> bool:
-    """
-    Check if a HitResult is a basic (non-tick, non-bonus) result.
-
-    Based on: https://github.com/ppy/osu/blob/master/osu.Game/Rulesets/Scoring/HitResult.cs
-    """
-    if hit_result in {HitResult.LEGACY_COMBO_INCREASE, HitResult.COMBO_BREAK}:
-        return False
-
-    # Check if it's scorable and not a tick or bonus
-    is_tick = hit_result in {
-        HitResult.LARGE_TICK_HIT,
-        HitResult.LARGE_TICK_MISS,
-        HitResult.SMALL_TICK_HIT,
-        HitResult.SMALL_TICK_MISS,
-        HitResult.SLIDER_TAIL_HIT,
-    }
-
-    is_bonus = hit_result in {HitResult.SMALL_BONUS, HitResult.LARGE_BONUS}
-
-    return hit_result.is_scorable() and not is_tick and not is_bonus
-
-
 def get_display_score(
     ruleset_id: int, total_score: int, mode: ScoringMode, maximum_statistics: ScoreStatistics
 ) -> int:
@@ -101,7 +76,7 @@ def get_display_score(
 
     # Calculate max basic judgements
     max_basic_judgements = sum(
-        count for hit_result, count in maximum_statistics.items() if _is_hit_result_basic(hit_result)
+        count for hit_result, count in maximum_statistics.items() if hit_result.is_basic()
     )
 
     return _convert_standardised_to_classic(ruleset_id, total_score, max_basic_judgements)

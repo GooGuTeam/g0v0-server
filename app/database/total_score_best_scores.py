@@ -56,7 +56,7 @@ class TotalScoreBestScore(SQLModel, table=True):
         )
         statistics = statistics.first()
         if statistics:
-            # Get the display score to ensure consistency with current scoring mode
+            # Use display score from the referenced score for consistency with current scoring mode
             display_score = self.score.get_display_score()
             statistics.total_score -= display_score
             statistics.ranked_score -= display_score

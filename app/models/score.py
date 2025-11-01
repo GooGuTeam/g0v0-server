@@ -251,6 +251,28 @@ class HitResult(str, Enum):
             HitResult.IGNORE_MISS,
         )
 
+    def is_basic(self) -> bool:
+        """
+        Check if a HitResult is a basic (non-tick, non-bonus) result.
+
+        Based on: https://github.com/ppy/osu/blob/master/osu.Game/Rulesets/Scoring/HitResult.cs
+        """
+        if self in {HitResult.LEGACY_COMBO_INCREASE, HitResult.COMBO_BREAK}:
+            return False
+
+        # Check if it's scorable and not a tick or bonus
+        is_tick = self in {
+            HitResult.LARGE_TICK_HIT,
+            HitResult.LARGE_TICK_MISS,
+            HitResult.SMALL_TICK_HIT,
+            HitResult.SMALL_TICK_MISS,
+            HitResult.SLIDER_TAIL_HIT,
+        }
+
+        is_bonus = self in {HitResult.SMALL_BONUS, HitResult.LARGE_BONUS}
+
+        return self.is_scorable() and not is_tick and not is_bonus
+
 
 class LeaderboardType(Enum):
     GLOBAL = "global"
