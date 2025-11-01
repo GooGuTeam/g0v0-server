@@ -56,8 +56,10 @@ class TotalScoreBestScore(SQLModel, table=True):
         )
         statistics = statistics.first()
         if statistics:
-            statistics.total_score -= self.total_score
-            statistics.ranked_score -= self.total_score
+            # Get the display score to ensure consistency with current scoring mode
+            display_score = self.score.get_display_score()
+            statistics.total_score -= display_score
+            statistics.ranked_score -= display_score
             statistics.level_current = calculate_score_to_level(statistics.total_score)
             match self.rank:
                 case Rank.X:
