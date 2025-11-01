@@ -10,8 +10,7 @@ updates:
       timezone: "Asia/Shanghai"
     open-pull-requests-limit: 10
     labels:
-      - "dependencies"
-      - "python"
+      - "type/dependencies"
     commit-message:
       prefix: "chore"
       prefix-development: "chore"
@@ -41,8 +40,7 @@ updates:
       timezone: "Asia/Shanghai"
     open-pull-requests-limit: 5
     labels:
-      - "dependencies"
-      - "github-actions"
+      - "type/dependencies"
     commit-message:
       prefix: "chore"
       include: "scope"
@@ -57,8 +55,7 @@ updates:
       timezone: "Asia/Shanghai"
     open-pull-requests-limit: 5
     labels:
-      - "dependencies"
-      - "docker"
+      - "type/dependencies"
     commit-message:
       prefix: "chore"
       include: "scope"
