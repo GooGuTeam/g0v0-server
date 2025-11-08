@@ -106,7 +106,7 @@ class PerformanceServerPerformanceCalculator(BasePerformanceCalculator):
                             "small_tick_hit": score.nsmall_tick_hit or 0,
                             "slider_tail_hit": score.nslider_tail_hit or 0,
                         },
-                        "ruleset": score.gamemode.value,
+                        "ruleset": score.gamemode.to_base_ruleset().value,
                     },
                 )
                 if resp.status_code != 200:

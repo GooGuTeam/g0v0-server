@@ -8,7 +8,7 @@ from app.calculators.performance import PerformanceCalculator
 from app.config import settings
 from app.const import MAX_SCORE
 from app.log import log
-from app.models.score import GameMode, ScoreStatistics
+from app.models.score import GameMode, HitResult, ScoreStatistics
 from app.models.scoring_mode import ScoringMode
 
 from osupyparser import HitObject, OsuFile
@@ -73,7 +73,9 @@ def get_display_score(ruleset_id: int, total_score: int, mode: ScoringMode, maxi
         return total_score
 
     # Calculate max basic judgements
-    max_basic_judgements = sum(count for hit_result, count in maximum_statistics.items() if hit_result.is_basic())
+    max_basic_judgements = sum(
+        count for hit_result, count in maximum_statistics.items() if HitResult(hit_result).is_basic()
+    )
 
     return _convert_standardised_to_classic(ruleset_id, total_score, max_basic_judgements)
 
