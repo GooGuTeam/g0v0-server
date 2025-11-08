@@ -5,6 +5,9 @@
 		},
 		{
 			"path": "spectator-server"
-		}
+		},
+    {
+      "path": "performance-server"
+    }
 	]
 }

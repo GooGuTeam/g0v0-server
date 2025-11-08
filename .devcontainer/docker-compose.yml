@@ -35,11 +35,11 @@ services:
       SHARED_INTEROP_SECRET: "dev-interop-secret"
       SENTRY_DSN: "https://5840d8cb8d2b4d238369443bedef1d74@glitchtip.g0v0.top/4"
       USE_LEGACY_RSA_AUTH: "0"
-      RULESETS_PATH: "../rulesets"
-
       # .NET 环境变量
       DOTNET_CLI_TELEMETRY_OPTOUT: "1"
       DOTNET_NOLOGO: "1"
+
+      RULESETS_PATH: "/workspaces/osu_lazer_api/rulesets"
 
   mysql:
     image: mysql:8.0
