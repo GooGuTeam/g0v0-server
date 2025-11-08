@@ -160,6 +160,7 @@ class BeatmapResp(BeatmapBase):
     failtimes: FailTimeResp | None = None
     top_tag_ids: list[APIBeatmapTag] | None = None
     current_user_tag_ids: list[int] | None = None
+    is_deleted: bool = False
 
     @classmethod
     async def from_db(
@@ -184,6 +185,7 @@ class BeatmapResp(BeatmapBase):
             beatmap_["status"] = beatmap_status.name.lower()
             beatmap_["ranked"] = beatmap_status.value
         beatmap_["mode_int"] = int(beatmap.mode)
+        beatmap_["is_deleted"] = beatmap.deleted_at is not None
         if not from_set:
             beatmap_["beatmapset"] = await BeatmapsetResp.from_db(beatmap.beatmapset, session=session, user=user)
         if beatmap.failtimes is not None:

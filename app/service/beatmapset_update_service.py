@@ -182,6 +182,7 @@ class BeatmapsetUpdateService:
                     logger.error(f"failed to add missing beatmapset {missing}: {e}")
             if total > 0:
                 logger.opt(colors=True).info(f"added {total} missing beatmapset")
+            await session.commit()
         self._adding_missing = False
 
     async def add(self, beatmapset: BeatmapsetResp, calculate_next_sync: bool = True):
@@ -397,6 +398,8 @@ class BeatmapsetUpdateService:
                     existing_beatmap = await session.get(Beatmap, change.beatmap_id)
                     if existing_beatmap:
                         await session.merge(new_db_beatmap)
+                        if change.type == BeatmapChangeType.MAP_DELETED:
+                            existing_beatmap.deleted_at = utcnow()
                         await session.commit()
                     if change.type != BeatmapChangeType.STATUS_CHANGED:
                         await _process_update_or_delete_beatmaps(change.beatmap_id)

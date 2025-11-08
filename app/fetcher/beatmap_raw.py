@@ -23,11 +23,13 @@ class BeatmapRawFetcher(BaseFetcher):
             resp = await self._request(req_url)
             if resp.status_code >= 400:
                 continue
+            if not resp.text:
+                continue
             return resp.text
         raise HTTPError("Failed to fetch beatmap")
 
     async def _request(self, url: str) -> Response:
-        async with AsyncClient() as client:
+        async with AsyncClient(timeout=15) as client:
             response = await client.get(
                 url,
             )
