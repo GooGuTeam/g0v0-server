@@ -56,14 +56,16 @@ Go to [custom-rulesets](https://github.com/GooGuTeam/custom-rulesets) to downloa
     ```bash
     cp .env.example .env
     ```
-3.  Start the service
+3. (Optional) Download rulesets
+    Go to [custom-rulesets](https://github.com/GooGuTeam/custom-rulesets/releases/latest) to download the custom rulesets modified for g0v0-server. Place the downloaded DLLs into the `rulesets/` directory to enable custom ruleset support in the spectator server and performance calculator.
+4.  Start the service
     ```bash
     # Standard server
     docker-compose -f docker-compose.yml up -d
     # Enable osu!RX and osu!AP statistics (Gu pp algorithm based on ppy-sb pp algorithm)
     docker-compose -f docker-compose-osurx.yml up -d
     ```
-4.  Connect to the server from the game
+5.  Connect to the server from the game
 
     Use a [custom osu!lazer client](https://github.com/GooGuTeam/osu), or use [LazerAuthlibInjection](https://github.com/MingxuanGame/LazerAuthlibInjection), and change the server settings to the server's address.
 

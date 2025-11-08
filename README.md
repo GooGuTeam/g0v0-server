@@ -60,7 +60,11 @@ cd g0v0-server
 cp .env.example .env
 ```
 
-3. 启动服务
+3. （可选）下载 rulesets
+
+前往 [custom-rulesets](https://github.com/GooGuTeam/custom-rulesets/releases/latest) 下载为 g0v0-server 修改的自定义 ruleset。将下载的 DLL 放入 `rulesets/` 目录，以在旁观服务器和表现分计算器中启用自定义 ruleset 支持。
+
+4. 启动服务
 ```bash
 # 标准服务器
 docker-compose -f docker-compose.yml up -d
@@ -68,7 +72,7 @@ docker-compose -f docker-compose.yml up -d
 docker-compose -f docker-compose-osurx.yml up -d
 ```
 
-4. 通过游戏连接服务器
+5. 通过游戏连接服务器
 
 使用[自定义的 osu!lazer 客户端](https://github.com/GooGuTeam/osu)，或者使用 [LazerAuthlibInjection](https://github.com/MingxuanGame/LazerAuthlibInjection)，修改服务器设置为服务器的 IP
 

@@ -216,7 +216,7 @@ bancho.py-master/*
 storage/
 replays/
 osu-master/*
-
+rulesets/
 geoip/*
 newrelic.ini
 logs/
@@ -230,3 +230,4 @@ config/*
 !config/
 !config/.gitkeep
 osu-web-master/*
+performance-server
