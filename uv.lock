@@ -752,6 +752,11 @@ dependencies = [
     { name = "uvicorn", extra = ["standard"] },
 ]
 
+[package.optional-dependencies]
+rosu = [
+    { name = "rosu-pp-py" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "datamodel-code-generator" },
@@ -759,9 +764,6 @@ dev = [
     { name = "pyright" },
     { name = "ruff" },
     { name = "types-aioboto3", extra = ["aioboto3", "essential"] },
-]
-rosu = [
-    { name = "rosu-pp-py" },
 ]
 
 [package.metadata]
@@ -792,12 +794,14 @@ requires-dist = [
     { name = "python-jose", extras = ["cryptography"], specifier = ">=3.3.0" },
     { name = "python-multipart", specifier = ">=0.0.6" },
     { name = "redis", specifier = ">=5.0.1" },
+    { name = "rosu-pp-py", marker = "extra == 'rosu'", specifier = ">=3.1.0" },
     { name = "sentry-sdk", extras = ["fastapi", "httpx", "loguru", "sqlalchemy"], specifier = ">=2.34.1" },
     { name = "sqlalchemy", specifier = ">=2.0.23" },
     { name = "sqlmodel", specifier = ">=0.0.24" },
     { name = "tinycss2", specifier = ">=1.4.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.24.0" },
 ]
+provides-extras = ["rosu"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -807,7 +811,6 @@ dev = [
     { name = "ruff", specifier = ">=0.12.4" },
     { name = "types-aioboto3", extras = ["aioboto3", "essential"], specifier = ">=15.0.0" },
 ]
-rosu = [{ name = "rosu-pp-py", specifier = ">=3.1.0" }]
 
 [[package]]
 name = "genson"

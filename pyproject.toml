@@ -39,6 +39,11 @@ dependencies = [
 ]
 authors = [{ name = "GooGuTeam" }]
 
+[project.optional-dependencies]
+rosu = [
+    "rosu-pp-py>=3.1.0",
+]
+
 [tool.ruff]
 line-length = 120
 target-version = "py312"
@@ -129,7 +134,4 @@ dev = [
     "pyright>=1.1.404",
     "ruff>=0.12.4",
     "types-aioboto3[aioboto3,essential]>=15.0.0",
-]
-rosu = [
-    "rosu-pp-py>=3.1.0",
 ]
