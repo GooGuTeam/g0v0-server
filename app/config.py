@@ -114,20 +114,20 @@ STORAGE_SETTINGS='{
 """,
                 "表现计算设置": """配置表现分计算器及其参数。
 
-### rosu-pp-py (默认)
-
-```bash
-CALCULATOR="rosu"
-CALCULATOR_CONFIG='{}'
-```
-
-### [osu-performance-server](https://github.com/GooGuTeam/osu-performance-server)
+### [osu-performance-server](https://github.com/GooGuTeam/osu-performance-server) (默认)
 
 ```bash
 CALCULATOR="performance_server"
 CALCULATOR_CONFIG='{
     "server_url": "http://localhost:5225"
 }'
+```
+
+### rosu-pp-py
+
+```bash
+CALCULATOR="rosu"
+CALCULATOR_CONFIG='{}'
 ```
 """,
             }
@@ -533,13 +533,13 @@ CALCULATOR_CONFIG='{
     # 表现计算设置
     calculator: Annotated[
         Literal["rosu", "performance_server"],
-        Field(default="rosu", description="表现分计算器"),
+        Field(default="performance_server", description="表现分计算器"),
         "表现计算设置",
     ]
     calculator_config: Annotated[
         dict[str, Any],
         Field(
-            default={},
+            default={"server_url": "http://localhost:5225"},
             description="表现分计算器配置 (JSON 格式)，具体配置项请参考上方",
         ),
         "表现计算设置",
