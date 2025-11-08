@@ -14,14 +14,15 @@ services:
       - MYSQL_HOST=mysql
       - MYSQL_PORT=3306
       - REDIS_URL=redis://redis:6379
-      # - CALCULATOR=performance_server
-      # - CALCULATOR_CONFIG='{"server_url":"http://performance-server:8080"}'
+      - CALCULATOR_CONFIG='{"server_url":"http://performance-server:8080"}'
     env_file:
       - .env
     depends_on:
       mysql:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      performance-server:
         condition: service_healthy
     volumes:
       - ./replays:/app/replays
@@ -56,7 +57,7 @@ services:
       - osu-network
 
   spectator:
-    image:  ghcr.io/googuteam/osu-server-spectator-custom-rulesets:master
+    image:  ghcr.io/googuteam/osu-server-spectator:master
     pull_policy: never
     environment:
       - REPLAY_UPLOAD_THREADS=${REPLAY_UPLOAD_THREADS:-1}
@@ -75,6 +76,8 @@ services:
       - mysql
       - redis
     restart: unless-stopped
+    volumes:
+      - ./rulesets:/data/rulesets
     networks:
       - osu-network
 
@@ -104,14 +107,16 @@ services:
       - osu-network
     command: redis-server --appendonly yes
 
-  # performance-server:
-  #   image: ghcr.io/googuteam/osu-performance-server:custom-rulesets
-  #   container_name: performance_server
-  #   environment:
-  #     - SAVE_BEATMAP_FILES=false
-  #   restart: unless-stopped
-  #   networks:
-  #     - osu-network
+  performance-server:
+    image: ghcr.io/googuteam/osu-performance-server:latest
+    container_name: performance_server
+    environment:
+      - SAVE_BEATMAP_FILES=false
+    volumes:
+      - ./rulesets:/data/rulesets
+    restart: unless-stopped
+    networks:
+      - osu-network
 
 volumes:
   mysql_data:
