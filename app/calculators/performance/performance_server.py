@@ -83,7 +83,7 @@ class PerformanceServerPerformanceCalculator(BasePerformanceCalculator):
 
     async def calculate_performance(self, beatmap_raw: str, score: "Score") -> PerformanceAttributes:
         # https://github.com/GooGuTeam/osu-performance-server#post-performance
-        async with AsyncClient() as client:
+        async with AsyncClient(timeout=15) as client:
             try:
                 resp = await client.post(
                     f"{self.server_url}/performance",
@@ -121,7 +121,7 @@ class PerformanceServerPerformanceCalculator(BasePerformanceCalculator):
         self, beatmap_raw: str, mods: list[APIMod] | None = None, gamemode: GameMode | None = None
     ) -> DifficultyAttributes:
         # https://github.com/GooGuTeam/osu-performance-server#post-difficulty
-        async with AsyncClient() as client:
+        async with AsyncClient(timeout=15) as client:
             try:
                 resp = await client.post(
                     f"{self.server_url}/difficulty",
