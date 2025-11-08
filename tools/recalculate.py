@@ -1173,6 +1173,8 @@ def _get_csv_path_for_subcommand(base_path: str | None, subcommand: str) -> str 
     # Insert subcommand name before the extension
     # e.g., "results.csv" -> "results.performance.csv"
     new_name = f"{path.stem}.{subcommand}{path.suffix}"
+    if path.parent == Path("."):
+        return new_name
     return str(path.parent / new_name)
 
 

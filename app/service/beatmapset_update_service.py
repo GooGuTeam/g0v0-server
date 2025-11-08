@@ -401,6 +401,11 @@ class BeatmapsetUpdateService:
                         if change.type == BeatmapChangeType.MAP_DELETED:
                             existing_beatmap.deleted_at = utcnow()
                         await session.commit()
+                    else:
+                        if change.type == BeatmapChangeType.MAP_DELETED:
+                            logger.opt(colors=True).warning(
+                                f"<g>[beatmap: {change.beatmap_id}]</g> MAP_DELETED received but beatmap not found in database; deletion skipped"
+                            )
                     if change.type != BeatmapChangeType.STATUS_CHANGED:
                         await _process_update_or_delete_beatmaps(change.beatmap_id)
                 await get_beatmapset_cache_service(get_redis()).invalidate_beatmap_lookup_cache(change.beatmap_id)
