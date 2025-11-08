@@ -348,7 +348,6 @@ class CSVWriter:
                         "acc_diff",
                     ]
                 )
-                self.initialized = True
 
             self.writer.writerow(
                 [
@@ -390,7 +389,6 @@ class CSVWriter:
                         "a_diff",
                     ]
                 )
-                self.initialized = True
 
             self.writer.writerow(
                 [
@@ -864,7 +862,7 @@ async def recalculate_user_mode_leaderboard(
             if statistics is None:
                 logger.warning(f"No statistics found for user {user_id} mode {gamemode}")
                 return
-            pervious_data = {
+            previous_data = {
                 "ranked_score": statistics.ranked_score,
                 "maximum_combo": statistics.maximum_combo,
                 "grade_ss": statistics.grade_ss,
@@ -903,13 +901,13 @@ async def recalculate_user_mode_leaderboard(
             await _recalculate_statistics(statistics, session, scores)
             await session.flush()
             changes = {
-                "ranked_score": statistics.ranked_score - pervious_data["ranked_score"],
-                "maximum_combo": statistics.maximum_combo - pervious_data["maximum_combo"],
-                "grade_ss": statistics.grade_ss - pervious_data["grade_ss"],
-                "grade_ssh": statistics.grade_ssh - pervious_data["grade_ssh"],
-                "grade_s": statistics.grade_s - pervious_data["grade_s"],
-                "grade_sh": statistics.grade_sh - pervious_data["grade_sh"],
-                "grade_a": statistics.grade_a - pervious_data["grade_a"],
+                "ranked_score": statistics.ranked_score - previous_data["ranked_score"],
+                "maximum_combo": statistics.maximum_combo - previous_data["maximum_combo"],
+                "grade_ss": statistics.grade_ss - previous_data["grade_ss"],
+                "grade_ssh": statistics.grade_ssh - previous_data["grade_ssh"],
+                "grade_s": statistics.grade_s - previous_data["grade_s"],
+                "grade_sh": statistics.grade_sh - previous_data["grade_sh"],
+                "grade_a": statistics.grade_a - previous_data["grade_a"],
             }
 
             message = (

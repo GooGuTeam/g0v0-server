@@ -1,13 +1,13 @@
 {
-	"folders": [
-		{
-			"path": "."
-		},
-		{
-			"path": "spectator-server"
-		},
+  "folders": [
+    {
+      "path": "."
+    },
+    {
+      "path": "spectator-server"
+    },
     {
       "path": "performance-server"
     }
-	]
+  ]
 }
