@@ -1,26 +1,38 @@
 from enum import Enum
+from typing import TYPE_CHECKING, NotRequired, TypedDict
 
-from .user import User, UserResp
+from app.database._base import DatabaseModel, included, ondemand
+from app.models.score import GameMode
 
-from pydantic import BaseModel
 from sqlmodel import (
     BigInteger,
     Column,
     Field,
     ForeignKey,
     Relationship as SQLRelationship,
-    SQLModel,
     select,
 )
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+if TYPE_CHECKING:
+    from .user import User, UserDict
+
 
 class RelationshipType(str, Enum):
-    FOLLOW = "Friend"
-    BLOCK = "Block"
+    FOLLOW = "friend"
+    BLOCK = "block"
 
 
-class Relationship(SQLModel, table=True):
+class RelationshipDict(TypedDict):
+    target_id: int | None
+    type: RelationshipType
+    id: NotRequired[int | None]
+    user_id: NotRequired[int | None]
+    mutual: NotRequired[bool]
+    target: NotRequired["UserDict"]
+
+
+class RelationshipModel(DatabaseModel[RelationshipDict]):
     __tablename__: str = "relationship"
     id: int | None = Field(
         default=None,
@@ -34,6 +46,7 @@ class Relationship(SQLModel, table=True):
             ForeignKey("lazer_users.id"),
             index=True,
         ),
+        exclude=True,
     )
     target_id: int = Field(
         default=None,
@@ -44,22 +57,10 @@ class Relationship(SQLModel, table=True):
         ),
     )
     type: RelationshipType = Field(default=RelationshipType.FOLLOW, nullable=False)
-    target: User = SQLRelationship(
-        sa_relationship_kwargs={
-            "foreign_keys": "[Relationship.target_id]",
-            "lazy": "selectin",
-        }
-    )
 
-
-class RelationshipResp(BaseModel):
-    target_id: int
-    target: UserResp
-    mutual: bool = False
-    type: RelationshipType
-
-    @classmethod
-    async def from_db(cls, session: AsyncSession, relationship: Relationship) -> "RelationshipResp":
+    @included
+    @staticmethod
+    async def mutual(session: AsyncSession, relationship: "Relationship") -> bool:
         target_relationship = (
             await session.exec(
                 select(Relationship).where(
@@ -68,23 +69,29 @@ class RelationshipResp(BaseModel):
                 )
             )
         ).first()
-        mutual = bool(
+        return bool(
             target_relationship is not None
             and relationship.type == RelationshipType.FOLLOW
             and target_relationship.type == RelationshipType.FOLLOW
         )
-        return cls(
-            target_id=relationship.target_id,
-            target=await UserResp.from_db(
-                relationship.target,
-                session,
-                include=[
-                    "team",
-                    "daily_challenge_user_stats",
-                    "statistics",
-                    "statistics_rulesets",
-                ],
-            ),
-            mutual=mutual,
-            type=relationship.type,
-        )
+
+    @ondemand
+    @staticmethod
+    async def target(
+        _session: AsyncSession,
+        relationship: "Relationship",
+        ruleset: GameMode | None = None,
+        includes: list[str] | None = None,
+    ) -> "UserDict":
+        from .user import UserModel
+
+        return await UserModel.transform(relationship.target, ruleset=ruleset, includes=includes)
+
+
+class Relationship(RelationshipModel, table=True):
+    target: "User" = SQLRelationship(
+        sa_relationship_kwargs={
+            "foreign_keys": "[Relationship.target_id]",
+            "lazy": "selectin",
+        }
+    )

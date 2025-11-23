@@ -3,12 +3,12 @@ from datetime import timedelta
 from enum import Enum
 import math
 import random
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, NamedTuple, cast
 
 from app.config import OldScoreProcessingMode, settings
-from app.database.beatmap import Beatmap, BeatmapResp
+from app.database.beatmap import Beatmap, BeatmapDict
 from app.database.beatmap_sync import BeatmapSync, SavedBeatmapMeta
-from app.database.beatmapset import Beatmapset, BeatmapsetResp
+from app.database.beatmapset import Beatmapset, BeatmapsetDict
 from app.database.score import Score
 from app.dependencies.database import get_redis, with_db
 from app.dependencies.storage import get_storage_service
@@ -62,10 +62,23 @@ STATUS_FACTOR: dict[BeatmapRankStatus, float] = {
 SCHEDULER_INTERVAL_MINUTES = 2
 
 
+class EnsuredBeatmap(BeatmapDict):
+    checksum: str
+    ranked: int
+
+
+class EnsuredBeatmapset(BeatmapsetDict):
+    ranked: int
+    ranked_date: datetime.datetime
+    last_updated: datetime.datetime
+    play_count: int
+    beatmaps: list[EnsuredBeatmap]
+
+
 class ProcessingBeatmapset:
-    def __init__(self, beatmapset: BeatmapsetResp, record: BeatmapSync) -> None:
+    def __init__(self, beatmapset: EnsuredBeatmapset, record: BeatmapSync) -> None:
         self.beatmapset = beatmapset
-        self.status = BeatmapRankStatus(self.beatmapset.ranked)
+        self.status = BeatmapRankStatus(self.beatmapset["ranked"])
         self.record = record
 
     def calculate_next_sync_time(
@@ -76,19 +89,19 @@ class ProcessingBeatmapset:
 
         now = utcnow()
         if self.status == BeatmapRankStatus.QUALIFIED:
-            assert self.beatmapset.ranked_date is not None, "ranked_date should not be None for qualified maps"
-            time_to_ranked = (self.beatmapset.ranked_date + timedelta(days=7) - now).total_seconds()
+            assert self.beatmapset["ranked_date"] is not None, "ranked_date should not be None for qualified maps"
+            time_to_ranked = (self.beatmapset["ranked_date"] + timedelta(days=7) - now).total_seconds()
             baseline = max(MIN_DELTA, time_to_ranked / 2)
             next_delta = max(MIN_DELTA, baseline)
         elif self.status in {BeatmapRankStatus.WIP, BeatmapRankStatus.PENDING}:
-            seconds_since_update = (now - self.beatmapset.last_updated).total_seconds()
+            seconds_since_update = (now - self.beatmapset["last_updated"]).total_seconds()
             factor_update = max(1.0, seconds_since_update / TAU)
-            factor_play = 1.0 + math.log(1.0 + self.beatmapset.play_count)
+            factor_play = 1.0 + math.log(1.0 + self.beatmapset["play_count"])
             status_factor = STATUS_FACTOR[self.status]
             baseline = BASE * factor_play / factor_update * status_factor
             next_delta = max(MIN_DELTA, baseline * (GROWTH ** (self.record.consecutive_no_change + 1)))
         elif self.status == BeatmapRankStatus.GRAVEYARD:
-            days_since_update = (now - self.beatmapset.last_updated).days
+            days_since_update = (now - self.beatmapset["last_updated"]).days
             doubling_periods = days_since_update / GRAVEYARD_DOUBLING_PERIOD_DAYS
             delta = MIN_DELTA * (2**doubling_periods)
             max_seconds = GRAVEYARD_MAX_DAYS * 86400
@@ -105,21 +118,24 @@ class ProcessingBeatmapset:
 
     @property
     def beatmapset_changed(self) -> bool:
-        return self.record.beatmap_status != BeatmapRankStatus(self.beatmapset.ranked)
+        return self.record.beatmap_status != BeatmapRankStatus(self.beatmapset["ranked"])
 
     @property
     def changed_beatmaps(self) -> list[ChangedBeatmap]:
         changed_beatmaps = []
-        for bm in self.beatmapset.beatmaps:
-            saved = next((s for s in self.record.beatmaps if s["beatmap_id"] == bm.id), None)
+        for bm in self.beatmapset["beatmaps"]:
+            saved = next((s for s in self.record.beatmaps if s["beatmap_id"] == bm["id"]), None)
             if not saved or saved["is_deleted"]:
-                changed_beatmaps.append(ChangedBeatmap(bm.id, BeatmapChangeType.MAP_ADDED))
-            elif saved["md5"] != bm.checksum:
-                changed_beatmaps.append(ChangedBeatmap(bm.id, BeatmapChangeType.MAP_UPDATED))
-            elif saved["beatmap_status"] != BeatmapRankStatus(bm.ranked):
-                changed_beatmaps.append(ChangedBeatmap(bm.id, BeatmapChangeType.STATUS_CHANGED))
+                changed_beatmaps.append(ChangedBeatmap(bm["id"], BeatmapChangeType.MAP_ADDED))
+            elif saved["md5"] != bm["checksum"]:
+                changed_beatmaps.append(ChangedBeatmap(bm["id"], BeatmapChangeType.MAP_UPDATED))
+            elif saved["beatmap_status"] != BeatmapRankStatus(bm["ranked"]):
+                changed_beatmaps.append(ChangedBeatmap(bm["id"], BeatmapChangeType.STATUS_CHANGED))
         for saved in self.record.beatmaps:
-            if not any(bm.id == saved["beatmap_id"] for bm in self.beatmapset.beatmaps) and not saved["is_deleted"]:
+            if (
+                not any(bm["id"] == saved["beatmap_id"] for bm in self.beatmapset["beatmaps"])
+                and not saved["is_deleted"]
+            ):
                 changed_beatmaps.append(ChangedBeatmap(saved["beatmap_id"], BeatmapChangeType.MAP_DELETED))
         return changed_beatmaps
 
@@ -132,7 +148,7 @@ class BeatmapsetUpdateService:
     async def add_missing_beatmapset(self, beatmapset_id: int, immediate: bool = False) -> bool:
         beatmapset = await self.fetcher.get_beatmapset(beatmapset_id)
         if immediate:
-            await self._sync_immediately(beatmapset)
+            await self._sync_immediately(cast(EnsuredBeatmapset, beatmapset))
             logger.debug(f"triggered immediate sync for beatmapset {beatmapset_id} ")
             return True
         await self.add(beatmapset)
@@ -185,11 +201,13 @@ class BeatmapsetUpdateService:
             await session.commit()
         self._adding_missing = False
 
-    async def add(self, beatmapset: BeatmapsetResp, calculate_next_sync: bool = True):
+    async def add(self, set: BeatmapsetDict, calculate_next_sync: bool = True):
+        beatmapset = cast(EnsuredBeatmapset, set)
         async with with_db() as session:
-            sync_record = await session.get(BeatmapSync, beatmapset.id)
+            beatmapset_id = beatmapset["id"]
+            sync_record = await session.get(BeatmapSync, beatmapset_id)
             if not sync_record:
-                database_beatmapset = await session.get(Beatmapset, beatmapset.id)
+                database_beatmapset = await session.get(Beatmapset, beatmapset_id)
                 if database_beatmapset:
                     status = BeatmapRankStatus(database_beatmapset.beatmap_status)
                     await database_beatmapset.awaitable_attrs.beatmaps
@@ -203,19 +221,29 @@ class BeatmapsetUpdateService:
                         for bm in database_beatmapset.beatmaps
                     ]
                 else:
-                    status = BeatmapRankStatus(beatmapset.ranked)
-                    beatmaps = [
-                        SavedBeatmapMeta(
-                            beatmap_id=bm.id,
-                            md5=bm.checksum,
-                            is_deleted=False,
-                            beatmap_status=BeatmapRankStatus(bm.ranked),
+                    ranked = beatmapset.get("ranked")
+                    if ranked is None:
+                        raise ValueError("ranked field is required")
+                    status = BeatmapRankStatus(ranked)
+                    beatmap_list = beatmapset.get("beatmaps", [])
+                    beatmaps = []
+                    for bm in beatmap_list:
+                        bm_id = bm.get("id")
+                        checksum = bm.get("checksum")
+                        ranked = bm.get("ranked")
+                        if bm_id is None or checksum is None or ranked is None:
+                            continue
+                        beatmaps.append(
+                            SavedBeatmapMeta(
+                                beatmap_id=bm_id,
+                                md5=checksum,
+                                is_deleted=False,
+                                beatmap_status=BeatmapRankStatus(ranked),
+                            )
                         )
-                        for bm in beatmapset.beatmaps
-                    ]
 
                 sync_record = BeatmapSync(
-                    beatmapset_id=beatmapset.id,
+                    beatmapset_id=beatmapset_id,
                     beatmaps=beatmaps,
                     beatmap_status=status,
                 )
@@ -223,13 +251,27 @@ class BeatmapsetUpdateService:
                 await session.commit()
                 await session.refresh(sync_record)
             else:
-                sync_record.beatmaps = [
-                    SavedBeatmapMeta(
-                        beatmap_id=bm.id, md5=bm.checksum, is_deleted=False, beatmap_status=BeatmapRankStatus(bm.ranked)
+                ranked = beatmapset.get("ranked")
+                if ranked is None:
+                    raise ValueError("ranked field is required")
+                beatmap_list = beatmapset.get("beatmaps", [])
+                beatmaps = []
+                for bm in beatmap_list:
+                    bm_id = bm.get("id")
+                    checksum = bm.get("checksum")
+                    bm_ranked = bm.get("ranked")
+                    if bm_id is None or checksum is None or bm_ranked is None:
+                        continue
+                    beatmaps.append(
+                        SavedBeatmapMeta(
+                            beatmap_id=bm_id,
+                            md5=checksum,
+                            is_deleted=False,
+                            beatmap_status=BeatmapRankStatus(bm_ranked),
+                        )
                     )
-                    for bm in beatmapset.beatmaps
-                ]
-                sync_record.beatmap_status = BeatmapRankStatus(beatmapset.ranked)
+                sync_record.beatmaps = beatmaps
+                sync_record.beatmap_status = BeatmapRankStatus(ranked)
             if calculate_next_sync:
                 processing = ProcessingBeatmapset(beatmapset, sync_record)
                 next_time_delta = processing.calculate_next_sync_time()
@@ -238,17 +280,19 @@ class BeatmapsetUpdateService:
                     await BeatmapsetUpdateService._sync_immediately(self, beatmapset)
                     return
                 sync_record.next_sync_time = utcnow() + next_time_delta
-            logger.opt(colors=True).info(f"<g>[{beatmapset.id}]</g> next sync at {sync_record.next_sync_time}")
+            beatmapset_id = beatmapset.get("id")
+            if beatmapset_id:
+                logger.opt(colors=True).info(f"<g>[{beatmapset_id}]</g> next sync at {sync_record.next_sync_time}")
             await session.commit()
 
-    async def _sync_immediately(self, beatmapset: BeatmapsetResp) -> None:
+    async def _sync_immediately(self, beatmapset: EnsuredBeatmapset) -> None:
         async with with_db() as session:
-            record = await session.get(BeatmapSync, beatmapset.id)
+            record = await session.get(BeatmapSync, beatmapset["id"])
             if not record:
                 record = BeatmapSync(
-                    beatmapset_id=beatmapset.id,
+                    beatmapset_id=beatmapset["id"],
                     beatmaps=[],
-                    beatmap_status=BeatmapRankStatus(beatmapset.ranked),
+                    beatmap_status=BeatmapRankStatus(beatmapset["ranked"]),
                 )
                 session.add(record)
                 await session.commit()
@@ -261,12 +305,12 @@ class BeatmapsetUpdateService:
         record: BeatmapSync,
         session: AsyncSession,
         *,
-        beatmapset: BeatmapsetResp | None = None,
+        beatmapset: EnsuredBeatmapset | None = None,
     ):
         logger.opt(colors=True).info(f"<g>[{record.beatmapset_id}]</g> syncing...")
         if beatmapset is None:
             try:
-                beatmapset = await self.fetcher.get_beatmapset(record.beatmapset_id)
+                beatmapset = cast(EnsuredBeatmapset, await self.fetcher.get_beatmapset(record.beatmapset_id))
             except Exception as e:
                 if isinstance(e, HTTPStatusError) and e.response.status_code == 404:
                     logger.opt(colors=True).warning(
@@ -292,20 +336,20 @@ class BeatmapsetUpdateService:
         if changed:
             record.beatmaps = [
                 SavedBeatmapMeta(
-                    beatmap_id=bm.id,
-                    md5=bm.checksum,
+                    beatmap_id=bm["id"],
+                    md5=bm["checksum"],
                     is_deleted=False,
-                    beatmap_status=BeatmapRankStatus(bm.ranked),
+                    beatmap_status=BeatmapRankStatus(bm["ranked"]),
                 )
-                for bm in beatmapset.beatmaps
+                for bm in beatmapset["beatmaps"]
             ]
-            record.beatmap_status = BeatmapRankStatus(beatmapset.ranked)
+            record.beatmap_status = BeatmapRankStatus(beatmapset["ranked"])
             record.consecutive_no_change = 0
 
             bg_tasks.add_task(
                 self._process_changed_beatmaps,
                 changed_beatmaps,
-                beatmapset.beatmaps,
+                beatmapset["beatmaps"],
             )
             bg_tasks.add_task(
                 self._process_changed_beatmapset,
@@ -317,7 +361,7 @@ class BeatmapsetUpdateService:
         next_time_delta = processing.calculate_next_sync_time()
         if not next_time_delta:
             logger.opt(colors=True).info(
-                f"<yellow>[{beatmapset.id}]</yellow> beatmapset has transformed to ranked or loved,"
+                f"<yellow>[{beatmapset['id']}]</yellow> beatmapset has transformed to ranked or loved,"
                 f" removing from sync list"
             )
             await session.delete(record)
@@ -338,18 +382,18 @@ class BeatmapsetUpdateService:
                 await self.sync(record, session)
             await session.commit()
 
-    async def _process_changed_beatmapset(self, beatmapset: BeatmapsetResp):
+    async def _process_changed_beatmapset(self, beatmapset: EnsuredBeatmapset):
         async with with_db() as session:
-            db_beatmapset = await session.get(Beatmapset, beatmapset.id)
-            new_beatmapset = await Beatmapset.from_resp_no_save(beatmapset)
+            db_beatmapset = await session.get(Beatmapset, beatmapset["id"])
+            new_beatmapset = await Beatmapset.from_resp_no_save(beatmapset)  # pyright: ignore[reportArgumentType]
             if db_beatmapset:
                 await session.merge(new_beatmapset)
-            await get_beatmapset_cache_service(get_redis()).invalidate_beatmapset_cache(beatmapset.id)
+            await get_beatmapset_cache_service(get_redis()).invalidate_beatmapset_cache(beatmapset["id"])
             await session.commit()
 
-    async def _process_changed_beatmaps(self, changed: list[ChangedBeatmap], beatmaps_list: list[BeatmapResp]):
+    async def _process_changed_beatmaps(self, changed: list[ChangedBeatmap], beatmaps_list: list[EnsuredBeatmap]):
         storage_service = get_storage_service()
-        beatmaps = {bm.id: bm for bm in beatmaps_list}
+        beatmaps = {bm["id"]: bm for bm in beatmaps_list}
 
         async with with_db() as session:
 
@@ -380,9 +424,9 @@ class BeatmapsetUpdateService:
                         )
                         continue
                     logger.opt(colors=True).info(
-                        f"<g>[{beatmap.beatmapset_id}]</g> adding beatmap <blue>{beatmap.id}</blue>"
+                        f"<g>[{beatmap['beatmapset_id']}]</g> adding beatmap <blue>{beatmap['id']}</blue>"
                     )
-                    await Beatmap.from_resp_no_save(session, beatmap)
+                    await Beatmap.from_resp_no_save(session, beatmap)  # pyright: ignore[reportArgumentType]
                 else:
                     beatmap = beatmaps.get(change.beatmap_id)
                     if not beatmap:
@@ -391,10 +435,10 @@ class BeatmapsetUpdateService:
                         )
                         continue
                     logger.opt(colors=True).info(
-                        f"<g>[{beatmap.beatmapset_id}]</g> processing beatmap <blue>{beatmap.id}</blue> "
+                        f"<g>[{beatmap['beatmapset_id']}]</g> processing beatmap <blue>{beatmap['id']}</blue> "
                         f"change <cyan>{change.type}</cyan>"
                     )
-                    new_db_beatmap = await Beatmap.from_resp_no_save(session, beatmap)
+                    new_db_beatmap = await Beatmap.from_resp_no_save(session, beatmap)  # pyright: ignore[reportArgumentType]
                     existing_beatmap = await session.get(Beatmap, change.beatmap_id)
                     if existing_beatmap:
                         await session.merge(new_db_beatmap)

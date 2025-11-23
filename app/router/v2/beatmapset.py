@@ -2,17 +2,24 @@ import re
 from typing import Annotated, Literal
 from urllib.parse import parse_qs
 
-from app.database import Beatmap, Beatmapset, BeatmapsetResp, FavouriteBeatmapset, User
-from app.database.beatmapset import SearchBeatmapsetsResp
+from app.database import (
+    Beatmap,
+    Beatmapset,
+    BeatmapsetModel,
+    FavouriteBeatmapset,
+    SearchBeatmapsetsResp,
+    User,
+)
 from app.dependencies.beatmap_download import DownloadService
 from app.dependencies.cache import BeatmapsetCacheService, UserCacheService
-from app.dependencies.database import Database, Redis, with_db
+from app.dependencies.database import Database, Redis
 from app.dependencies.fetcher import Fetcher
 from app.dependencies.geoip import IPAddress, get_geoip_helper
 from app.dependencies.user import ClientUser, get_current_user
 from app.helpers.asset_proxy_helper import asset_proxy_response
 from app.models.beatmap import SearchQueryModel
 from app.service.beatmapset_cache_service import generate_hash
+from app.utils import api_doc
 
 from .router import router
 
@@ -27,14 +34,7 @@ from fastapi import (
 )
 from fastapi.responses import RedirectResponse
 from httpx import HTTPError
-from sqlmodel import exists, select
-
-
-async def _save_to_db(sets: SearchBeatmapsetsResp):
-    async with with_db() as session:
-        for s in sets.beatmapsets:
-            if not (await session.exec(select(exists()).where(Beatmapset.id == s.id))).first():
-                await Beatmapset.from_resp(session, s)
+from sqlmodel import select
 
 
 @router.get(
@@ -105,7 +105,6 @@ async def search_beatmapset(
 
     try:
         sets = await fetcher.search_beatmapset(query, cursor, redis)
-        background_tasks.add_task(_save_to_db, sets)
 
         # 缓存搜索结果
         await cache_service.cache_search_result(query_hash, cursor_hash, sets.model_dump())
@@ -117,8 +116,8 @@ async def search_beatmapset(
 @router.get(
     "/beatmapsets/lookup",
     tags=["谱面集"],
+    responses={200: api_doc("谱面集详细信息", BeatmapsetModel, BeatmapsetModel.BEATMAPSET_TRANSFORMER_INCLUDES)},
     name="查询谱面集 (通过谱面 ID)",
-    response_model=BeatmapsetResp,
     description=("通过谱面 ID 查询所属谱面集。"),
 )
 @asset_proxy_response
@@ -137,7 +136,10 @@ async def lookup_beatmapset(
 
     try:
         beatmap = await Beatmap.get_or_fetch(db, fetcher, bid=beatmap_id)
-        resp = await BeatmapsetResp.from_db(beatmap.beatmapset, session=db, user=current_user)
+
+        resp = await BeatmapsetModel.transform(
+            beatmap.beatmapset, user=current_user, includes=BeatmapsetModel.API_INCLUDES
+        )
 
         # 缓存结果
         await cache_service.cache_beatmap_lookup(beatmap_id, resp)
@@ -149,8 +151,8 @@ async def lookup_beatmapset(
 @router.get(
     "/beatmapsets/{beatmapset_id}",
     tags=["谱面集"],
+    responses={200: api_doc("谱面集详细信息", BeatmapsetModel, BeatmapsetModel.BEATMAPSET_TRANSFORMER_INCLUDES)},
     name="获取谱面集详情",
-    response_model=BeatmapsetResp,
     description="获取单个谱面集详情。",
 )
 @asset_proxy_response
@@ -169,7 +171,8 @@ async def get_beatmapset(
 
     try:
         beatmapset = await Beatmapset.get_or_fetch(db, fetcher, beatmapset_id)
-        resp = await BeatmapsetResp.from_db(beatmapset, session=db, include=["recent_favourites"], user=current_user)
+        await db.refresh(current_user)
+        resp = await BeatmapsetModel.transform(beatmapset, includes=BeatmapsetModel.API_INCLUDES, user=current_user)
 
         # 缓存结果
         await cache_service.cache_beatmapset(resp)

@@ -1,25 +1,27 @@
 from datetime import UTC
 from typing import Annotated, Literal
 
-from app.database.beatmap import Beatmap, BeatmapResp
-from app.database.beatmapset import BeatmapsetResp
-from app.database.item_attempts_count import ItemAttemptsCount, ItemAttemptsResp
+from app.database.beatmap import (
+    Beatmap,
+    BeatmapModel,
+)
+from app.database.beatmapset import BeatmapsetModel
+from app.database.item_attempts_count import ItemAttemptsCount, ItemAttemptsCountModel
 from app.database.multiplayer_event import MultiplayerEvent, MultiplayerEventResp
-from app.database.playlists import Playlist, PlaylistResp
-from app.database.room import APIUploadedRoom, Room, RoomResp
+from app.database.playlists import Playlist, PlaylistModel
+from app.database.room import APIUploadedRoom, Room, RoomModel
 from app.database.room_participated_user import RoomParticipatedUser
 from app.database.score import Score
-from app.database.user import User, UserResp
+from app.database.user import User, UserModel
 from app.dependencies.database import Database, Redis
 from app.dependencies.user import ClientUser, get_current_user
 from app.models.room import MatchType, RoomCategory, RoomStatus
 from app.service.room import create_playlist_room_from_api
-from app.utils import utcnow
+from app.utils import api_doc, utcnow
 
 from .router import router
 
 from fastapi import HTTPException, Path, Query, Security
-from pydantic import BaseModel, Field
 from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import col, exists, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -28,7 +30,19 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 @router.get(
     "/rooms",
     tags=["房间"],
-    response_model=list[RoomResp],
+    responses={
+        200: api_doc(
+            "房间列表",
+            list[RoomModel],
+            [
+                "current_playlist_item.beatmap.beatmapset",
+                "difficulty_range",
+                "host.country",
+                "playlist_item_stats",
+                "recent_participants",
+            ],
+        )
+    },
     name="获取房间列表",
     description="获取房间列表。支持按状态/模式筛选",
 )
@@ -49,7 +63,7 @@ async def get_all_rooms(
     ] = RoomCategory.NORMAL,
     status: Annotated[RoomStatus | None, Query(description="房间状态（可选）")] = None,
 ):
-    resp_list: list[RoomResp] = []
+    resp_list = []
     where_clauses: list[ColumnElement[bool]] = [col(Room.category) == category, col(Room.type) != MatchType.MATCHMAKING]
     now = utcnow()
 
@@ -90,20 +104,22 @@ async def get_all_rooms(
         .all()
     )
     for room in db_rooms:
-        resp = await RoomResp.from_db(room, db)
+        resp = await RoomModel.transform(
+            room,
+            includes=[
+                "current_playlist_item.beatmap.beatmapset",
+                "difficulty_range",
+                "host.country",
+                "playlist_item_stats",
+                "recent_participants",
+            ],
+        )
         if category == RoomCategory.REALTIME:
-            resp.category = RoomCategory.NORMAL
+            resp["category"] = RoomCategory.NORMAL
 
         resp_list.append(resp)
 
     return resp_list
-
-
-class APICreatedRoom(RoomResp):
-    """创建房间返回模型，继承 RoomResp。额外字段:
-    - error: 错误信息（为空表示成功）。"""
-
-    error: str = ""
 
 
 async def _participate_room(room_id: int, user_id: int, db_room: Room, session: AsyncSession, redis: Redis):
@@ -133,9 +149,15 @@ async def _participate_room(room_id: int, user_id: int, db_room: Room, session: 
 @router.post(
     "/rooms",
     tags=["房间"],
-    response_model=APICreatedRoom,
     name="创建房间",
     description="\n创建一个新的房间。",
+    responses={
+        200: api_doc(
+            "创建的房间信息",
+            RoomModel,
+            Room.SHOW_RESPONSE_INCLUDES,
+        )
+    },
 )
 async def create_room(
     db: Database,
@@ -145,23 +167,27 @@ async def create_room(
 ):
     if await current_user.is_restricted(db):
         raise HTTPException(status_code=403, detail="Your account is restricted from multiplayer.")
-
     user_id = current_user.id
     db_room = await create_playlist_room_from_api(db, room, user_id)
     await _participate_room(db_room.id, user_id, db_room, db, redis)
     await db.commit()
     await db.refresh(db_room)
-    created_room = APICreatedRoom.model_validate(await RoomResp.from_db(db_room, db))
-    created_room.error = ""
+    created_room = await RoomModel.transform(db_room, includes=Room.SHOW_RESPONSE_INCLUDES)
     return created_room
 
 
 @router.get(
     "/rooms/{room_id}",
     tags=["房间"],
-    response_model=RoomResp,
+    responses={
+        200: api_doc(
+            "房间详细信息",
+            RoomModel,
+            Room.SHOW_RESPONSE_INCLUDES,
+        )
+    },
     name="获取房间详情",
-    description="获取单个房间详情。",
+    description="获取指定房间详情。",
 )
 async def get_room(
     db: Database,
@@ -177,7 +203,7 @@ async def get_room(
     db_room = (await db.exec(select(Room).where(Room.id == room_id))).first()
     if db_room is None:
         raise HTTPException(404, "Room not found")
-    resp = await RoomResp.from_db(db_room, include=["current_user_score"], session=db, user=current_user)
+    resp = await RoomModel.transform(db_room, includes=Room.SHOW_RESPONSE_INCLUDES, user=current_user)
     return resp
 
 
@@ -225,10 +251,10 @@ async def add_user_to_room(
         await _participate_room(room_id, user_id, db_room, db, redis)
         await db.commit()
         await db.refresh(db_room)
-        resp = await RoomResp.from_db(db_room, db)
+        resp = await RoomModel.transform(db_room, includes=Room.SHOW_RESPONSE_INCLUDES)
         return resp
     else:
-        raise HTTPException(404, "room not found0")
+        raise HTTPException(404, "room not found")
 
 
 @router.delete(
@@ -268,21 +294,22 @@ async def remove_user_from_room(
         raise HTTPException(404, "Room not found")
 
 
-class APILeaderboard(BaseModel):
-    """房间全局排行榜返回模型。
-    - leaderboard: 用户游玩统计（尝试次数/分数等）。
-    - user_score: 当前用户对应统计。"""
-
-    leaderboard: list[ItemAttemptsResp] = Field(default_factory=list)
-    user_score: ItemAttemptsResp | None = None
-
-
 @router.get(
     "/rooms/{room_id}/leaderboard",
     tags=["房间"],
-    response_model=APILeaderboard,
     name="获取房间排行榜",
     description="获取房间内累计得分排行榜。",
+    responses={
+        200: api_doc(
+            "房间排行榜",
+            {
+                "leaderboard": list[ItemAttemptsCountModel],
+                "user_score": ItemAttemptsCountModel | None,
+            },
+            ["user.country", "position"],
+            name="RoomLeaderboardResponse",
+        )
+    },
 )
 async def get_room_leaderboard(
     db: Database,
@@ -300,45 +327,43 @@ async def get_room_leaderboard(
     aggs_resp = []
     user_agg = None
     for i, agg in enumerate(aggs):
-        resp = await ItemAttemptsResp.from_db(agg, db)
-        resp.position = i + 1
+        includes = ["user.country"]
+        if agg.user_id == current_user.id:
+            includes.append("position")
+        resp = await ItemAttemptsCountModel.transform(agg, includes=includes)
         aggs_resp.append(resp)
         if agg.user_id == current_user.id:
             user_agg = resp
-    return APILeaderboard(
-        leaderboard=aggs_resp,
-        user_score=user_agg,
-    )
 
-
-class RoomEvents(BaseModel):
-    """房间事件流返回模型。
-    - beatmaps: 本次结果涉及的谱面列表。
-    - beatmapsets: 谱面集映射。
-    - current_playlist_item_id: 当前游玩列表（项目）项 ID。
-    - events: 事件列表。
-    - first_event_id / last_event_id: 事件范围。
-    - playlist_items: 房间游玩列表（项目）详情。
-    - room: 房间详情。
-    - user: 关联用户列表。"""
-
-    beatmaps: list[BeatmapResp] = Field(default_factory=list)
-    beatmapsets: dict[int, BeatmapsetResp] = Field(default_factory=dict)
-    current_playlist_item_id: int = 0
-    events: list[MultiplayerEventResp] = Field(default_factory=list)
-    first_event_id: int = 0
-    last_event_id: int = 0
-    playlist_items: list[PlaylistResp] = Field(default_factory=list)
-    room: RoomResp
-    user: list[UserResp] = Field(default_factory=list)
+    return {
+        "leaderboard": aggs_resp,
+        "user_score": user_agg,
+    }
 
 
 @router.get(
     "/rooms/{room_id}/events",
-    response_model=RoomEvents,
     tags=["房间"],
     name="获取房间事件",
     description="获取房间事件列表 （倒序，可按 after / before 进行范围截取）。",
+    responses={
+        200: api_doc(
+            "房间事件",
+            {
+                "beatmaps": list[BeatmapModel],
+                "beatmapsets": list[BeatmapsetModel],
+                "current_playlist_item_id": int,
+                "events": list[MultiplayerEventResp],
+                "first_event_id": int,
+                "last_event_id": int,
+                "playlist_items": list[PlaylistModel],
+                "room": RoomModel,
+                "user": list[UserModel],
+            },
+            ["country", "details", "scores"],
+            name="RoomEventsResponse",
+        )
+    },
 )
 async def get_room_events(
     db: Database,
@@ -402,28 +427,44 @@ async def get_room_events(
     room = (await db.exec(select(Room).where(Room.id == room_id))).first()
     if room is None:
         raise HTTPException(404, "Room not found")
-    room_resp = await RoomResp.from_db(room, db)
-    if room.category == RoomCategory.REALTIME and room_resp.current_playlist_item:
-        current_playlist_item_id = room_resp.current_playlist_item.id
+    room_resp = await RoomModel.transform(room, includes=["current_playlist_item"])
+    if room.category == RoomCategory.REALTIME:
+        current_playlist_item_id = (await Room.current_playlist_item(db, room))["id"]
 
     users = await db.exec(select(User).where(col(User.id).in_(user_ids)))
-    user_resps = [await UserResp.from_db(user, db) for user in users]
+    user_resps = [await UserModel.transform(user, includes=["country"]) for user in users]
+
     beatmaps = await db.exec(select(Beatmap).where(col(Beatmap.id).in_(beatmap_ids)))
-    beatmap_resps = [await BeatmapResp.from_db(beatmap, session=db) for beatmap in beatmaps]
-    beatmapset_resps = {}
-    for beatmap_resp in beatmap_resps:
-        beatmapset_resps[beatmap_resp.beatmapset_id] = beatmap_resp.beatmapset
+    beatmap_resps = [
+        await BeatmapModel.transform(
+            beatmap,
+        )
+        for beatmap in beatmaps
+    ]
 
-    playlist_items_resps = [await PlaylistResp.from_db(item) for item in playlist_items.values()]
+    beatmapsets = []
+    for beatmap in beatmaps:
+        if beatmap.beatmapset_id not in beatmapsets:
+            beatmapsets.append(beatmap.beatmapset)
+    beatmapset_resps = [
+        await BeatmapsetModel.transform(
+            beatmapset,
+        )
+        for beatmapset in beatmapsets
+    ]
 
-    return RoomEvents(
-        beatmaps=beatmap_resps,
-        beatmapsets=beatmapset_resps,
-        current_playlist_item_id=current_playlist_item_id,
-        events=event_resps,
-        first_event_id=first_event_id,
-        last_event_id=last_event_id,
-        playlist_items=playlist_items_resps,
-        room=room_resp,
-        user=user_resps,
-    )
+    playlist_items_resps = [
+        await PlaylistModel.transform(item, includes=["details", "scores"]) for item in playlist_items.values()
+    ]
+
+    return {
+        "beatmaps": beatmap_resps,
+        "beatmapsets": beatmapset_resps,
+        "current_playlist_item_id": current_playlist_item_id,
+        "events": event_resps,
+        "first_event_id": first_event_id,
+        "last_event_id": last_event_id,
+        "playlist_items": playlist_items_resps,
+        "room": room_resp,
+        "user": user_resps,
+    }

@@ -1,11 +1,13 @@
 from typing import Annotated, Literal
 
 from app.config import settings
-from app.database import Team, TeamMember, User, UserStatistics, UserStatisticsResp
+from app.database import Team, TeamMember, User, UserStatistics
+from app.database.statistics import UserStatisticsModel
 from app.dependencies.database import Database, get_redis
 from app.dependencies.user import get_current_user
 from app.models.score import GameMode
 from app.service.ranking_cache_service import get_ranking_cache_service
+from app.utils import api_doc
 
 from .router import router
 
@@ -308,14 +310,16 @@ async def get_country_ranking(
     return response
 
 
-class TopUsersResponse(BaseModel):
-    ranking: list[UserStatisticsResp]
-    total: int
-
-
 @router.get(
     "/rankings/{ruleset}/{sort}",
-    response_model=TopUsersResponse,
+    responses={
+        200: api_doc(
+            "用户排行榜",
+            {"ranking": list[UserStatisticsModel], "total": int},
+            ["user.country", "user.cover"],
+            name="TopUsersResponse",
+        )
+    },
     name="获取用户排行榜",
     description="获取在指定模式下的用户排行榜",
     tags=["排行榜"],
@@ -339,10 +343,10 @@ async def get_user_ranking(
 
     if cached_data and cached_stats:
         # 从缓存返回数据
-        return TopUsersResponse(
-            ranking=[UserStatisticsResp.model_validate(item) for item in cached_data],
-            total=cached_stats.get("total", 0),
-        )
+        return {
+            "ranking": cached_data,
+            "total": cached_stats.get("total", 0),
+        }
 
     # 缓存未命中，从数据库查询
     wheres = [
@@ -350,7 +354,7 @@ async def get_user_ranking(
         col(UserStatistics.pp) > 0,
         col(UserStatistics.is_ranked),
     ]
-    include = ["user"]
+    include = UserStatistics.RANKING_INCLUDES.copy()
     if sort == "performance":
         order_by = col(UserStatistics.pp).desc()
         include.append("rank_change_since_30_days")
@@ -358,6 +362,7 @@ async def get_user_ranking(
         order_by = col(UserStatistics.ranked_score).desc()
     if country:
         wheres.append(col(UserStatistics.user).has(country_code=country.upper()))
+        include.append("country_rank")
 
     # 查询总数
     count_query = select(func.count()).select_from(UserStatistics).where(*wheres)
@@ -378,12 +383,14 @@ async def get_user_ranking(
     # 转换为响应格式
     ranking_data = []
     for statistics in statistics_list:
-        user_stats_resp = await UserStatisticsResp.from_db(statistics, session, None, include)
+        user_stats_resp = await UserStatisticsModel.transform(
+            statistics, includes=include, user_country=current_user.country_code
+        )
         ranking_data.append(user_stats_resp)
 
     # 异步缓存数据（不等待完成）
     # 使用配置文件中的TTL设置
-    cache_data = [item.model_dump() for item in ranking_data]
+    cache_data = ranking_data
     stats_data = {"total": total_count}
 
     # 创建后台任务来缓存数据
@@ -407,5 +414,7 @@ async def get_user_ranking(
         ttl=settings.ranking_cache_expire_minutes * 60,
     )
 
-    resp = TopUsersResponse(ranking=ranking_data, total=total_count)
-    return resp
+    return {
+        "ranking": ranking_data,
+        "total": total_count,
+    }

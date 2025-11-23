@@ -3,16 +3,16 @@ from datetime import UTC, datetime
 
 from app.models.score import GameMode
 
-from pydantic import BaseModel, field_serializer
+from pydantic import BaseModel, FieldSerializationInfo, field_serializer
 
 
 class UTCBaseModel(BaseModel):
-    @field_serializer("*", when_used="json")
-    def serialize_datetime(self, v, _info):
+    @field_serializer("*", when_used="always")
+    def serialize_datetime(self, v, _info: FieldSerializationInfo):
         if isinstance(v, datetime):
             if v.tzinfo is None:
                 v = v.replace(tzinfo=UTC)
-            return v.astimezone(UTC).isoformat().replace("+00:00", "Z")
+            return v.astimezone(UTC)
         return v
 
 

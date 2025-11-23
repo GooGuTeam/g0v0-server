@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated, Literal
 
-from app.database.statistics import UserStatistics, UserStatisticsResp
+from app.database.statistics import UserStatistics, UserStatisticsModel
 from app.database.user import User
 from app.dependencies.database import Database, get_redis
 from app.log import logger
@@ -46,7 +46,7 @@ class V1User(AllStrModel):
         return f"v1_user:{user_id}"
 
     @classmethod
-    async def from_db(cls, session: Database, db_user: User, ruleset: GameMode | None = None) -> "V1User":
+    async def from_db(cls, db_user: User, ruleset: GameMode | None = None) -> "V1User":
         ruleset = ruleset or db_user.playmode
         current_statistics: UserStatistics | None = None
         for i in await db_user.awaitable_attrs.statistics:
@@ -54,31 +54,33 @@ class V1User(AllStrModel):
                 current_statistics = i
                 break
         if current_statistics:
-            statistics = await UserStatisticsResp.from_db(current_statistics, session, db_user.country_code)
+            statistics = await UserStatisticsModel.transform(
+                current_statistics, country_code=db_user.country_code, includes=["country_rank"]
+            )
         else:
             statistics = None
         return cls(
             user_id=db_user.id,
             username=db_user.username,
             join_date=db_user.join_date,
-            count300=statistics.count_300 if statistics else 0,
-            count100=statistics.count_100 if statistics else 0,
-            count50=statistics.count_50 if statistics else 0,
-            playcount=statistics.play_count if statistics else 0,
-            ranked_score=statistics.ranked_score if statistics else 0,
-            total_score=statistics.total_score if statistics else 0,
-            pp_rank=statistics.global_rank if statistics and statistics.global_rank else 0,
+            count300=current_statistics.count_300 if current_statistics else 0,
+            count100=current_statistics.count_100 if current_statistics else 0,
+            count50=current_statistics.count_50 if current_statistics else 0,
+            playcount=current_statistics.play_count if current_statistics else 0,
+            ranked_score=current_statistics.ranked_score if current_statistics else 0,
+            total_score=current_statistics.total_score if current_statistics else 0,
+            pp_rank=statistics.get("global_rank") or 0 if statistics else 0,
             level=current_statistics.level_current if current_statistics else 0,
-            pp_raw=statistics.pp if statistics else 0.0,
-            accuracy=statistics.hit_accuracy if statistics else 0,
+            pp_raw=current_statistics.pp if current_statistics else 0.0,
+            accuracy=current_statistics.hit_accuracy if current_statistics else 0,
             count_rank_ss=current_statistics.grade_ss if current_statistics else 0,
             count_rank_ssh=current_statistics.grade_ssh if current_statistics else 0,
             count_rank_s=current_statistics.grade_s if current_statistics else 0,
             count_rank_sh=current_statistics.grade_sh if current_statistics else 0,
             count_rank_a=current_statistics.grade_a if current_statistics else 0,
             country=db_user.country_code,
-            total_seconds_played=statistics.play_time if statistics else 0,
-            pp_country_rank=statistics.country_rank if statistics and statistics.country_rank else 0,
+            total_seconds_played=current_statistics.play_time if current_statistics else 0,
+            pp_country_rank=statistics.get("country_rank") or 0 if statistics else 0,
             events=[],  # TODO
         )
 
@@ -134,7 +136,7 @@ async def get_user(
 
     try:
         # 生成用户数据
-        v1_user = await V1User.from_db(session, db_user, ruleset)
+        v1_user = await V1User.from_db(db_user, ruleset)
 
         # 异步缓存结果（如果有用户ID）
         if db_user.id is not None:

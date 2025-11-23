@@ -4,10 +4,13 @@ from datetime import UTC, datetime
 import functools
 import inspect
 from io import BytesIO
+import json
 import re
-from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
+from types import NoneType, UnionType
+from typing import TYPE_CHECKING, Any, ParamSpec, TypedDict, TypeVar, Union, get_args, get_origin
 
 from fastapi import HTTPException
+from fastapi.encoders import jsonable_encoder
 from PIL import Image
 
 if TYPE_CHECKING:
@@ -299,3 +302,51 @@ def hex_to_hue(hex_color: str) -> int:
         hue = (60 * ((r - g) / delta) + 240) % 360
 
     return int(hue)
+
+
+def safe_json_dumps(data) -> str:
+    return json.dumps(jsonable_encoder(data), ensure_ascii=False)
+
+
+def type_is_optional(typ: type):
+    origin_type = get_origin(typ)
+    args = get_args(typ)
+    return (origin_type is UnionType or origin_type is Union) and len(args) == 2 and NoneType in args
+
+
+def _get_type(typ: type, includes: tuple[str, ...]) -> Any:
+    from app.database._base import DatabaseModel
+
+    origin = get_origin(typ)
+    if issubclass(typ, DatabaseModel):
+        return typ.generate_typeddict(includes)
+    elif origin is list:
+        item_type = typ.__args__[0]
+        return list[_get_type(item_type, includes)]  # pyright: ignore[reportArgumentType, reportGeneralTypeIssues]
+    elif origin is dict:
+        key_type, value_type = typ.__args__
+        return dict[key_type, _get_type(value_type, includes)]  # pyright: ignore[reportArgumentType, reportGeneralTypeIssues]
+    elif type_is_optional(typ):
+        inner_type = next(arg for arg in get_args(typ) if arg is not NoneType)
+        return Union[_get_type(inner_type, includes), None]  # pyright: ignore[reportArgumentType, reportGeneralTypeIssues]  # noqa: UP007
+    elif origin is UnionType or origin is Union:
+        new_types = []
+        for arg in get_args(typ):
+            new_types.append(_get_type(arg, includes))  # pyright: ignore[reportArgumentType, reportGeneralTypeIssues]
+        return Union[tuple(new_types)]  # pyright: ignore[reportArgumentType, reportGeneralTypeIssues]  # noqa: UP007
+    else:
+        return typ
+
+
+def api_doc(desc: str, model: Any, includes: list[str] = [], *, name: str = "APIDict"):
+    if includes:
+        includes_str = ", ".join(f"`{inc}`" for inc in includes)
+        desc += f"\n\n包含：{includes_str}"
+    if isinstance(model, dict):
+        fields = {}
+        for k, v in model.items():
+            fields[k] = _get_type(v, tuple(includes))
+        typed_dict = TypedDict(name, fields)  # pyright: ignore[reportArgumentType, reportGeneralTypeIssues]
+    else:
+        typed_dict = _get_type(model, tuple(includes))
+    return {"description": desc, "model": typed_dict}

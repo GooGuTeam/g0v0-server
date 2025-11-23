@@ -2,23 +2,31 @@ from .achievement import UserAchievement, UserAchievementResp
 from .auth import OAuthClient, OAuthToken, TotpKeys, V1APIKeys
 from .beatmap import (
     Beatmap,
-    BeatmapResp,
+    BeatmapDict,
+    BeatmapModel,
 )
-from .beatmap_playcounts import BeatmapPlaycounts, BeatmapPlaycountsResp
+from .beatmap_playcounts import (
+    BeatmapPlaycounts,
+    BeatmapPlaycountsDict,
+    BeatmapPlaycountsModel,
+)
 from .beatmap_sync import BeatmapSync
 from .beatmap_tags import BeatmapTagVote
 from .beatmapset import (
     Beatmapset,
-    BeatmapsetResp,
+    BeatmapsetDict,
+    BeatmapsetModel,
 )
 from .beatmapset_ratings import BeatmapRating
 from .best_scores import BestScore
 from .chat import (
     ChannelType,
     ChatChannel,
-    ChatChannelResp,
+    ChatChannelDict,
+    ChatChannelModel,
     ChatMessage,
-    ChatMessageResp,
+    ChatMessageDict,
+    ChatMessageModel,
 )
 from .counts import (
     CountResp,
@@ -30,8 +38,8 @@ from .events import Event
 from .favourite_beatmapset import FavouriteBeatmapset
 from .item_attempts_count import (
     ItemAttemptsCount,
-    ItemAttemptsResp,
-    PlaylistAggregateScore,
+    ItemAttemptsCountDict,
+    ItemAttemptsCountModel,
 )
 from .matchmaking import (
     MatchmakingPool,
@@ -42,30 +50,32 @@ from .multiplayer_event import MultiplayerEvent, MultiplayerEventResp
 from .notification import Notification, UserNotification
 from .password_reset import PasswordReset
 from .playlist_best_score import PlaylistBestScore
-from .playlists import Playlist, PlaylistResp
+from .playlists import Playlist, PlaylistDict, PlaylistModel
 from .rank_history import RankHistory, RankHistoryResp, RankTop
-from .relationship import Relationship, RelationshipResp, RelationshipType
-from .room import APIUploadedRoom, Room, RoomResp
+from .relationship import Relationship, RelationshipDict, RelationshipModel, RelationshipType
+from .room import APIUploadedRoom, Room, RoomDict, RoomModel
 from .room_participated_user import RoomParticipatedUser
 from .score import (
     MultiplayerScores,
     Score,
     ScoreAround,
-    ScoreBase,
-    ScoreResp,
+    ScoreDict,
+    ScoreModel,
     ScoreStatistics,
 )
 from .score_token import ScoreToken, ScoreTokenResp
+from .search_beatmapset import SearchBeatmapsetsResp
 from .statistics import (
     UserStatistics,
-    UserStatisticsResp,
+    UserStatisticsDict,
+    UserStatisticsModel,
 )
 from .team import Team, TeamMember, TeamRequest, TeamResp
 from .total_score_best_scores import TotalScoreBestScore
 from .user import (
-    MeResp,
     User,
-    UserResp,
+    UserDict,
+    UserModel,
 )
 from .user_account_history import (
     UserAccountHistory,
@@ -79,20 +89,25 @@ from .verification import EmailVerification, LoginSession, LoginSessionResp, Tru
 __all__ = [
     "APIUploadedRoom",
     "Beatmap",
+    "BeatmapDict",
+    "BeatmapModel",
     "BeatmapPlaycounts",
-    "BeatmapPlaycountsResp",
+    "BeatmapPlaycountsDict",
+    "BeatmapPlaycountsModel",
     "BeatmapRating",
-    "BeatmapResp",
     "BeatmapSync",
     "BeatmapTagVote",
     "Beatmapset",
-    "BeatmapsetResp",
+    "BeatmapsetDict",
+    "BeatmapsetModel",
     "BestScore",
     "ChannelType",
     "ChatChannel",
-    "ChatChannelResp",
+    "ChatChannelDict",
+    "ChatChannelModel",
     "ChatMessage",
-    "ChatMessageResp",
+    "ChatMessageDict",
+    "ChatMessageModel",
     "CountResp",
     "DailyChallengeStats",
     "DailyChallengeStatsResp",
@@ -100,13 +115,13 @@ __all__ = [
     "Event",
     "FavouriteBeatmapset",
     "ItemAttemptsCount",
-    "ItemAttemptsResp",
+    "ItemAttemptsCountDict",
+    "ItemAttemptsCountModel",
     "LoginSession",
     "LoginSessionResp",
     "MatchmakingPool",
     "MatchmakingPoolBeatmap",
     "MatchmakingUserStats",
-    "MeResp",
     "MonthlyPlaycounts",
     "MultiplayerEvent",
     "MultiplayerEventResp",
@@ -116,26 +131,29 @@ __all__ = [
     "OAuthToken",
     "PasswordReset",
     "Playlist",
-    "PlaylistAggregateScore",
     "PlaylistBestScore",
-    "PlaylistResp",
+    "PlaylistDict",
+    "PlaylistModel",
     "RankHistory",
     "RankHistoryResp",
     "RankTop",
     "Relationship",
-    "RelationshipResp",
+    "RelationshipDict",
+    "RelationshipModel",
     "RelationshipType",
     "ReplayWatchedCount",
     "Room",
+    "RoomDict",
+    "RoomModel",
     "RoomParticipatedUser",
-    "RoomResp",
     "Score",
     "ScoreAround",
-    "ScoreBase",
-    "ScoreResp",
+    "ScoreDict",
+    "ScoreModel",
     "ScoreStatistics",
     "ScoreToken",
     "ScoreTokenResp",
+    "SearchBeatmapsetsResp",
     "Team",
     "TeamMember",
     "TeamRequest",
@@ -149,17 +167,18 @@ __all__ = [
     "UserAccountHistoryResp",
     "UserAccountHistoryType",
     "UserAchievement",
-    "UserAchievement",
     "UserAchievementResp",
+    "UserDict",
     "UserLoginLog",
+    "UserModel",
     "UserNotification",
     "UserPreference",
-    "UserResp",
     "UserStatistics",
-    "UserStatisticsResp",
+    "UserStatisticsDict",
+    "UserStatisticsModel",
     "V1APIKeys",
 ]
 
 for i in __all__:
-    if i.endswith("Resp"):
-        globals()[i].model_rebuild()  # type: ignore[call-arg]
+    if i.endswith("Model") or i.endswith("Resp"):
+        globals()[i].model_rebuild()

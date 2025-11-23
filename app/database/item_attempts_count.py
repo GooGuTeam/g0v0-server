@@ -1,7 +1,10 @@
-from .playlist_best_score import PlaylistBestScore
-from .user import User, UserResp
+from typing import Any, NotRequired, TypedDict
 
-from pydantic import BaseModel
+from app.database._base import DatabaseModel, ondemand
+
+from .playlist_best_score import PlaylistBestScore
+from .user import User, UserDict, UserModel
+
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import (
     BigInteger,
@@ -9,7 +12,6 @@ from sqlmodel import (
     Field,
     ForeignKey,
     Relationship,
-    SQLModel,
     col,
     func,
     select,
@@ -17,17 +19,66 @@ from sqlmodel import (
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 
-class ItemAttemptsCountBase(SQLModel):
-    room_id: int = Field(foreign_key="rooms.id", index=True)
+class ItemAttemptsCountDict(TypedDict):
+    accuracy: float
+    attempts: int
+    completed: int
+    pp: float
+    room_id: int
+    total_score: int
+    user_id: int
+    user: NotRequired[UserDict]
+    position: NotRequired[int]
+    playlist_item_attempts: NotRequired[list[dict[str, Any]]]
+
+
+class ItemAttemptsCountModel(DatabaseModel[ItemAttemptsCountDict]):
+    accuracy: float = 0.0
     attempts: int = Field(default=0)
     completed: int = Field(default=0)
-    user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
-    accuracy: float = 0.0
     pp: float = 0
+    room_id: int = Field(foreign_key="rooms.id", index=True)
     total_score: int = 0
+    user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
+
+    @ondemand
+    @staticmethod
+    async def user(_session: AsyncSession, item_attempts: "ItemAttemptsCount") -> UserDict:
+        user_instance = await item_attempts.awaitable_attrs.user
+        return await UserModel.transform(user_instance)
+
+    @ondemand
+    @staticmethod
+    async def position(session: AsyncSession, item_attempts: "ItemAttemptsCount") -> int:
+        return await item_attempts.get_position(session)
+
+    @ondemand
+    @staticmethod
+    async def playlist_item_attempts(
+        session: AsyncSession,
+        item_attempts: "ItemAttemptsCount",
+    ) -> list[dict[str, Any]]:
+        playlist_scores = (
+            await session.exec(
+                select(PlaylistBestScore).where(
+                    PlaylistBestScore.room_id == item_attempts.room_id,
+                    PlaylistBestScore.user_id == item_attempts.user_id,
+                )
+            )
+        ).all()
+        result: list[dict[str, Any]] = []
+        for score in playlist_scores:
+            result.append(
+                {
+                    "id": score.playlist_id,
+                    "attempts": score.attempts,
+                    "passed": score.score.passed,
+                }
+            )
+        return result
 
 
-class ItemAttemptsCount(AsyncAttrs, ItemAttemptsCountBase, table=True):
+class ItemAttemptsCount(AsyncAttrs, ItemAttemptsCountModel, table=True):
     __tablename__: str = "item_attempts_count"
     id: int | None = Field(default=None, primary_key=True)
 
@@ -37,15 +88,15 @@ class ItemAttemptsCount(AsyncAttrs, ItemAttemptsCountBase, table=True):
         rownum = (
             func.row_number()
             .over(
-                partition_by=col(ItemAttemptsCountBase.room_id),
-                order_by=col(ItemAttemptsCountBase.total_score).desc(),
+                partition_by=col(ItemAttemptsCount.room_id),
+                order_by=col(ItemAttemptsCount.total_score).desc(),
             )
             .label("rn")
         )
-        subq = select(ItemAttemptsCountBase, rownum).subquery()
+        subq = select(ItemAttemptsCount, rownum).subquery()
         stmt = select(subq.c.rn).where(subq.c.user_id == self.user_id)
         result = await session.exec(stmt)
-        return result.one()
+        return result.first() or 0
 
     async def update(self, session: AsyncSession):
         playlist_scores = (
@@ -88,62 +139,3 @@ class ItemAttemptsCount(AsyncAttrs, ItemAttemptsCountBase, table=True):
             await session.refresh(item_attempts)
         await item_attempts.update(session)
         return item_attempts
-
-
-class ItemAttemptsResp(ItemAttemptsCountBase):
-    user: UserResp | None = None
-    position: int | None = None
-
-    @classmethod
-    async def from_db(
-        cls,
-        item_attempts: ItemAttemptsCount,
-        session: AsyncSession,
-        include: list[str] = [],
-    ) -> "ItemAttemptsResp":
-        resp = cls.model_validate(item_attempts.model_dump())
-        resp.user = await UserResp.from_db(
-            await item_attempts.awaitable_attrs.user,
-            session=session,
-            include=["statistics", "team", "daily_challenge_user_stats"],
-        )
-        if "position" in include:
-            resp.position = await item_attempts.get_position(session)
-        # resp.accuracy *= 100
-        return resp
-
-
-class ItemAttemptsCountForItem(BaseModel):
-    id: int
-    attempts: int
-    passed: bool
-
-
-class PlaylistAggregateScore(BaseModel):
-    playlist_item_attempts: list[ItemAttemptsCountForItem] = Field(default_factory=list)
-
-    @classmethod
-    async def from_db(
-        cls,
-        room_id: int,
-        user_id: int,
-        session: AsyncSession,
-    ) -> "PlaylistAggregateScore":
-        playlist_scores = (
-            await session.exec(
-                select(PlaylistBestScore).where(
-                    PlaylistBestScore.room_id == room_id,
-                    PlaylistBestScore.user_id == user_id,
-                )
-            )
-        ).all()
-        playlist_item_attempts = []
-        for score in playlist_scores:
-            playlist_item_attempts.append(
-                ItemAttemptsCountForItem(
-                    id=score.playlist_id,
-                    attempts=score.attempts,
-                    passed=score.score.passed,
-                )
-            )
-        return cls(playlist_item_attempts=playlist_item_attempts)

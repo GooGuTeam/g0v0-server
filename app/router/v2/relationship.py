@@ -1,15 +1,16 @@
-from typing import Annotated
+from typing import Annotated, Any
 
-from app.database import Relationship, RelationshipResp, RelationshipType, User
-from app.database.user import UserResp
+from app.database import Relationship, RelationshipType, User
+from app.database.relationship import RelationshipModel
+from app.database.user import UserModel
 from app.dependencies.api_version import APIVersion
 from app.dependencies.database import Database
 from app.dependencies.user import ClientUser, get_current_user
+from app.utils import api_doc
 
 from .router import router
 
 from fastapi import HTTPException, Path, Query, Request, Security
-from pydantic import BaseModel
 from sqlmodel import col, exists, select
 
 
@@ -17,38 +18,19 @@ from sqlmodel import col, exists, select
     "/friends",
     tags=["用户关系"],
     responses={
-        200: {
-            "description": "好友列表",
-            "content": {
-                "application/json": {
-                    "schema": {
-                        "oneOf": [
-                            {
-                                "type": "array",
-                                "items": {"$ref": "#/components/schemas/RelationshipResp"},
-                                "description": "好友列表",
-                            },
-                            {
-                                "type": "array",
-                                "items": {"$ref": "#/components/schemas/UserResp"},
-                                "description": "好友列表 (`x-api-version < 20241022`)",
-                            },
-                        ]
-                    }
-                }
-            },
-        }
+        200: api_doc(
+            "好友列表\n\n如果 `x-api-version < 20241022`，返回值为 `User` 列表，否则为 `Relationship` 列表。",
+            list[RelationshipModel] | list[UserModel],
+            [f"target.{inc}" for inc in User.LIST_INCLUDES],
+        )
     },
     name="获取好友列表",
-    description=(
-        "获取当前用户的好友列表。\n\n"
-        "如果 `x-api-version < 20241022`，返回值为 `UserResp` 列表，否则为 `RelationshipResp` 列表。"
-    ),
+    description="获取当前用户的好友列表。",
 )
 @router.get(
     "/blocks",
     tags=["用户关系"],
-    response_model=list[RelationshipResp],
+    response_model=list[dict[str, Any]],
     name="获取屏蔽列表",
     description="获取当前用户的屏蔽用户列表。",
 )
@@ -67,35 +49,29 @@ async def get_relationship(
         )
     )
     if api_version >= 20241022 or relationship_type == RelationshipType.BLOCK:
-        return [await RelationshipResp.from_db(db, rel) for rel in relationships.unique()]
+        return [
+            await RelationshipModel.transform(
+                rel,
+                includes=[f"target.{inc}" for inc in User.LIST_INCLUDES],
+                ruleset=current_user.playmode,
+            )
+            for rel in relationships.unique()
+        ]
     else:
         return [
-            await UserResp.from_db(
+            await UserModel.transform(
                 rel.target,
-                db,
-                include=[
-                    "team",
-                    "daily_challenge_user_stats",
-                    "statistics",
-                    "statistics_rulesets",
-                ],
+                ruleset=current_user.playmode,
+                includes=User.LIST_INCLUDES,
             )
             for rel in relationships.unique()
         ]
 
 
-class AddFriendResp(BaseModel):
-    """添加好友/屏蔽 返回模型。
-
-    - user_relation: 新的或更新后的关系对象。"""
-
-    user_relation: RelationshipResp
-
-
 @router.post(
     "/friends",
     tags=["用户关系"],
-    response_model=AddFriendResp,
+    responses={200: api_doc("好友关系", {"user_relation": RelationshipModel}, name="UserRelationshipResponse")},
     name="添加或更新好友关系",
     description="\n添加或更新与目标用户的好友关系。",
 )
@@ -163,7 +139,13 @@ async def add_relationship(
                 )
             )
         ).one()
-        return AddFriendResp(user_relation=await RelationshipResp.from_db(db, relationship))
+        return {
+            "user_relation": await RelationshipModel.transform(
+                relationship,
+                includes=[],
+                ruleset=current_user.playmode,
+            )
+        }
 
 
 @router.delete(

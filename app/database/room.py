@@ -1,8 +1,6 @@
 from datetime import datetime
+from typing import ClassVar, NotRequired, TypedDict
 
-from app.database.item_attempts_count import PlaylistAggregateScore
-from app.database.room_participated_user import RoomParticipatedUser
-from app.models.model import UTCBaseModel
 from app.models.room import (
     MatchType,
     QueueMode,
@@ -13,28 +11,58 @@ from app.models.room import (
 )
 from app.utils import utcnow
 
-from .playlists import Playlist, PlaylistResp
-from .user import User, UserResp
+from ._base import DatabaseModel, included, ondemand
+from .item_attempts_count import ItemAttemptsCount, ItemAttemptsCountDict, ItemAttemptsCountModel
+from .playlists import Playlist, PlaylistDict, PlaylistModel
+from .room_participated_user import RoomParticipatedUser
+from .user import User, UserDict, UserModel
 
+from pydantic import field_validator
 from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlmodel import (
-    BigInteger,
-    Column,
-    DateTime,
-    Field,
-    ForeignKey,
-    Relationship,
-    SQLModel,
-    col,
-    func,
-    select,
-)
+from sqlmodel import BigInteger, Column, DateTime, Field, ForeignKey, Relationship, SQLModel, col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 
-class RoomBase(SQLModel, UTCBaseModel):
+class RoomDict(TypedDict):
+    id: int
+    name: str
+    category: RoomCategory
+    status: RoomStatus
+    type: MatchType
+    duration: int | None
+    starts_at: datetime | None
+    ends_at: datetime | None
+    max_attempts: int | None
+    participant_count: int
+    channel_id: int
+    queue_mode: QueueMode
+    auto_skip: bool
+    auto_start_duration: int
+    has_password: NotRequired[bool]
+    current_playlist_item: NotRequired["PlaylistDict | None"]
+    playlist: NotRequired[list["PlaylistDict"]]
+    playlist_item_stats: NotRequired[RoomPlaylistItemStats]
+    difficulty_range: NotRequired[RoomDifficultyRange]
+    host: NotRequired[UserDict]
+    recent_participants: NotRequired[list[UserDict]]
+    current_user_score: NotRequired["ItemAttemptsCountDict | None"]
+
+
+class RoomModel(DatabaseModel[RoomDict]):
+    SHOW_RESPONSE_INCLUDES: ClassVar[list[str]] = [
+        "current_user_score.playlist_item_attempts",
+        "host.country",
+        "playlist.beatmap.beatmapset",
+        "playlist.beatmap.checksum",
+        "playlist.beatmap.max_combo",
+        "recent_participants",
+    ]
+
+    id: int = Field(default=None, primary_key=True, index=True)
     name: str = Field(index=True)
     category: RoomCategory = Field(default=RoomCategory.NORMAL, index=True)
+    status: RoomStatus
+    type: MatchType
     duration: int | None = Field(default=None)  # minutes
     starts_at: datetime | None = Field(
         sa_column=Column(
@@ -48,76 +76,88 @@ class RoomBase(SQLModel, UTCBaseModel):
         ),
         default=None,
     )
-    participant_count: int = Field(default=0)
     max_attempts: int | None = Field(default=None)  # playlists
-    type: MatchType
+    participant_count: int = Field(default=0)
+    channel_id: int = 0
     queue_mode: QueueMode
     auto_skip: bool
+
     auto_start_duration: int
-    status: RoomStatus
-    channel_id: int | None = None
 
-
-class Room(AsyncAttrs, RoomBase, table=True):
-    __tablename__: str = "rooms"
-    id: int = Field(default=None, primary_key=True, index=True)
-    host_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
-    password: str | None = Field(default=None)
-
-    host: User = Relationship()
-    playlist: list[Playlist] = Relationship(
-        sa_relationship_kwargs={
-            "lazy": "selectin",
-            "cascade": "all, delete-orphan",
-            "overlaps": "room",
-        }
-    )
-
-
-class RoomResp(RoomBase):
-    id: int
-    has_password: bool = False
-    host: UserResp | None = None
-    playlist: list[PlaylistResp] = []
-    playlist_item_stats: RoomPlaylistItemStats | None = None
-    difficulty_range: RoomDifficultyRange | None = None
-    current_playlist_item: PlaylistResp | None = None
-    current_user_score: PlaylistAggregateScore | None = None
-    recent_participants: list[UserResp] = Field(default_factory=list)
-    channel_id: int = 0
-
+    @field_validator("channel_id", mode="before")
     @classmethod
-    async def from_db(
-        cls,
-        room: Room,
-        session: AsyncSession,
-        include: list[str] = [],
-        user: User | None = None,
-    ) -> "RoomResp":
-        d = room.model_dump()
-        d["channel_id"] = d.get("channel_id", 0) or 0
-        d["has_password"] = bool(room.password)
-        resp = cls.model_validate(d)
+    def validate_channel_id(cls, v):
+        """将 None 转换为 0"""
+        if v is None:
+            return 0
+        return v
 
-        stats = RoomPlaylistItemStats(count_active=0, count_total=0)
-        difficulty_range = RoomDifficultyRange(
-            min=0,
-            max=0,
-        )
-        rulesets = set()
-        for playlist in room.playlist:
+    @included
+    @staticmethod
+    async def has_password(_session: AsyncSession, room: "Room") -> bool:
+        return bool(room.password)
+
+    @ondemand
+    @staticmethod
+    async def current_playlist_item(
+        _session: AsyncSession, room: "Room", includes: list[str] | None = None
+    ) -> "PlaylistDict | None":
+        playlists = await room.awaitable_attrs.playlist
+        if not playlists:
+            return None
+        return await PlaylistModel.transform(playlists[-1], includes=includes)
+
+    @ondemand
+    @staticmethod
+    async def playlist(_session: AsyncSession, room: "Room", includes: list[str] | None = None) -> list["PlaylistDict"]:
+        playlists = await room.awaitable_attrs.playlist
+        result: list[PlaylistDict] = []
+        for playlist_item in playlists:
+            result.append(await PlaylistModel.transform(playlist_item, includes=includes))
+        return result
+
+    @ondemand
+    @staticmethod
+    async def playlist_item_stats(_session: AsyncSession, room: "Room") -> RoomPlaylistItemStats:
+        playlists = await room.awaitable_attrs.playlist
+        stats = RoomPlaylistItemStats(count_active=0, count_total=0, ruleset_ids=[])
+        rulesets: set[int] = set()
+        for playlist in playlists:
             stats.count_total += 1
             if not playlist.expired:
                 stats.count_active += 1
             rulesets.add(playlist.ruleset_id)
-            difficulty_range.min = min(difficulty_range.min, playlist.beatmap.difficulty_rating)
-            difficulty_range.max = max(difficulty_range.max, playlist.beatmap.difficulty_rating)
-            resp.playlist.append(await PlaylistResp.from_db(playlist, ["beatmap"]))
         stats.ruleset_ids = list(rulesets)
-        resp.playlist_item_stats = stats
-        resp.difficulty_range = difficulty_range
-        resp.current_playlist_item = resp.playlist[-1] if resp.playlist else None
-        resp.recent_participants = []
+        return stats
+
+    @ondemand
+    @staticmethod
+    async def difficulty_range(_session: AsyncSession, room: "Room") -> RoomDifficultyRange:
+        playlists = await room.awaitable_attrs.playlist
+        if not playlists:
+            return RoomDifficultyRange(min=0.0, max=0.0)
+        min_diff = float("inf")
+        max_diff = float("-inf")
+        for playlist in playlists:
+            rating = playlist.beatmap.difficulty_rating
+            min_diff = min(min_diff, rating)
+            max_diff = max(max_diff, rating)
+        if min_diff == float("inf"):
+            min_diff = 0.0
+        if max_diff == float("-inf"):
+            max_diff = 0.0
+        return RoomDifficultyRange(min=min_diff, max=max_diff)
+
+    @ondemand
+    @staticmethod
+    async def host(_session: AsyncSession, room: "Room", includes: list[str] | None = None) -> UserDict:
+        host_user = await room.awaitable_attrs.host
+        return await UserModel.transform(host_user, includes=includes)
+
+    @ondemand
+    @staticmethod
+    async def recent_participants(session: AsyncSession, room: "Room") -> list[UserDict]:
+        participants: list[UserDict] = []
         if room.category == RoomCategory.REALTIME:
             query = (
                 select(RoomParticipatedUser)
@@ -137,39 +177,67 @@ class RoomResp(RoomBase):
                 .limit(8)
                 .order_by(col(RoomParticipatedUser.joined_at).desc())
             )
-            resp.participant_count = (
-                await session.exec(
-                    select(func.count())
-                    .select_from(RoomParticipatedUser)
-                    .where(
-                        RoomParticipatedUser.room_id == room.id,
-                    )
-                )
-            ).first() or 0
         for recent_participant in await session.exec(query):
-            resp.recent_participants.append(
-                await UserResp.from_db(
-                    await recent_participant.awaitable_attrs.user,
-                    session,
-                    include=["statistics"],
+            user_instance = await recent_participant.awaitable_attrs.user
+            participants.append(await UserModel.transform(user_instance))
+        return participants
+
+    @ondemand
+    @staticmethod
+    async def current_user_score(
+        session: AsyncSession, room: "Room", includes: list[str] | None = None
+    ) -> "ItemAttemptsCountDict | None":
+        item_attempt = (
+            await session.exec(
+                select(ItemAttemptsCount).where(
+                    ItemAttemptsCount.room_id == room.id,
                 )
             )
-        resp.host = await UserResp.from_db(await room.awaitable_attrs.host, session, include=["statistics"])
-        if "current_user_score" in include and user:
-            resp.current_user_score = await PlaylistAggregateScore.from_db(room.id, user.id, session)
-        return resp
+        ).first()
+        if item_attempt is None:
+            return None
+
+        return await ItemAttemptsCountModel.transform(item_attempt, includes=includes)
 
 
-class APIUploadedRoom(RoomBase):
-    def to_room(self) -> Room:
-        """
-        将 APIUploadedRoom 转换为 Room 对象，playlist 字段需单独处理。
-        """
-        room_dict = self.model_dump()
-        room_dict.pop("playlist", None)
-        # host_id 已在字段中
-        return Room(**room_dict)
+class Room(AsyncAttrs, RoomModel, table=True):
+    __tablename__: str = "rooms"
 
-    id: int | None
-    host_id: int | None = None
+    host_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
+    password: str | None = Field(default=None)
+
+    host: User = Relationship()
+    playlist: list[Playlist] = Relationship(
+        sa_relationship_kwargs={
+            "lazy": "selectin",
+            "cascade": "all, delete-orphan",
+            "overlaps": "room",
+        }
+    )
+
+
+class APIUploadedRoom(SQLModel):
+    name: str = Field(index=True)
+    category: RoomCategory = Field(default=RoomCategory.NORMAL, index=True)
+    status: RoomStatus
+    type: MatchType
+    duration: int | None = Field(default=None)  # minutes
+    starts_at: datetime | None = Field(
+        sa_column=Column(
+            DateTime(timezone=True),
+        ),
+        default_factory=utcnow,
+    )
+    ends_at: datetime | None = Field(
+        sa_column=Column(
+            DateTime(timezone=True),
+        ),
+        default=None,
+    )
+    max_attempts: int | None = Field(default=None)  # playlists
+    participant_count: int = Field(default=0)
+    channel_id: int = 0
+    queue_mode: QueueMode
+    auto_skip: bool
+    auto_start_duration: int
     playlist: list[Playlist] = Field(default_factory=list)

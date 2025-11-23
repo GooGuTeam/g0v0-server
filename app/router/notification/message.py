@@ -1,11 +1,11 @@
 from typing import Annotated
 
-from app.database import ChatMessageResp
+from app.database import ChatChannelModel
 from app.database.chat import (
     ChannelType,
     ChatChannel,
-    ChatChannelResp,
     ChatMessage,
+    ChatMessageModel,
     MessageType,
     SilenceUser,
     UserSilenceResp,
@@ -18,6 +18,7 @@ from app.log import log
 from app.models.notification import ChannelMessage, ChannelMessageTeam
 from app.router.v2 import api_v2_router as router
 from app.service.redis_message_system import redis_message_system
+from app.utils import api_doc
 
 from .banchobot import bot
 from .server import server
@@ -68,7 +69,7 @@ class MessageReq(BaseModel):
 
 @router.post(
     "/chat/channels/{channel}/messages",
-    response_model=ChatMessageResp,
+    # response_model=ChatMessageDict,
     name="发送消息",
     description="发送消息到指定频道。",
     tags=["聊天"],
@@ -130,7 +131,7 @@ async def send_message(
     # 为通知系统创建临时 ChatMessage 对象（仅适用于私聊和团队频道）
     if channel_type in [ChannelType.PM, ChannelType.TEAM]:
         temp_msg = ChatMessage(
-            message_id=resp.message_id,  # 使用 Redis 系统生成的ID
+            message_id=resp["message_id"],  # 使用 Redis 系统生成的ID
             channel_id=channel_id,
             content=req.message,
             sender_id=user_id,
@@ -151,7 +152,7 @@ async def send_message(
 
 @router.get(
     "/chat/channels/{channel}/messages",
-    response_model=list[ChatMessageResp],
+    # response_model=list[dict[str, Any]],
     name="获取消息",
     description="获取指定频道的消息列表（统一按时间正序返回）。",
     tags=["聊天"],
@@ -177,7 +178,7 @@ async def get_message(
 
     try:
         messages = await redis_message_system.get_messages(channel_id, limit, since)
-        if len(messages) >= 2 and messages[0].message_id > messages[-1].message_id:
+        if len(messages) >= 2 and messages[0]["message_id"] > messages[-1]["message_id"]:
             messages.reverse()
         return messages
     except Exception as e:
@@ -189,7 +190,7 @@ async def get_message(
         # 向前加载新消息 → 直接 ASC
         query = base.where(col(ChatMessage.message_id) > since).order_by(col(ChatMessage.message_id).asc()).limit(limit)
         rows = (await session.exec(query)).all()
-        resp = [await ChatMessageResp.from_db(m, session) for m in rows]
+        resp = [await ChatMessageModel.transform(m, includes=["sender"]) for m in rows]
         # 已经 ASC，无需反转
         return resp
 
@@ -202,15 +203,14 @@ async def get_message(
         rows = (await session.exec(query)).all()
         rows = list(rows)
         rows.reverse()  # 反转为 ASC
-        resp = [await ChatMessageResp.from_db(m, session) for m in rows]
+        resp = [await ChatMessageModel.transform(m, includes=["sender"]) for m in rows]
         return resp
 
     query = base.order_by(col(ChatMessage.message_id).desc()).limit(limit)
     rows = (await session.exec(query)).all()
     rows = list(rows)
     rows.reverse()  # 反转为 ASC
-    resp = [await ChatMessageResp.from_db(m, session) for m in rows]
-    return resp
+    resp = [await ChatMessageModel.transform(m, includes=["sender"]) for m in rows]
     return resp
 
 
@@ -248,17 +248,23 @@ class PMReq(BaseModel):
     uuid: str | None = None
 
 
-class NewPMResp(BaseModel):
-    channel: ChatChannelResp
-    message: ChatMessageResp
-    new_channel_id: int
-
-
 @router.post(
     "/chat/new",
     name="创建私聊频道",
     description="创建一个新的私聊频道。",
     tags=["聊天"],
+    responses={
+        200: api_doc(
+            "创建私聊频道响应",
+            {
+                "channel": ChatChannelModel,
+                "message": ChatMessageModel,
+                "new_channel_id": int,
+            },
+            ["recent_messages.sender", "sender"],
+            name="NewPMResponse",
+        )
+    },
 )
 async def create_new_pm(
     session: Database,
@@ -290,10 +296,8 @@ async def create_new_pm(
         await session.refresh(target)
         await session.refresh(current_user)
 
-    await server.batch_join_channel([target, current_user], channel, session)
-    channel_resp = await ChatChannelResp.from_db(
-        channel, session, current_user, redis, server.channels[channel.channel_id]
-    )
+    await server.batch_join_channel([target, current_user], channel)
+    channel_resp = await ChatChannelModel.transform(channel, user=current_user, includes=["recent_messages.sender"])
     msg = ChatMessage(
         channel_id=channel.channel_id,
         content=req.message,
@@ -306,10 +310,10 @@ async def create_new_pm(
     await session.refresh(msg)
     await session.refresh(current_user)
     await session.refresh(channel)
-    message_resp = await ChatMessageResp.from_db(msg, session, current_user)
+    message_resp = await ChatMessageModel.transform(msg, user=current_user, includes=["sender"])
     await server.send_message_to_channel(message_resp)
-    return NewPMResp(
-        channel=channel_resp,
-        message=message_resp,
-        new_channel_id=channel_resp.channel_id,
-    )
+    return {
+        "channel": channel_resp,
+        "message": message_resp,
+        "new_channel_id": channel_resp["channel_id"],
+    }

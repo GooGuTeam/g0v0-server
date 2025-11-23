@@ -1,10 +1,10 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NotRequired, TypedDict
 
 from app.config import settings
+from app.database._base import DatabaseModel, included
 from app.database.events import Event, EventType
 from app.utils import utcnow
 
-from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import (
     BigInteger,
@@ -12,50 +12,63 @@ from sqlmodel import (
     Field,
     ForeignKey,
     Relationship,
-    SQLModel,
     select,
 )
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 if TYPE_CHECKING:
-    from .beatmap import Beatmap, BeatmapResp
-    from .beatmapset import BeatmapsetResp
+    from .beatmap import Beatmap, BeatmapDict
+    from .beatmapset import BeatmapsetDict
     from .user import User
 
 
-class BeatmapPlaycounts(AsyncAttrs, SQLModel, table=True):
+class BeatmapPlaycountsDict(TypedDict):
+    user_id: int
+    beatmap_id: int
+    count: NotRequired[int]
+    beatmap: NotRequired["BeatmapDict"]
+    beatmapset: NotRequired["BeatmapsetDict"]
+
+
+class BeatmapPlaycountsModel(AsyncAttrs, DatabaseModel[BeatmapPlaycountsDict]):
     __tablename__: str = "beatmap_playcounts"
 
     id: int | None = Field(
-        default=None,
-        sa_column=Column(BigInteger, primary_key=True, autoincrement=True),
+        default=None, sa_column=Column(BigInteger, primary_key=True, autoincrement=True), exclude=True
     )
     user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
     beatmap_id: int = Field(foreign_key="beatmaps.id", index=True)
-    playcount: int = Field(default=0)
+    playcount: int = Field(default=0, exclude=True)
 
+    @included
+    @staticmethod
+    async def count(_session: AsyncSession, obj: "BeatmapPlaycounts") -> int:
+        return obj.playcount
+
+    @included
+    @staticmethod
+    async def beatmap(
+        _session: AsyncSession, obj: "BeatmapPlaycounts", includes: list[str] | None = None
+    ) -> "BeatmapDict":
+        from app.database.beatmap import BeatmapModel
+
+        await obj.awaitable_attrs.beatmap
+        return await BeatmapModel.transform(obj.beatmap, includes=includes)
+
+    @included
+    @staticmethod
+    async def beatmapset(
+        _session: AsyncSession, obj: "BeatmapPlaycounts", includes: list[str] | None = None
+    ) -> "BeatmapsetDict":
+        from app.database.beatmap import BeatmapsetModel
+
+        await obj.awaitable_attrs.beatmap
+        return await BeatmapsetModel.transform(obj.beatmap.beatmapset, includes=includes)
+
+
+class BeatmapPlaycounts(BeatmapPlaycountsModel, table=True):
     user: "User" = Relationship()
     beatmap: "Beatmap" = Relationship()
-
-
-class BeatmapPlaycountsResp(BaseModel):
-    beatmap_id: int
-    beatmap: "BeatmapResp | None" = None
-    beatmapset: "BeatmapsetResp | None" = None
-    count: int
-
-    @classmethod
-    async def from_db(cls, db_model: BeatmapPlaycounts) -> "BeatmapPlaycountsResp":
-        from .beatmap import BeatmapResp
-        from .beatmapset import BeatmapsetResp
-
-        await db_model.awaitable_attrs.beatmap
-        return cls(
-            beatmap_id=db_model.beatmap_id,
-            count=db_model.playcount,
-            beatmap=await BeatmapResp.from_db(db_model.beatmap),
-            beatmapset=await BeatmapsetResp.from_db(db_model.beatmap.beatmapset),
-        )
 
 
 async def process_beatmap_playcount(session: AsyncSession, user_id: int, beatmap_id: int) -> None:

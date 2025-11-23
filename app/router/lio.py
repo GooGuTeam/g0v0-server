@@ -447,7 +447,7 @@ async def create_multiplayer_room(
             # 让房主加入频道
             host_user = await db.get(User, host_user_id)
             if host_user:
-                await server.batch_join_channel([host_user], channel, db)
+                await server.batch_join_channel([host_user], channel)
             # Add playlist items
             await _add_playlist_items(db, room_id, room_data, host_user_id)
 

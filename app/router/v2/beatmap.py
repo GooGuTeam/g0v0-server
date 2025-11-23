@@ -5,7 +5,11 @@ from typing import Annotated
 
 from app.calculator import get_calculator
 from app.calculators.performance import ConvertError
-from app.database import Beatmap, BeatmapResp, User
+from app.database import (
+    Beatmap,
+    BeatmapModel,
+    User,
+)
 from app.database.beatmap import calculate_beatmap_attributes
 from app.dependencies.database import Database, Redis
 from app.dependencies.fetcher import Fetcher
@@ -19,29 +23,20 @@ from app.models.performance import (
 from app.models.score import (
     GameMode,
 )
+from app.utils import api_doc
 
 from .router import router
 
 from fastapi import HTTPException, Path, Query, Security
 from httpx import HTTPError, HTTPStatusError
-from pydantic import BaseModel
 from sqlmodel import col, select
-
-
-class BatchGetResp(BaseModel):
-    """批量获取谱面返回模型。
-
-    返回字段说明:
-    - beatmaps: 谱面详细信息列表。"""
-
-    beatmaps: list[BeatmapResp]
 
 
 @router.get(
     "/beatmaps/lookup",
     tags=["谱面"],
     name="查询单个谱面",
-    response_model=BeatmapResp,
+    responses={200: api_doc("单个谱面详细信息。", BeatmapModel, BeatmapModel.TRANSFORMER_INCLUDES)},
     description=("根据谱面 ID / MD5 / 文件名 查询单个谱面。至少提供 id / checksum / filename 之一。"),
 )
 @asset_proxy_response
@@ -67,14 +62,14 @@ async def lookup_beatmap(
         raise HTTPException(status_code=404, detail="Beatmap not found")
     await db.refresh(current_user)
 
-    return await BeatmapResp.from_db(beatmap, session=db, user=current_user)
+    return await BeatmapModel.transform(beatmap, user=current_user, includes=BeatmapModel.TRANSFORMER_INCLUDES)
 
 
 @router.get(
     "/beatmaps/{beatmap_id}",
     tags=["谱面"],
     name="获取谱面详情",
-    response_model=BeatmapResp,
+    responses={200: api_doc("单个谱面详细信息。", BeatmapModel, BeatmapModel.TRANSFORMER_INCLUDES)},
     description="获取单个谱面详情。",
 )
 @asset_proxy_response
@@ -86,7 +81,12 @@ async def get_beatmap(
 ):
     try:
         beatmap = await Beatmap.get_or_fetch(db, fetcher, beatmap_id)
-        return await BeatmapResp.from_db(beatmap, session=db, user=current_user)
+        await db.refresh(current_user)
+        return await BeatmapModel.transform(
+            beatmap,
+            user=current_user,
+            includes=BeatmapModel.TRANSFORMER_INCLUDES,
+        )
     except HTTPError:
         raise HTTPException(status_code=404, detail="Beatmap not found")
 
@@ -95,7 +95,11 @@ async def get_beatmap(
     "/beatmaps/",
     tags=["谱面"],
     name="批量获取谱面",
-    response_model=BatchGetResp,
+    responses={
+        200: api_doc(
+            "谱面列表", {"beatmaps": list[BeatmapModel]}, BeatmapModel.TRANSFORMER_INCLUDES, name="BatchBeatmapResponse"
+        )
+    },
     description=("批量获取谱面。若不提供 ids[]，按最近更新时间返回最多 50 条。为空时按最近更新时间返回。"),
 )
 @asset_proxy_response
@@ -124,7 +128,12 @@ async def batch_get_beatmaps(
         for beatmap in beatmaps:
             await db.refresh(beatmap)
     await db.refresh(current_user)
-    return BatchGetResp(beatmaps=[await BeatmapResp.from_db(bm, session=db, user=current_user) for bm in beatmaps])
+    return {
+        "beatmaps": [
+            await BeatmapModel.transform(bm, user=current_user, includes=BeatmapModel.TRANSFORMER_INCLUDES)
+            for bm in beatmaps
+        ]
+    }
 
 
 @router.post(

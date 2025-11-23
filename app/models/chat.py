@@ -1,8 +1,6 @@
-from typing import Any
-
-from pydantic import BaseModel
+from typing import Any, TypedDict
 
 
-class ChatEvent(BaseModel):
+class ChatEvent(TypedDict):
     event: str
-    data: dict[str, Any] | None = None
+    data: dict[str, Any] | None

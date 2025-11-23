@@ -4,16 +4,15 @@
 """
 
 import asyncio
-from datetime import datetime
 import json
 from typing import TYPE_CHECKING, Literal
 
 from app.config import settings
-from app.database.statistics import UserStatistics, UserStatisticsResp
+from app.database.statistics import UserStatistics, UserStatisticsModel
 from app.helpers.asset_proxy_helper import replace_asset_urls
 from app.log import logger
 from app.models.score import GameMode
-from app.utils import utcnow
+from app.utils import safe_json_dumps, utcnow
 
 from redis.asyncio import Redis
 from sqlmodel import col, select
@@ -21,20 +20,6 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 if TYPE_CHECKING:
     pass
-
-
-class DateTimeEncoder(json.JSONEncoder):
-    """自定义 JSON 编码器，支持 datetime 序列化"""
-
-    def default(self, obj):
-        if isinstance(obj, datetime):
-            return obj.isoformat()
-        return super().default(obj)
-
-
-def safe_json_dumps(data) -> str:
-    """安全的 JSON 序列化，支持 datetime 对象"""
-    return json.dumps(data, cls=DateTimeEncoder, ensure_ascii=False, separators=(",", ":"))
 
 
 class RankingCacheService:
@@ -311,7 +296,7 @@ class RankingCacheService:
                 col(UserStatistics.pp) > 0,
                 col(UserStatistics.is_ranked).is_(True),
             ]
-            include = ["user"]
+            include = UserStatistics.RANKING_INCLUDES.copy()
 
             if type == "performance":
                 order_by = col(UserStatistics.pp).desc()
@@ -321,6 +306,7 @@ class RankingCacheService:
 
             if country:
                 wheres.append(col(UserStatistics.user).has(country_code=country.upper()))
+                include.append("country_rank")
 
             # 获取总用户数用于统计
             total_users_query = select(UserStatistics).where(*wheres)
@@ -353,9 +339,9 @@ class RankingCacheService:
                     # 转换为响应格式并确保正确序列化
                     ranking_data = []
                     for statistics in statistics_data:
-                        user_stats_resp = await UserStatisticsResp.from_db(statistics, session, None, include)
+                        user_stats_resp = await UserStatisticsModel.transform(statistics, includes=include)
 
-                        user_dict = user_stats_resp.model_dump()
+                        user_dict = user_stats_resp
 
                         # 应用资源代理处理
                         if settings.enable_asset_proxy:

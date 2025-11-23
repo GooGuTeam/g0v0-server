@@ -3,19 +3,19 @@
 用于缓存用户信息，提供热缓存和实时刷新功能
 """
 
-from datetime import datetime
 import json
 from typing import TYPE_CHECKING, Any
 
 from app.config import settings
 from app.const import BANCHOBOT_ID
-from app.database import User, UserResp
-from app.database.score import LegacyScoreResp, ScoreResp
-from app.database.user import SEARCH_INCLUDED
+from app.database import User
+from app.database.score import LegacyScoreResp
+from app.database.user import UserDict, UserModel
 from app.dependencies.database import with_db
 from app.helpers.asset_proxy_helper import replace_asset_urls
 from app.log import logger
 from app.models.score import GameMode
+from app.utils import safe_json_dumps
 
 from redis.asyncio import Redis
 from sqlmodel import col, select
@@ -23,20 +23,6 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 if TYPE_CHECKING:
     pass
-
-
-class DateTimeEncoder(json.JSONEncoder):
-    """自定义 JSON 编码器，支持 datetime 序列化"""
-
-    def default(self, obj):
-        if isinstance(obj, datetime):
-            return obj.isoformat()
-        return super().default(obj)
-
-
-def safe_json_dumps(data: Any) -> str:
-    """安全的 JSON 序列化，支持 datetime 对象"""
-    return json.dumps(data, cls=DateTimeEncoder, ensure_ascii=False)
 
 
 class UserCacheService:
@@ -125,7 +111,7 @@ class UserCacheService:
         """生成用户谱面集缓存键"""
         return f"user:{user_id}:beatmapsets:{beatmapset_type}:limit:{limit}:offset:{offset}"
 
-    async def get_user_from_cache(self, user_id: int, ruleset: GameMode | None = None) -> UserResp | None:
+    async def get_user_from_cache(self, user_id: int, ruleset: GameMode | None = None) -> UserDict | None:
         """从缓存获取用户信息"""
         try:
             cache_key = self._get_user_cache_key(user_id, ruleset)
@@ -133,7 +119,7 @@ class UserCacheService:
             if cached_data:
                 logger.debug(f"User cache hit for user {user_id}")
                 data = json.loads(cached_data)
-                return UserResp(**data)
+                return data
             return None
         except Exception as e:
             logger.error(f"Error getting user from cache: {e}")
@@ -141,7 +127,7 @@ class UserCacheService:
 
     async def cache_user(
         self,
-        user_resp: UserResp,
+        user_resp: UserDict,
         ruleset: GameMode | None = None,
         expire_seconds: int | None = None,
     ):
@@ -149,13 +135,10 @@ class UserCacheService:
         try:
             if expire_seconds is None:
                 expire_seconds = settings.user_cache_expire_seconds
-            if user_resp.id is None:
-                logger.warning("Cannot cache user with None id")
-                return
-            cache_key = self._get_user_cache_key(user_resp.id, ruleset)
-            cached_data = user_resp.model_dump_json()
+            cache_key = self._get_user_cache_key(user_resp["id"], ruleset)
+            cached_data = safe_json_dumps(user_resp)
             await self.redis.setex(cache_key, expire_seconds, cached_data)
-            logger.debug(f"Cached user {user_resp.id} for {expire_seconds}s")
+            logger.debug(f"Cached user {user_resp['id']} for {expire_seconds}s")
         except Exception as e:
             logger.error(f"Error caching user: {e}")
 
@@ -168,10 +151,9 @@ class UserCacheService:
         limit: int = 100,
         offset: int = 0,
         is_legacy: bool = False,
-    ) -> list[ScoreResp] | list[LegacyScoreResp] | None:
+    ) -> list[UserDict] | list[LegacyScoreResp] | None:
         """从缓存获取用户成绩"""
         try:
-            model = LegacyScoreResp if is_legacy else ScoreResp
             cache_key = self._get_user_scores_cache_key(
                 user_id, score_type, include_fail, mode, limit, offset, is_legacy
             )
@@ -179,7 +161,7 @@ class UserCacheService:
             if cached_data:
                 logger.debug(f"User scores cache hit for user {user_id}, type {score_type}")
                 data = json.loads(cached_data)
-                return [model(**score_data) for score_data in data]  # pyright: ignore[reportReturnType]
+                return [LegacyScoreResp(**score_data) for score_data in data] if is_legacy else data
             return None
         except Exception as e:
             logger.error(f"Error getting user scores from cache: {e}")
@@ -189,7 +171,7 @@ class UserCacheService:
         self,
         user_id: int,
         score_type: str,
-        scores: list[ScoreResp] | list[LegacyScoreResp],
+        scores: list[UserDict] | list[LegacyScoreResp],
         include_fail: bool,
         mode: GameMode | None = None,
         limit: int = 100,
@@ -204,8 +186,12 @@ class UserCacheService:
             cache_key = self._get_user_scores_cache_key(
                 user_id, score_type, include_fail, mode, limit, offset, is_legacy
             )
-            # 使用 model_dump_json() 而不是 model_dump() + json.dumps()
-            scores_json_list = [score.model_dump_json() for score in scores]
+            if len(scores) == 0:
+                return
+            if isinstance(scores[0], dict):
+                scores_json_list = [safe_json_dumps(score) for score in scores]
+            else:
+                scores_json_list = [score.model_dump_json() for score in scores]  # pyright: ignore[reportAttributeAccessIssue]
             cached_data = f"[{','.join(scores_json_list)}]"
             await self.redis.setex(cache_key, expire_seconds, cached_data)
             logger.debug(f"Cached user {user_id} scores ({score_type}) for {expire_seconds}s")
@@ -308,7 +294,7 @@ class UserCacheService:
             for user in users:
                 if user.id != BANCHOBOT_ID:
                     try:
-                        await self._cache_single_user(user, session)
+                        await self._cache_single_user(user)
                         cached_count += 1
                     except Exception as e:
                         logger.error(f"Failed to cache user {user.id}: {e}")
@@ -320,10 +306,10 @@ class UserCacheService:
         finally:
             self._refreshing = False
 
-    async def _cache_single_user(self, user: User, session: AsyncSession):
+    async def _cache_single_user(self, user: User):
         """缓存单个用户"""
         try:
-            user_resp = await UserResp.from_db(user, session, include=SEARCH_INCLUDED)
+            user_resp = await UserModel.transform(user, includes=User.USER_INCLUDES)
 
             # 应用资源代理处理
             if settings.enable_asset_proxy:
@@ -347,7 +333,7 @@ class UserCacheService:
             # 立即重新加载用户信息
             user = await session.get(User, user_id)
             if user and user.id != BANCHOBOT_ID:
-                await self._cache_single_user(user, session)
+                await self._cache_single_user(user)
                 logger.info(f"Refreshed cache for user {user_id} after score submit")
         except Exception as e:
             logger.error(f"Error refreshing user cache on score submit: {e}")

@@ -3,7 +3,7 @@ import base64
 import hashlib
 import json
 
-from app.database.beatmapset import BeatmapsetResp, SearchBeatmapsetsResp
+from app.database import BeatmapsetDict, BeatmapsetModel, SearchBeatmapsetsResp
 from app.helpers.rate_limiter import osu_api_rate_limiter
 from app.log import fetcher_logger
 from app.models.beatmap import SearchQueryModel
@@ -13,6 +13,7 @@ from app.utils import bg_tasks
 from ._base import BaseFetcher
 
 from httpx import AsyncClient
+from pydantic import TypeAdapter
 import redis.asyncio as redis
 
 
@@ -26,6 +27,46 @@ logger = fetcher_logger("BeatmapsetFetcher")
 
 
 MAX_RETRY_ATTEMPTS = 3
+adapter = TypeAdapter(
+    BeatmapsetModel.generate_typeddict(
+        (
+            "availability",
+            "bpm",
+            "last_updated",
+            "ranked",
+            "ranked_date",
+            "submitted_date",
+            "tags",
+            "storyboard",
+            "description",
+            "genre",
+            "language",
+            *[
+                f"beatmaps.{inc}"
+                for inc in (
+                    "checksum",
+                    "accuracy",
+                    "ar",
+                    "bpm",
+                    "convert",
+                    "count_circles",
+                    "count_sliders",
+                    "count_spinners",
+                    "cs",
+                    "deleted_at",
+                    "drain",
+                    "hit_length",
+                    "is_scoreable",
+                    "last_updated",
+                    "mode_int",
+                    "ranked",
+                    "url",
+                    "max_combo",
+                )
+            ],
+        )
+    )
+)
 
 
 class BeatmapsetFetcher(BaseFetcher):
@@ -139,10 +180,9 @@ class BeatmapsetFetcher(BaseFetcher):
         except Exception:
             return {}
 
-    async def get_beatmapset(self, beatmap_set_id: int) -> BeatmapsetResp:
+    async def get_beatmapset(self, beatmap_set_id: int) -> BeatmapsetDict:
         logger.opt(colors=True).debug(f"get_beatmapset: <y>{beatmap_set_id}</y>")
-
-        return BeatmapsetResp.model_validate(
+        return adapter.validate_python(  # pyright: ignore[reportReturnType]
             await self.request_api(f"https://osu.ppy.sh/api/v2/beatmapsets/{beatmap_set_id}")
         )
 

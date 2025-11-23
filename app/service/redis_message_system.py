@@ -8,11 +8,11 @@
 import asyncio
 from datetime import datetime
 import json
-import time
 from typing import Any
 
-from app.database.chat import ChatMessage, ChatMessageResp, MessageType
-from app.database.user import RANKING_INCLUDES, User, UserResp
+from app.database import ChatMessageDict
+from app.database.chat import ChatMessage, ChatMessageModel, MessageType
+from app.database.user import User, UserModel
 from app.dependencies.database import get_redis_message, with_db
 from app.log import logger
 from app.utils import bg_tasks
@@ -35,7 +35,7 @@ class RedisMessageSystem:
         content: str,
         is_action: bool = False,
         user_uuid: str | None = None,
-    ) -> ChatMessageResp:
+    ) -> "ChatMessageDict":
         """
         发送消息 - 立即存储到 Redis 并返回
 
@@ -47,7 +47,7 @@ class RedisMessageSystem:
             user_uuid: 用户UUID
 
         Returns:
-            ChatMessageResp: 消息响应对象
+            ChatMessage: 消息响应对象
         """
         # 生成消息ID和时间戳
         message_id = await self._generate_message_id(channel_id)
@@ -68,58 +68,24 @@ class RedisMessageSystem:
             is_multiplayer = channel_type == ChannelType.MULTIPLAYER
 
         # 准备消息数据
-        message_data = {
+        message_data: "ChatMessageDict" = {
             "message_id": message_id,
             "channel_id": channel_id,
             "sender_id": user.id,
             "content": content,
-            "timestamp": timestamp.isoformat(),
-            "type": MessageType.ACTION.value if is_action else MessageType.PLAIN.value,
+            "timestamp": timestamp,
+            "type": MessageType.ACTION if is_action else MessageType.PLAIN,
             "uuid": user_uuid or "",
-            "status": "cached",  # Redis 缓存状态
-            "created_at": time.time(),
-            "is_multiplayer": is_multiplayer,  # 标记是否为多人房间消息
+            "is_action": is_action,
         }
 
         # 立即存储到 Redis
-        await self._store_to_redis(message_id, channel_id, message_data)
+        await self._store_to_redis(message_id, channel_id, message_data, is_multiplayer)
 
         # 创建响应对象
         async with with_db() as session:
-            user_resp = await UserResp.from_db(user, session, RANKING_INCLUDES)
-
-            # 确保 statistics 不为空
-            if user_resp.statistics is None:
-                from app.database.statistics import UserStatisticsResp
-
-                user_resp.statistics = UserStatisticsResp(
-                    mode=user.playmode,
-                    global_rank=0,
-                    country_rank=0,
-                    pp=0.0,
-                    ranked_score=0,
-                    hit_accuracy=0.0,
-                    play_count=0,
-                    play_time=0,
-                    total_score=0,
-                    total_hits=0,
-                    maximum_combo=0,
-                    replays_watched_by_others=0,
-                    is_ranked=False,
-                    grade_counts={"ssh": 0, "ss": 0, "sh": 0, "s": 0, "a": 0},
-                    level={"current": 1, "progress": 0},
-                )
-
-        response = ChatMessageResp(
-            message_id=message_id,
-            channel_id=channel_id,
-            content=content,
-            timestamp=timestamp,
-            sender_id=user.id,
-            sender=user_resp,
-            is_action=is_action,
-            uuid=user_uuid,
-        )
+            user_resp = await UserModel.transform(user, includes=User.LIST_INCLUDES)
+            message_data["sender"] = user_resp
 
         if is_multiplayer:
             logger.info(
@@ -128,9 +94,9 @@ class RedisMessageSystem:
             )
         else:
             logger.info(f"Message {message_id} sent to Redis cache for channel {channel_id}")
-        return response
+        return message_data
 
-    async def get_messages(self, channel_id: int, limit: int = 50, since: int = 0) -> list[ChatMessageResp]:
+    async def get_messages(self, channel_id: int, limit: int = 50, since: int = 0) -> list[ChatMessageDict]:
         """
         获取频道消息 - 优先从 Redis 获取最新消息
 
@@ -140,9 +106,9 @@ class RedisMessageSystem:
             since: 起始消息ID
 
         Returns:
-            List[ChatMessageResp]: 消息列表
+            List[ChatMessageDict]: 消息列表
         """
-        messages = []
+        messages: list["ChatMessageDict"] = []
 
         try:
             # 从 Redis 获取最新消息
@@ -154,45 +120,21 @@ class RedisMessageSystem:
                     # 获取发送者信息
                     sender = await session.get(User, msg_data["sender_id"])
                     if sender:
-                        user_resp = await UserResp.from_db(sender, session, RANKING_INCLUDES)
+                        user_resp = await UserModel.transform(sender, includes=User.LIST_INCLUDES)
 
-                        if user_resp.statistics is None:
-                            from app.database.statistics import UserStatisticsResp
+                        from app.database.chat import ChatMessageDict
 
-                            user_resp.statistics = UserStatisticsResp(
-                                mode=sender.playmode,
-                                global_rank=0,
-                                country_rank=0,
-                                pp=0.0,
-                                ranked_score=0,
-                                hit_accuracy=0.0,
-                                play_count=0,
-                                play_time=0,
-                                total_score=0,
-                                total_hits=0,
-                                maximum_combo=0,
-                                replays_watched_by_others=0,
-                                is_ranked=False,
-                                grade_counts={
-                                    "ssh": 0,
-                                    "ss": 0,
-                                    "sh": 0,
-                                    "s": 0,
-                                    "a": 0,
-                                },
-                                level={"current": 1, "progress": 0},
-                            )
-
-                        message_resp = ChatMessageResp(
-                            message_id=msg_data["message_id"],
-                            channel_id=msg_data["channel_id"],
-                            content=msg_data["content"],
-                            timestamp=datetime.fromisoformat(msg_data["timestamp"]),
-                            sender_id=msg_data["sender_id"],
-                            sender=user_resp,
-                            is_action=msg_data["type"] == MessageType.ACTION.value,
-                            uuid=msg_data.get("uuid") or None,
-                        )
+                        message_resp: ChatMessageDict = {
+                            "message_id": msg_data["message_id"],
+                            "channel_id": msg_data["channel_id"],
+                            "content": msg_data["content"],
+                            "timestamp": datetime.fromisoformat(msg_data["timestamp"]),  # pyright: ignore[reportArgumentType]
+                            "sender_id": msg_data["sender_id"],
+                            "sender": user_resp,
+                            "is_action": msg_data["type"] == MessageType.ACTION.value,
+                            "uuid": msg_data.get("uuid") or None,
+                            "type": MessageType(msg_data["type"]),
+                        }
                         messages.append(message_resp)
 
             # 如果 Redis 消息不够，从数据库补充
@@ -216,12 +158,11 @@ class RedisMessageSystem:
 
         return message_id
 
-    async def _store_to_redis(self, message_id: int, channel_id: int, message_data: dict[str, Any]):
+    async def _store_to_redis(
+        self, message_id: int, channel_id: int, message_data: ChatMessageDict, is_multiplayer: bool = False
+    ):
         """存储消息到 Redis"""
         try:
-            # 检查是否是多人房间消息
-            is_multiplayer = message_data.get("is_multiplayer", False)
-
             # 存储消息数据
             await self.redis.hset(
                 f"msg:{channel_id}:{message_id}",
@@ -295,7 +236,7 @@ class RedisMessageSystem:
             logger.error(f"Failed to store message to Redis: {e}")
             raise
 
-    async def _get_from_redis(self, channel_id: int, limit: int = 50, since: int = 0) -> list[dict[str, Any]]:
+    async def _get_from_redis(self, channel_id: int, limit: int = 50, since: int = 0) -> list[ChatMessageDict]:
         """从 Redis 获取消息"""
         try:
             # 获取消息键列表，按消息ID排序
@@ -350,15 +291,15 @@ class RedisMessageSystem:
             logger.error(f"Failed to get messages from Redis: {e}")
             return []
 
-    async def _backfill_from_database(self, channel_id: int, existing_messages: list[ChatMessageResp], limit: int):
+    async def _backfill_from_database(self, channel_id: int, existing_messages: list[ChatMessageDict], limit: int):
         """从数据库补充历史消息"""
         try:
             # 找到最小的消息ID
             min_id = float("inf")
             if existing_messages:
                 for msg in existing_messages:
-                    if msg.message_id is not None and msg.message_id < min_id:
-                        min_id = msg.message_id
+                    if msg["message_id"] is not None and msg["message_id"] < min_id:
+                        min_id = msg["message_id"]
 
             needed = limit - len(existing_messages)
 
@@ -378,13 +319,13 @@ class RedisMessageSystem:
                 db_messages = (await session.exec(query)).all()
 
                 for msg in reversed(db_messages):  # 按时间正序插入
-                    msg_resp = await ChatMessageResp.from_db(msg, session)
+                    msg_resp = await ChatMessageModel.transform(msg, includes=["sender"])
                     existing_messages.insert(0, msg_resp)
 
         except Exception as e:
             logger.error(f"Failed to backfill from database: {e}")
 
-    async def _get_from_database_only(self, channel_id: int, limit: int, since: int) -> list[ChatMessageResp]:
+    async def _get_from_database_only(self, channel_id: int, limit: int, since: int) -> list[ChatMessageDict]:
         """仅从数据库获取消息（回退方案）"""
         try:
             async with with_db() as session:
@@ -402,7 +343,7 @@ class RedisMessageSystem:
 
                 messages = (await session.exec(query)).all()
 
-                results = [await ChatMessageResp.from_db(msg, session) for msg in messages]
+                results = [await ChatMessageModel.transform(msg, includes=["sender"]) for msg in messages]
 
                 # 如果是 since > 0，保持正序；否则反转为时间正序
                 if since == 0:

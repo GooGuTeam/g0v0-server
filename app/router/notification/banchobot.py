@@ -3,11 +3,14 @@ from collections.abc import Awaitable, Callable
 from math import ceil
 import random
 import shlex
+from typing import TYPE_CHECKING
 
 from app.calculator import calculate_weighted_pp
 from app.const import BANCHOBOT_ID
-from app.database import ChatMessageResp
-from app.database.chat import ChannelType, ChatChannel, ChatMessage, MessageType
+
+if TYPE_CHECKING:
+    pass
+from app.database.chat import ChannelType, ChatChannel, ChatMessage, ChatMessageModel, MessageType
 from app.database.score import Score, get_best_id
 from app.database.statistics import UserStatistics, get_rank
 from app.database.user import User
@@ -95,7 +98,7 @@ class Bot:
         await session.commit()
         await session.refresh(msg)
         await session.refresh(bot)
-        resp = await ChatMessageResp.from_db(msg, session, bot)
+        resp = await ChatMessageModel.transform(msg, includes=["sender"])
         await server.send_message_to_channel(resp)
 
     async def _ensure_pm_channel(self, user: User, session: AsyncSession) -> ChatChannel | None:
@@ -119,7 +122,7 @@ class Bot:
             await session.refresh(channel)
             await session.refresh(user)
             await session.refresh(bot)
-        await server.batch_join_channel([user, bot], channel, session)
+        await server.batch_join_channel([user, bot], channel)
         return channel
 
     async def _send_reply(

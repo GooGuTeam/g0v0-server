@@ -2,7 +2,7 @@ import hashlib
 from typing import Annotated
 
 from app.database.team import Team, TeamMember, TeamRequest, TeamResp
-from app.database.user import BASE_INCLUDES, User, UserResp
+from app.database.user import User, UserModel
 from app.dependencies.database import Database, Redis
 from app.dependencies.storage import StorageService
 from app.dependencies.user import ClientUser
@@ -14,12 +14,11 @@ from app.models.notification import (
 from app.models.score import GameMode
 from app.router.notification import server
 from app.service.ranking_cache_service import get_ranking_cache_service
-from app.utils import check_image, utcnow
+from app.utils import api_doc, check_image, utcnow
 
 from .router import router
 
 from fastapi import File, Form, HTTPException, Path, Query, Request
-from pydantic import BaseModel
 from sqlmodel import col, exists, select
 
 
@@ -214,12 +213,22 @@ async def delete_team(
     await cache_service.invalidate_team_cache()
 
 
-class TeamQueryResp(BaseModel):
-    team: TeamResp
-    members: list[UserResp]
-
-
-@router.get("/team/{team_id}", name="查询战队", response_model=TeamQueryResp, tags=["战队", "g0v0 API"])
+@router.get(
+    "/team/{team_id}",
+    name="查询战队",
+    tags=["战队", "g0v0 API"],
+    responses={
+        200: api_doc(
+            "战队信息",
+            {
+                "team": TeamResp,
+                "members": list[UserModel],
+            },
+            ["statistics", "country"],
+            name="TeamQueryResp",
+        )
+    },
+)
 async def get_team(
     session: Database,
     team_id: Annotated[int, Path(..., description="战队 ID")],
@@ -233,10 +242,10 @@ async def get_team(
             )
         )
     ).all()
-    return TeamQueryResp(
-        team=await TeamResp.from_db(members[0].team, session, gamemode),
-        members=[await UserResp.from_db(m.user, session, include=BASE_INCLUDES) for m in members],
-    )
+    return {
+        "team": await TeamResp.from_db(members[0].team, session, gamemode),
+        "members": [await UserModel.transform(m.user, includes=["statistics", "country"]) for m in members],
+    }
 
 
 @router.post("/team/{team_id}/request", name="请求加入战队", status_code=204, tags=["战队", "g0v0 API"])

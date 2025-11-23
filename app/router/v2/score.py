@@ -9,7 +9,6 @@ from app.database import (
     Playlist,
     Room,
     Score,
-    ScoreResp,
     ScoreToken,
     ScoreTokenResp,
     User,
@@ -27,8 +26,10 @@ from app.database.relationship import Relationship, RelationshipType
 from app.database.score import (
     LegacyScoreResp,
     MultiplayerScores,
-    ScoreAround,
+    MultiplayScoreDict,
+    ScoreModel,
     get_leaderboard,
+    get_score_position_by_id,
     process_score,
     process_user,
 )
@@ -49,7 +50,7 @@ from app.models.score import (
 )
 from app.service.beatmap_cache_service import get_beatmap_cache_service
 from app.service.user_cache_service import refresh_user_cache_background
-from app.utils import utcnow
+from app.utils import api_doc, utcnow
 
 from .router import router
 
@@ -72,6 +73,7 @@ from sqlmodel import col, exists, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 READ_SCORE_TIMEOUT = 10
+DEFAULT_SCORE_INCLUDES = ["user", "user.country", "user.cover", "user.team"]
 logger = log("Score")
 
 
@@ -180,13 +182,15 @@ async def submit_score(
         await db.refresh(score)
 
         background_task.add_task(_process_user, score_id, user_id, redis, fetcher)
-    resp: ScoreResp = await ScoreResp.from_db(db, score)
+    resp = await ScoreModel.transform(
+        score,
+    )
     score_gamemode = score.gamemode
 
     await db.commit()
     if user_id is not None:
         background_task.add_task(refresh_user_cache_background, redis, user_id, score_gamemode)
-    background_task.add_task(_process_user_achievement, resp.id)
+    background_task.add_task(_process_user_achievement, resp["id"])
     return resp
 
 
@@ -218,27 +222,36 @@ async def _preload_beatmap_for_pp_calculation(beatmap_id: int) -> None:
         logger.warning(f"Failed to preload beatmap {beatmap_id}: {e}")
 
 
-class BeatmapUserScore[T: ScoreResp | LegacyScoreResp](BaseModel):
+LeaderboardScoreType = ScoreModel.generate_typeddict(tuple(DEFAULT_SCORE_INCLUDES)) | LegacyScoreResp
+
+
+class BeatmapUserScore(BaseModel):
     position: int
-    score: T
+    score: LeaderboardScoreType  # pyright: ignore[reportInvalidTypeForm]
 
 
-class BeatmapScores[T: ScoreResp | LegacyScoreResp](BaseModel):
-    scores: list[T]
-    user_score: BeatmapUserScore[T] | None = None
+class BeatmapScores(BaseModel):
+    scores: list[LeaderboardScoreType]  # pyright: ignore[reportInvalidTypeForm]
+    user_score: BeatmapUserScore | None = None
     score_count: int = 0
 
 
 @router.get(
     "/beatmaps/{beatmap_id}/scores",
     tags=["成绩"],
-    response_model=BeatmapScores[ScoreResp] | BeatmapScores[LegacyScoreResp],
+    responses={
+        200: {
+            "model": BeatmapScores,
+            "description": (
+                "排行榜及当前用户成绩。\n\n"
+                f"如果 `x-api-version >= 20220705`，返回值为 `BeatmapScores[Score]`"
+                f" （包含：{', '.join([f'`{inc}`' for inc in DEFAULT_SCORE_INCLUDES])}），"
+                "否则为 `BeatmapScores[LegacyScoreResp]`。"
+            ),
+        }
+    },
     name="获取谱面排行榜",
-    description=(
-        "获取指定谱面在特定条件下的排行榜及当前用户成绩。\n\n"
-        "如果 `x-api-version >= 20220705`，返回值为 `BeatmapScores[ScoreResp]`，"
-        "否则为 `BeatmapScores[LegacyScoreResp]`。"
-    ),
+    description="获取指定谱面在特定条件下的排行榜及当前用户成绩。",
 )
 async def get_beatmap_scores(
     db: Database,
@@ -266,27 +279,46 @@ async def get_beatmap_scores(
         mods=sorted(mods),
     )
 
-    user_score_resp = await user_score.to_resp(db, api_version) if user_score else None
-    resp = BeatmapScores(
-        scores=[await score.to_resp(db, api_version) for score in all_scores],
-        user_score=BeatmapUserScore(score=user_score_resp, position=user_score_resp.rank_global or 0)
-        if user_score_resp
-        else None,
-        score_count=count,
-    )
-    return resp
+    user_score_resp = await user_score.to_resp(db, api_version, includes=DEFAULT_SCORE_INCLUDES) if user_score else None
+    return {
+        "scores": [await score.to_resp(db, api_version, includes=DEFAULT_SCORE_INCLUDES) for score in all_scores],
+        "user_score": (
+            {
+                "score": user_score_resp,
+                "position": (
+                    await get_score_position_by_id(
+                        db,
+                        user_score.beatmap_id,
+                        user_score.id,
+                        mode=user_score.gamemode,
+                        user=user_score.user,
+                    )
+                    or 0
+                ),
+            }
+            if user_score and user_score_resp
+            else None
+        ),
+        "score_count": count,
+    }
 
 
 @router.get(
     "/beatmaps/{beatmap_id}/scores/users/{user_id}",
     tags=["成绩"],
-    response_model=BeatmapUserScore[ScoreResp] | BeatmapUserScore[LegacyScoreResp],
+    responses={
+        200: {
+            "model": BeatmapUserScore,
+            "description": (
+                "指定用户在指定谱面上的最高成绩\n\n"
+                "如果 `x-api-version >= 20220705`，返回值为 `BeatmapUserScore[Score]`，"
+                f" （包含：{', '.join([f'`{inc}`' for inc in DEFAULT_SCORE_INCLUDES])}），"
+                "否则为 `BeatmapUserScore[LegacyScoreResp]`。"
+            ),
+        }
+    },
     name="获取用户谱面最高成绩",
-    description=(
-        "获取指定用户在指定谱面上的最高成绩。\n\n"
-        "如果 `x-api-version >= 20220705`，返回值为 `BeatmapUserScore[ScoreResp]`，"
-        "否则为 `BeatmapUserScore[LegacyScoreResp]`。"
-    ),
+    description="获取指定用户在指定谱面上的最高成绩。",
 )
 async def get_user_beatmap_score(
     db: Database,
@@ -318,23 +350,38 @@ async def get_user_beatmap_score(
             detail=f"Cannot find user {user_id}'s score on this beatmap",
         )
     else:
-        resp = await user_score.to_resp(db, api_version=api_version)
-        return BeatmapUserScore(
-            position=resp.rank_global or 0,
-            score=resp,
-        )
+        resp = await user_score.to_resp(db, api_version=api_version, includes=DEFAULT_SCORE_INCLUDES)
+        return {
+            "position": (
+                await get_score_position_by_id(
+                    db,
+                    user_score.beatmap_id,
+                    user_score.id,
+                    mode=user_score.gamemode,
+                    user=user_score.user,
+                )
+                or 0
+            ),
+            "score": resp,
+        }
 
 
 @router.get(
     "/beatmaps/{beatmap_id}/scores/users/{user_id}/all",
     tags=["成绩"],
-    response_model=list[ScoreResp] | list[LegacyScoreResp],
+    responses={
+        200: api_doc(
+            (
+                "用户谱面全部成绩\n\n"
+                "如果 `x-api-version >= 20220705`，返回值为 `Score`列表，"
+                "否则为 `LegacyScoreResp`列表。"
+            ),
+            list[ScoreModel] | list[LegacyScoreResp],
+            DEFAULT_SCORE_INCLUDES,
+        )
+    },
     name="获取用户谱面全部成绩",
-    description=(
-        "获取指定用户在指定谱面上的全部成绩列表。\n\n"
-        "如果 `x-api-version >= 20220705`，返回值为 `ScoreResp`列表，"
-        "否则为 `LegacyScoreResp`列表。"
-    ),
+    description="获取指定用户在指定谱面上的全部成绩列表。",
 )
 async def get_user_all_beatmap_scores(
     db: Database,
@@ -359,7 +406,7 @@ async def get_user_all_beatmap_scores(
         )
     ).all()
 
-    return [await score.to_resp(db, api_version) for score in all_user_scores]
+    return [await score.to_resp(db, api_version, includes=DEFAULT_SCORE_INCLUDES) for score in all_user_scores]
 
 
 @router.post(
@@ -413,9 +460,9 @@ async def create_solo_score(
 @router.put(
     "/beatmaps/{beatmap_id}/solo/scores/{token}",
     tags=["游玩"],
-    response_model=ScoreResp,
     name="提交单曲成绩",
     description="\n使用令牌提交单曲成绩。",
+    responses={200: api_doc("单曲成绩提交结果。", ScoreModel)},
 )
 async def submit_solo_score(
     background_task: BackgroundTasks,
@@ -520,6 +567,7 @@ async def create_playlist_score(
     tags=["游玩"],
     name="提交房间项目成绩",
     description="\n提交房间游玩项目成绩。",
+    responses={200: api_doc("单曲成绩提交结果。", ScoreModel)},
 )
 async def submit_playlist_score(
     background_task: BackgroundTasks,
@@ -560,13 +608,13 @@ async def submit_playlist_score(
         room_id,
         playlist_id,
         user_id,
-        score_resp.id,
-        score_resp.total_score,
+        score_resp["id"],
+        score_resp["total_score"],
         session,
         redis,
     )
     await session.commit()
-    if room_category == RoomCategory.DAILY_CHALLENGE and score_resp.passed:
+    if room_category == RoomCategory.DAILY_CHALLENGE and score_resp["passed"]:
         await process_daily_challenge_score(session, user_id, room_id)
     await ItemAttemptsCount.get_or_create(room_id, user_id, session)
     await session.commit()
@@ -575,15 +623,23 @@ async def submit_playlist_score(
 
 class IndexedScoreResp(MultiplayerScores):
     total: int
-    user_score: ScoreResp | None = None
+    user_score: MultiplayScoreDict | None = None  # pyright: ignore[reportInvalidTypeForm]
 
 
 @router.get(
     "/rooms/{room_id}/playlist/{playlist_id}/scores",
-    response_model=IndexedScoreResp,
+    # response_model=IndexedScoreResp,
     name="获取房间项目排行榜",
     description="获取房间游玩项目排行榜。",
     tags=["成绩"],
+    responses={
+        200: {
+            "description": (
+                f"房间项目排行榜。\n\n包含：{', '.join([f'`{inc}`' for inc in Score.MULTIPLAYER_BASE_INCLUDES])}"
+            ),
+            "model": IndexedScoreResp,
+        }
+    },
 )
 async def index_playlist_scores(
     session: Database,
@@ -620,16 +676,14 @@ async def index_playlist_scores(
         scores = scores[:-1]
 
     user_score = None
-    score_resp = [await ScoreResp.from_db(session, score.score) for score in scores]
+    score_resp = [await ScoreModel.transform(score.score, includes=Score.MULTIPLAYER_BASE_INCLUDES) for score in scores]
     for score in score_resp:
-        score.position = await get_position(room_id, playlist_id, score.id, session)
-        if score.user_id == user_id:
+        if (room.category == RoomCategory.DAILY_CHALLENGE and score["user_id"] == user_id and score["passed"]) or score[
+            "user_id"
+        ] == user_id:
             user_score = score
-
-    if room.category == RoomCategory.DAILY_CHALLENGE:
-        score_resp = [s for s in score_resp if s.passed]
-        if user_score and not user_score.passed:
-            user_score = None
+            user_score["position"] = await get_position(room_id, playlist_id, score["id"], session)
+            break
 
     resp = IndexedScoreResp(
         scores=score_resp,
@@ -648,10 +702,16 @@ async def index_playlist_scores(
 
 @router.get(
     "/rooms/{room_id}/playlist/{playlist_id}/scores/{score_id}",
-    response_model=ScoreResp,
     name="获取房间项目单个成绩",
     description="获取指定房间游玩项目中单个成绩详情。",
     tags=["成绩"],
+    responses={
+        200: api_doc(
+            "房间项目单个成绩详情。",
+            ScoreModel,
+            [*Score.MULTIPLAYER_BASE_INCLUDES, "position", "scores_around"],
+        )
+    },
 )
 async def show_playlist_score(
     session: Database,
@@ -687,39 +747,25 @@ async def show_playlist_score(
             break
     if not score_record:
         raise HTTPException(status_code=404, detail="Score not found")
-    resp = await ScoreResp.from_db(session, score_record.score)
-    resp.position = await get_position(room_id, playlist_id, score_id, session)
+    includes = [
+        *Score.MULTIPLAYER_BASE_INCLUDES,
+        "position",
+    ]
     if completed:
-        scores = (
-            await session.exec(
-                select(PlaylistBestScore).where(
-                    PlaylistBestScore.playlist_id == playlist_id,
-                    PlaylistBestScore.room_id == room_id,
-                    ~User.is_restricted_query(col(PlaylistBestScore.user_id)),
-                )
-            )
-        ).all()
-        higher_scores = []
-        lower_scores = []
-        for score in scores:
-            resp = await ScoreResp.from_db(session, score.score)
-            if is_playlist and not resp.passed:
-                continue
-            if score.total_score > resp.total_score:
-                higher_scores.append(resp)
-            elif score.total_score < resp.total_score:
-                lower_scores.append(resp)
-        resp.scores_around = ScoreAround(
-            higher=MultiplayerScores(scores=higher_scores),
-            lower=MultiplayerScores(scores=lower_scores),
-        )
-
+        includes.append("scores_around")
+    resp = await ScoreModel.transform(score_record.score, includes=includes)
     return resp
 
 
 @router.get(
     "rooms/{room_id}/playlist/{playlist_id}/scores/users/{user_id}",
-    response_model=ScoreResp,
+    responses={
+        200: api_doc(
+            "房间项目单个成绩详情。",
+            ScoreModel,
+            [*Score.MULTIPLAYER_BASE_INCLUDES, "position", "scores_around"],
+        )
+    },
     name="获取房间项目用户成绩",
     description="获取指定用户在房间游玩项目中的成绩。",
     tags=["成绩"],
@@ -749,8 +795,14 @@ async def get_user_playlist_score(
     if not score_record:
         raise HTTPException(status_code=404, detail="Score not found")
 
-    resp = await ScoreResp.from_db(session, score_record.score)
-    resp.position = await get_position(room_id, playlist_id, score_record.score_id, session)
+    resp = await ScoreModel.transform(
+        score_record.score,
+        includes=[
+            *Score.MULTIPLAYER_BASE_INCLUDES,
+            "position",
+            "scores_around",
+        ],
+    )
     return resp
 
 

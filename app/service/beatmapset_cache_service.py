@@ -3,33 +3,19 @@ Beatmapset缓存服务
 用于缓存beatmapset数据，减少数据库查询频率
 """
 
-from datetime import datetime
 import hashlib
 import json
 from typing import TYPE_CHECKING
 
 from app.config import settings
-from app.database.beatmapset import BeatmapsetResp
+from app.database import BeatmapsetDict
 from app.log import logger
+from app.utils import safe_json_dumps
 
 from redis.asyncio import Redis
 
 if TYPE_CHECKING:
     pass
-
-
-class DateTimeEncoder(json.JSONEncoder):
-    """处理datetime序列化的JSON编码器"""
-
-    def default(self, obj):
-        if isinstance(obj, datetime):
-            return obj.isoformat()
-        return super().default(obj)
-
-
-def safe_json_dumps(data) -> str:
-    """安全的JSON序列化，处理datetime对象"""
-    return json.dumps(data, cls=DateTimeEncoder, ensure_ascii=False)
 
 
 def generate_hash(data) -> str:
@@ -57,15 +43,14 @@ class BeatmapsetCacheService:
         """生成搜索结果缓存键"""
         return f"beatmapset_search:{query_hash}:{cursor_hash}"
 
-    async def get_beatmapset_from_cache(self, beatmapset_id: int) -> BeatmapsetResp | None:
+    async def get_beatmapset_from_cache(self, beatmapset_id: int) -> BeatmapsetDict | None:
         """从缓存获取beatmapset信息"""
         try:
             cache_key = self._get_beatmapset_cache_key(beatmapset_id)
             cached_data = await self.redis.get(cache_key)
             if cached_data:
                 logger.debug(f"Beatmapset cache hit for {beatmapset_id}")
-                data = json.loads(cached_data)
-                return BeatmapsetResp(**data)
+                return json.loads(cached_data)
             return None
         except (ValueError, TypeError, AttributeError) as e:
             logger.error(f"Error getting beatmapset from cache: {e}")
@@ -73,24 +58,21 @@ class BeatmapsetCacheService:
 
     async def cache_beatmapset(
         self,
-        beatmapset_resp: BeatmapsetResp,
+        beatmapset_resp: BeatmapsetDict,
         expire_seconds: int | None = None,
     ):
         """缓存beatmapset信息"""
         try:
             if expire_seconds is None:
                 expire_seconds = self._default_ttl
-            if beatmapset_resp.id is None:
-                logger.warning("Cannot cache beatmapset with None id")
-                return
-            cache_key = self._get_beatmapset_cache_key(beatmapset_resp.id)
-            cached_data = beatmapset_resp.model_dump_json()
+            cache_key = self._get_beatmapset_cache_key(beatmapset_resp["id"])
+            cached_data = safe_json_dumps(beatmapset_resp)
             await self.redis.setex(cache_key, expire_seconds, cached_data)  # type: ignore
-            logger.debug(f"Cached beatmapset {beatmapset_resp.id} for {expire_seconds}s")
+            logger.debug(f"Cached beatmapset {beatmapset_resp['id']} for {expire_seconds}s")
         except (ValueError, TypeError, AttributeError) as e:
             logger.error(f"Error caching beatmapset: {e}")
 
-    async def get_beatmap_lookup_from_cache(self, beatmap_id: int) -> BeatmapsetResp | None:
+    async def get_beatmap_lookup_from_cache(self, beatmap_id: int) -> BeatmapsetDict | None:
         """从缓存获取通过beatmap ID查找的beatmapset信息"""
         try:
             cache_key = self._get_beatmap_lookup_cache_key(beatmap_id)
@@ -98,7 +80,7 @@ class BeatmapsetCacheService:
             if cached_data:
                 logger.debug(f"Beatmap lookup cache hit for {beatmap_id}")
                 data = json.loads(cached_data)
-                return BeatmapsetResp(**data)
+                return data
             return None
         except (ValueError, TypeError, AttributeError) as e:
             logger.error(f"Error getting beatmap lookup from cache: {e}")
@@ -107,7 +89,7 @@ class BeatmapsetCacheService:
     async def cache_beatmap_lookup(
         self,
         beatmap_id: int,
-        beatmapset_resp: BeatmapsetResp,
+        beatmapset_resp: BeatmapsetDict,
         expire_seconds: int | None = None,
     ):
         """缓存通过beatmap ID查找的beatmapset信息"""
@@ -115,7 +97,7 @@ class BeatmapsetCacheService:
             if expire_seconds is None:
                 expire_seconds = self._default_ttl
             cache_key = self._get_beatmap_lookup_cache_key(beatmap_id)
-            cached_data = beatmapset_resp.model_dump_json()
+            cached_data = safe_json_dumps(beatmapset_resp)
             await self.redis.setex(cache_key, expire_seconds, cached_data)  # type: ignore
             logger.debug(f"Cached beatmap lookup {beatmap_id} for {expire_seconds}s")
         except (ValueError, TypeError, AttributeError) as e:
