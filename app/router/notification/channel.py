@@ -220,7 +220,7 @@ async def get_channel(
             server=server,
             includes=ChatChannel.LISTING_INCLUDES,
         ),
-        "users": [await UserModel.transform(u, includes=User.CARD_INCLUDES) for u in users],
+        "users": await UserModel.transform_many(users, includes=User.CARD_INCLUDES),
     }
 
 

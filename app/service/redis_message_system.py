@@ -276,7 +276,7 @@ class RedisMessageSystem:
 
                 messages = (await session.exec(query)).all()
 
-                results = [await ChatMessageModel.transform(msg, includes=["sender"]) for msg in messages]
+                results = await ChatMessageModel.transform_many(messages, includes=["sender"])
 
                 # 如果是 since > 0，保持正序；否则反转为时间正序
                 if since == 0:

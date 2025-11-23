@@ -244,7 +244,7 @@ async def get_team(
     ).all()
     return {
         "team": await TeamResp.from_db(members[0].team, session, gamemode),
-        "members": [await UserModel.transform(m.user, includes=["statistics", "country"]) for m in members],
+        "members": await UserModel.transform_many([m.user for m in members], includes=["statistics", "country"]),
     }
 
 

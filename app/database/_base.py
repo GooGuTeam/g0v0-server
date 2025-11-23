@@ -1,4 +1,5 @@
-from collections.abc import Awaitable, Callable
+import asyncio
+from collections.abc import Awaitable, Callable, Sequence
 from functools import lru_cache, wraps
 import inspect
 import sys
@@ -154,10 +155,14 @@ class DatabaseModelMetaclass(SQLModelMetaclass):
             target = _get_callable_target(attr_value)
             if target is None:
                 continue
+
             if getattr(target, "__included__", False):
                 new_class._CALCULATED_FIELDS[attr_name] = _get_return_type(target)
+                _pre_calculate_context_params(target, attr_value)
+
             if getattr(target, "__calculated_ondemand__", False):
                 new_class._ONDEMAND_CALCULATED_FIELDS[attr_name] = _get_return_type(target)
+                _pre_calculate_context_params(target, attr_value)
 
         # Register TDict to DatabaseModel mapping
         for base in get_original_bases(new_class):
@@ -172,6 +177,22 @@ class DatabaseModelMetaclass(SQLModelMetaclass):
                 _dict_to_model[generic_type[0]] = new_class
 
         return new_class
+
+
+def _pre_calculate_context_params(target: Callable, attr_value: Any) -> None:
+    if hasattr(target, "__context_params__"):
+        return
+
+    sig = inspect.signature(target)
+    params = list(sig.parameters.keys())
+
+    start_index = 2
+    if isinstance(attr_value, classmethod):
+        start_index = 3
+
+    context_params = [] if len(params) < start_index else params[start_index:]
+
+    setattr(target, "__context_params__", context_params)
 
 
 def _get_callable_target(value: Any) -> Callable | None:
@@ -240,16 +261,28 @@ async def call_awaitable_with_context(
     instance: Any,
     context: dict[str, Any],
 ) -> Any:
-    sig = inspect.signature(func)
+    context_params: list[str] | None = getattr(func, "__context_params__", None)
 
-    if len(sig.parameters) == 2:
+    if context_params is None:
+        # Fallback if not pre-calculated
+        sig = inspect.signature(func)
+        if len(sig.parameters) == 2:
+            return await func(session, instance)
+        else:
+            call_params = {}
+            for param in sig.parameters.values():
+                if param.name in context:
+                    call_params[param.name] = context[param.name]
+            return await func(session, instance, **call_params)
+
+    if not context_params:
         return await func(session, instance)
-    else:
-        call_params = {}
-        for param in sig.parameters.values():
-            if param.name in context:
-                call_params[param.name] = context[param.name]
-        return await func(session, instance, **call_params)
+
+    call_params = {}
+    for name in context_params:
+        if name in context:
+            call_params[name] = context[name]
+    return await func(session, instance, **call_params)
 
 
 class DatabaseModel[TDict](SQLModel, UTCBaseModel, metaclass=DatabaseModelMetaclass):
@@ -336,6 +369,22 @@ class DatabaseModel[TDict](SQLModel, UTCBaseModel, metaclass=DatabaseModelMetacl
                 del data[field]
 
         return cast(TDict, data)
+
+    @classmethod
+    async def transform_many(
+        cls,
+        db_instances: Sequence["DatabaseModel"],
+        *,
+        session: AsyncSession | None = None,
+        includes: list[str] | None = None,
+        **context: Any,
+    ) -> list[TDict]:
+        if not db_instances:
+            return []
+
+        return await asyncio.gather(
+            *[cls.transform(instance, session=session, includes=includes, **context) for instance in db_instances]
+        )
 
     @classmethod
     @lru_cache

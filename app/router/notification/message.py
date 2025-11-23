@@ -190,7 +190,7 @@ async def get_message(
         # 向前加载新消息 → 直接 ASC
         query = base.where(col(ChatMessage.message_id) > since).order_by(col(ChatMessage.message_id).asc()).limit(limit)
         rows = (await session.exec(query)).all()
-        resp = [await ChatMessageModel.transform(m, includes=["sender"]) for m in rows]
+        resp = await ChatMessageModel.transform_many(rows, includes=["sender"])
         # 已经 ASC，无需反转
         return resp
 
@@ -203,14 +203,14 @@ async def get_message(
         rows = (await session.exec(query)).all()
         rows = list(rows)
         rows.reverse()  # 反转为 ASC
-        resp = [await ChatMessageModel.transform(m, includes=["sender"]) for m in rows]
+        resp = await ChatMessageModel.transform_many(rows, includes=["sender"])
         return resp
 
     query = base.order_by(col(ChatMessage.message_id).desc()).limit(limit)
     rows = (await session.exec(query)).all()
     rows = list(rows)
     rows.reverse()  # 反转为 ASC
-    resp = [await ChatMessageModel.transform(m, includes=["sender"]) for m in rows]
+    resp = await ChatMessageModel.transform_many(rows, includes=["sender"])
     return resp
 
 
