@@ -1,4 +1,3 @@
-import asyncio
 from collections.abc import Awaitable, Callable, Sequence
 from functools import lru_cache, wraps
 import inspect
@@ -382,9 +381,14 @@ class DatabaseModel[TDict](SQLModel, UTCBaseModel, metaclass=DatabaseModelMetacl
         if not db_instances:
             return []
 
-        return await asyncio.gather(
-            *[cls.transform(instance, session=session, includes=includes, **context) for instance in db_instances]
-        )
+        # SQLAlchemy AsyncSession is not concurrency-safe, so we cannot use asyncio.gather here
+        # if the transform method performs any database operations using the shared session.
+        # Since we don't know if the transform method (or its calculated fields) will use the DB,
+        # we must execute them serially to be safe.
+        results = []
+        for instance in db_instances:
+            results.append(await cls.transform(instance, session=session, includes=includes, **context))
+        return results
 
     @classmethod
     @lru_cache
