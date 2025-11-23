@@ -9,23 +9,26 @@ git clone https://github.com/GooGuTeam/g0v0-server.git
 此外，您还需要：
 
 - clone 旁观服务器到 g0v0-server 的文件夹。
+
 ```bash
 git clone https://github.com/GooGuTeam/osu-server-spectator.git spectator-server
 ```
+
 - clone 表现分计算器到 g0v0-server 的文件夹。
 
 ```bash
 git clone https://github.com/GooGuTeam/osu-performance-server.git performance-server
 ```
+
 - 下载并放置自定义规则集 DLL 到 `rulesets/` 目录（如果需要）。
 
 ## 开发环境
 
 为了确保一致的开发环境，我们强烈建议使用提供的 Dev Container。这将设置一个容器化的环境，预先安装所有必要的工具和依赖项。
 
-1.  安装 [Docker](https://www.docker.com/products/docker-desktop/)。
-2.  在 Visual Studio Code 中安装 [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)。
-3.  在 VS Code 中打开项目。当被提示时，点击“在容器中重新打开”以启动开发容器。
+1. 安装 [Docker](https://www.docker.com/products/docker-desktop/)。
+2. 在 Visual Studio Code 中安装 [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)。
+3. 在 VS Code 中打开项目。当被提示时，点击“在容器中重新打开”以启动开发容器。
 
 ## 配置项目
 
@@ -67,54 +70,109 @@ uv sync
 
 以下是项目主要目录和文件的结构说明：
 
--   `main.py`: FastAPI 应用的主入口点，负责初始化和启动服务器。
--   `pyproject.toml`: 项目配置文件，用于管理依赖项 (uv)、代码格式化 (Ruff) 和类型检查 (Pyright)。
--   `alembic.ini`: Alembic 数据库迁移工具的配置文件。
--   `app/`: 存放所有核心应用代码。
-    -   `router/`: 包含所有 API 端点的定义，根据 API 版本和功能进行组织。
-    -   `service/`: 存放核心业务逻辑，例如用户排名计算、每日挑战处理等。
-    -   `database/`: 定义数据库模型 (SQLModel) 和会话管理。
-    -   `models/`: 定义非数据库模型和其他模型。
-    -   `tasks/`: 包含由 APScheduler 调度的后台任务和启动/关闭任务。
-    -   `dependencies/`: 管理 FastAPI 的依赖项注入。
-    -   `achievements/`: 存放与成就相关的逻辑。
-    -   `storage/`: 存储服务代码。
-    -   `fetcher/`: 用于从外部服务（如 osu! 官网）获取数据的模块。
-    -   `middleware/`: 定义中间件，例如会话验证。
-    -   `helpers/`: 存放辅助函数和工具类。
-    -   `config.py`: 应用配置，使用 pydantic-settings 管理。
-    -   `calculator.py`: 存放所有的计算逻辑，例如 pp 和等级。
-    -   `log.py`: 日志记录模块，提供统一的日志接口。
-    -   `const.py`: 定义常量。
-    -   `path.py`: 定义跨文件使用的常量。
--   `migrations/`: 存放 Alembic 生成的数据库迁移脚本。
--   `static/`: 存放静态文件，如 `mods.json`。
+- `main.py`: FastAPI 应用的主入口点，负责初始化和启动服务器。
+- `pyproject.toml`: 项目配置文件，用于管理依赖项 (uv)、代码格式化 (Ruff) 和类型检查 (Pyright)。
+- `alembic.ini`: Alembic 数据库迁移工具的配置文件。
+- `app/`: 存放所有核心应用代码。
+  - `router/`: 包含所有 API 端点的定义，根据 API 版本和功能进行组织。
+  - `service/`: 存放核心业务逻辑，例如用户排名计算、每日挑战处理等。
+  - `database/`: 定义数据库模型 (SQLModel) 和会话管理。
+  - `models/`: 定义非数据库模型和其他模型。
+  - `tasks/`: 包含由 APScheduler 调度的后台任务和启动/关闭任务。
+  - `dependencies/`: 管理 FastAPI 的依赖项注入。
+  - `achievements/`: 存放与成就相关的逻辑。
+  - `storage/`: 存储服务代码。
+  - `fetcher/`: 用于从外部服务（如 osu! 官网）获取数据的模块。
+  - `middleware/`: 定义中间件，例如会话验证。
+  - `helpers/`: 存放辅助函数和工具类。
+  - `config.py`: 应用配置，使用 pydantic-settings 管理。
+  - `calculator.py`: 存放所有的计算逻辑，例如 pp 和等级。
+  - `log.py`: 日志记录模块，提供统一的日志接口。
+  - `const.py`: 定义常量。
+  - `path.py`: 定义跨文件使用的常量。
+- `migrations/`: 存放 Alembic 生成的数据库迁移脚本。
+- `static/`: 存放静态文件，如 `mods.json`。
 
 ### 数据库模型定义
 
 所有的数据库模型定义在 `app.database` 里，并且在 `__init__.py` 中导出。
 
-如果这个模型的数据表结构和响应不完全相同，遵循 `Base` - `Table` - `Resp` 结构：
+本项目使用一种“按需返回”的设计模式，遵循 `Dict` - `Model` - `Table` 结构。详细设计思路请参考[这篇文章](https://blog.mxgame.top/2025/11/22/An-On-Demand-Design-Within-SQLModel/)。
+
+#### 基本结构
+
+1. **Dict**: 定义模型转换后的字典结构，用于类型检查。必须在 Model 之前定义。
+2. **Model**: 继承自 `DatabaseModel[Dict]`，定义字段和计算属性。
+3. **Table**: 继承自 `Model`，定义数据库表结构。
 
 ```python
-class ModelBase(SQLModel):
-    # 定义共有内容
-    ...
+from typing import TypedDict, NotRequired
+from app.database._base import DatabaseModel, OnDemand, included, ondemand
+from sqlmodel import Field
 
+# 1. 定义 Dict
+class UserDict(TypedDict):
+    id: int
+    username: str
+    email: NotRequired[str]  # 可选字段
+    followers_count: int     # 计算属性
 
-class Model(ModelBase, table=True):
-    # 定义数据库表内容
-    ...
+# 2. 定义 Model
+class UserModel(DatabaseModel[UserDict]):
+    id: int = Field(primary_key=True)
+    username: str
+    email: OnDemand[str]     # 使用 OnDemand 标记可选字段
 
-
-class ModelResp(ModelBase):
-    # 定义响应内容
-    ...
-
-    @classmethod
-    def from_db(cls, db: Model) -> "ModelResp":
-        # 从数据库模型转换
+    # 普通计算属性 (总是返回)
+    @included
+    @staticmethod
+    async def followers_count(session: AsyncSession, instance: "User") -> int:
+        return await session.scalar(select(func.count()).where(Follower.followed_id == instance.id))
+    
+    # 可选计算属性 (仅在 includes 中指定时返回)
+    @ondemand
+    @staticmethod
+    async def some_optional_property(session: AsyncSession, instance: "User") -> str:
         ...
+
+# 3. 定义 Table
+class User(UserModel, table=True):
+    password: str            # 仅在数据库中存在的字段
+    ...
+```
+
+#### 字段类型
+
+- **普通属性**: 直接定义在 Model 中，总是返回。
+- **可选属性**: 使用 `OnDemand[T]` 标记，仅在 `includes` 中指定时返回。
+- **普通计算属性**: 使用 `@included` 装饰的静态方法，总是返回。
+- **可选计算属性**: 使用 `@ondemand` 装饰的静态方法，仅在 `includes` 中指定时返回。
+
+#### 使用方法
+
+**转换模型**:
+
+使用 `Model.transform` 方法将数据库实例转换为字典：
+
+```python
+user = await session.get(User, 1)
+user_dict = await UserModel.transform(
+    user,
+    includes=["email"],  # 指定需要返回的可选字段
+    some_context="foo-bar",  # 如果计算属性需要上下文，可以传入额外参数
+    session=session      # 可选传入自己的 session
+)
+```
+
+**API 文档**:
+
+在 FastAPI 路由中，使用 `Model.generate_typeddict` 生成准确的响应文档：
+
+```python
+@router.get("/users/{id}", response_model=UserModel.generate_typeddict(includes=("email",)))
+async def get_user(id: int) -> dict:
+    ...
+    return await UserModel.transform(user, includes=["email"])
 ```
 
 数据库模块名应与表名相同，定义了多个模型的除外。
@@ -227,16 +285,16 @@ pre-commit 不提供 pyright 的 hook，您需要手动运行 `pyright` 检查�
 
 **类型** 必须是以下之一：
 
-*   **feat**：新功能
-*   **fix**：错误修复
-*   **docs**：仅文档更改
-*   **style**：不影响代码含义的更改（空格、格式、缺少分号等）
-*   **refactor**：代码重构
-*   **perf**：改善性能的代码更改
-*   **test**：添加缺失的测试或修正现有测试
-*   **chore**：对构建过程或辅助工具和库（如文档生成）的更改
-*   **ci**：持续集成相关的更改
-*   **deploy**: 部署相关的更改
+- **feat**：新功能
+- **fix**：错误修复
+- **docs**：仅文档更改
+- **style**：不影响代码含义的更改（空格、格式、缺少分号等）
+- **refactor**：代码重构
+- **perf**：改善性能的代码更改
+- **test**：添加缺失的测试或修正现有测试
+- **chore**：对构建过程或辅助工具和库（如文档生成）的更改
+- **ci**：持续集成相关的更改
+- **deploy**: 部署相关的更改
 
 **范围** 可以是任何指定提交更改位置的内容。例如 `api`、`db`、`auth` 等等。对整个项目的更改使用 `project`。
 
