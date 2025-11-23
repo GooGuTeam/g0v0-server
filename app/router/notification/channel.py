@@ -81,10 +81,10 @@ async def get_update(
 
 @router.put(
     "/chat/channels/{channel}/users/{user}",
-    # response_model=ChatChannelDict,
     name="加入频道",
     description="加入指定的公开/房间频道。",
     tags=["聊天"],
+    responses={200: api_doc("加入的频道", ChatChannelModel, ChatChannel.LISTING_INCLUDES)},
 )
 async def join_channel(
     session: Database,
@@ -136,7 +136,7 @@ async def leave_channel(
 
 @router.get(
     "/chat/channels",
-    # response_model=list[ChatChannelDict],
+    responses={200: api_doc("加入的频道", list[ChatChannelModel])},
     name="获取频道列表",
     description="获取所有公开频道。",
     tags=["聊天"],
@@ -146,20 +146,12 @@ async def get_channel_list(
     current_user: Annotated[User, Security(get_current_user, scopes=["chat.read"])],
 ):
     channels = (await session.exec(select(ChatChannel).where(ChatChannel.type == ChannelType.PUBLIC))).all()
-    results = []
-    for channel in channels:
-        # 提取必要的属性避免惰性加载
-        channel_id = channel.channel_id
-        channel_type = channel.type
+    results = await ChatChannelModel.transform_many(
+        channels,
+        user=current_user,
+        server=server,
+    )
 
-        results.append(
-            await ChatChannelModel.transform(
-                channel,
-                user=current_user,
-                server=server,
-                users=server.channels.get(channel_id, []) if channel_type != ChannelType.PUBLIC else None,
-            )
-        )
     return results
 
 
@@ -248,7 +240,7 @@ class CreateChannelReq(BaseModel):
 
 @router.post(
     "/chat/channels",
-    # response_model=ChatChannelDict,
+    responses={200: api_doc("创建的频道", ChatChannelModel, ["recent_messages.sender"])},
     name="创建频道",
     description="创建一个新的私聊/通知频道。如果存在私聊频道则重新加入。",
     tags=["聊天"],

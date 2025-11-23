@@ -69,7 +69,7 @@ class MessageReq(BaseModel):
 
 @router.post(
     "/chat/channels/{channel}/messages",
-    # response_model=ChatMessageDict,
+    responses={200: api_doc("发送的消息", ChatMessageModel, ["sender", "is_action"])},
     name="发送消息",
     description="发送消息到指定频道。",
     tags=["聊天"],
@@ -152,7 +152,7 @@ async def send_message(
 
 @router.get(
     "/chat/channels/{channel}/messages",
-    # response_model=list[dict[str, Any]],
+    responses={200: api_doc("获取的消息", list[ChatMessageModel], ["sender"])},
     name="获取消息",
     description="获取指定频道的消息列表（统一按时间正序返回）。",
     tags=["聊天"],
