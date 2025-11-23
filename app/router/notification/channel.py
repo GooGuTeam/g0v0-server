@@ -61,6 +61,7 @@ async def get_update(
                     await ChatChannelModel.transform(
                         db_channel,
                         user=current_user,
+                        server=server,
                         includes=ChatChannel.LISTING_INCLUDES,
                     )
                 )
@@ -155,6 +156,7 @@ async def get_channel_list(
             await ChatChannelModel.transform(
                 channel,
                 user=current_user,
+                server=server,
                 users=server.channels.get(channel_id, []) if channel_type != ChannelType.PUBLIC else None,
             )
         )
@@ -194,7 +196,6 @@ async def get_channel(
         raise HTTPException(status_code=404, detail="Channel not found")
 
     # 立即提取需要的属性
-    channel_id = db_channel.channel_id
     channel_type = db_channel.type
     channel_name = db_channel.name
 
@@ -216,7 +217,7 @@ async def get_channel(
         "channel": await ChatChannelModel.transform(
             db_channel,
             user=current_user,
-            users=server.channels.get(channel_id, []) if channel_type != ChannelType.PUBLIC else None,
+            server=server,
             includes=ChatChannel.LISTING_INCLUDES,
         ),
         "users": [await UserModel.transform(u, includes=User.CARD_INCLUDES) for u in users],
@@ -299,9 +300,6 @@ async def create_channel(
 
     await server.join_channel(current_user, channel)
 
-    # 提取必要的属性避免惰性加载
-    channel_id = channel.channel_id
-
     return await ChatChannelModel.transform(
-        channel, user=current_user, users=server.channels.get(channel_id, []), includes=["recent_messages.sender"]
+        channel, user=current_user, server=server, includes=["recent_messages.sender"]
     )

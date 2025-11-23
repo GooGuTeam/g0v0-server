@@ -152,7 +152,9 @@ class ChatServer:
                 not_joined.append(user)
 
         for user in not_joined:
-            channel_resp = await ChatChannelModel.transform(channel, user=user, includes=ChatChannel.LISTING_INCLUDES)
+            channel_resp = await ChatChannelModel.transform(
+                channel, user=user, server=server, includes=ChatChannel.LISTING_INCLUDES
+            )
             await self.send_event(
                 user.id,
                 ChatEvent(
@@ -171,7 +173,7 @@ class ChatServer:
             self.channels[channel_id].append(user_id)
 
         channel_resp: ChatChannelDict = await ChatChannelModel.transform(
-            channel, user=user, includes=ChatChannel.LISTING_INCLUDES
+            channel, user=user, server=server, includes=ChatChannel.LISTING_INCLUDES
         )
 
         await self.send_event(
@@ -194,7 +196,9 @@ class ChatServer:
         if (c := self.channels.get(channel_id)) is not None and not c:
             del self.channels[channel_id]
 
-        channel_resp = await ChatChannelModel.transform(channel, user=user, includes=ChatChannel.LISTING_INCLUDES)
+        channel_resp = await ChatChannelModel.transform(
+            channel, user=user, server=server, includes=ChatChannel.LISTING_INCLUDES
+        )
         await self.send_event(
             user_id,
             ChatEvent(

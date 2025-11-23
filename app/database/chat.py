@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import Enum
-from typing import ClassVar, NotRequired, TypedDict
+from typing import TYPE_CHECKING, ClassVar, NotRequired, TypedDict
 
 from app.database._base import DatabaseModel, included, ondemand
 from app.database.user import User, UserDict, UserModel
@@ -22,6 +22,8 @@ from sqlmodel import (
 )
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+if TYPE_CHECKING:
+    from app.router.notification.server import ChatServer
 # ChatChannel
 
 
@@ -79,9 +81,18 @@ class ChatChannelModel(DatabaseModel[ChatChannelDict]):
 
     channel_id: int = Field(primary_key=True, index=True, default=None)
     description: str = Field(sa_column=Column(VARCHAR(255), index=True))
-    name: str = Field(sa_column=Column(VARCHAR(50), index=True))
     icon: str | None = Field(default=None)
     type: ChannelType = Field(index=True)
+
+    @included
+    @staticmethod
+    async def name(session: AsyncSession, channel: "ChatChannel", user: User, server: "ChatServer") -> str:
+        users = server.channels.get(channel.channel_id, [])
+        if channel.type == ChannelType.PM and users and len(users) == 2:
+            target_user_id = next(u for u in users if u != user.id)
+            target_name = await session.exec(select(User.username).where(User.id == target_user_id))
+            return target_name.one()
+        return channel.name
 
     @included
     @staticmethod
@@ -176,11 +187,16 @@ class ChatChannelModel(DatabaseModel[ChatChannelDict]):
     async def users(
         _session: AsyncSession,
         channel: "ChatChannel",
-        users: list[int] | None = None,
+        server: "ChatServer",
+        user: User,
     ) -> list[int]:
-        if channel.type != ChannelType.PUBLIC and users is not None:
-            return users
-        return []
+        if channel.type == ChannelType.PUBLIC:
+            return []
+        users = server.channels.get(channel.channel_id, []).copy()
+        if channel.type == ChannelType.PM and users and len(users) == 2:
+            target_user_id = next(u for u in users if u != user.id)
+            users = [target_user_id, user.id]
+        return users
 
     @included
     @staticmethod
@@ -190,6 +206,8 @@ class ChatChannelModel(DatabaseModel[ChatChannelDict]):
 
 class ChatChannel(ChatChannelModel, table=True):
     __tablename__: str = "chat_channels"
+
+    name: str = Field(sa_column=Column(VARCHAR(50), index=True))
 
     @classmethod
     async def get(cls, channel: str | int, session: AsyncSession) -> "ChatChannel | None":

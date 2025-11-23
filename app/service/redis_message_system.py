@@ -15,7 +15,7 @@ from app.database.chat import ChatMessage, ChatMessageModel, MessageType
 from app.database.user import User, UserModel
 from app.dependencies.database import get_redis_message, with_db
 from app.log import logger
-from app.utils import bg_tasks
+from app.utils import bg_tasks, safe_json_dumps
 
 
 class RedisMessageSystem:
@@ -57,16 +57,6 @@ class RedisMessageSystem:
         if not user.id:
             raise ValueError("User ID is required")
 
-        # 获取频道类型以判断是否需要存储到数据库
-        async with with_db() as session:
-            from app.database.chat import ChannelType, ChatChannel
-
-            from sqlmodel import select
-
-            channel_result = await session.exec(select(ChatChannel.type).where(ChatChannel.channel_id == channel_id))
-            channel_type = channel_result.first()
-            is_multiplayer = channel_type == ChannelType.MULTIPLAYER
-
         # 准备消息数据
         message_data: "ChatMessageDict" = {
             "message_id": message_id,
@@ -80,20 +70,14 @@ class RedisMessageSystem:
         }
 
         # 立即存储到 Redis
-        await self._store_to_redis(message_id, channel_id, message_data, is_multiplayer)
+        await self._store_to_redis(message_id, channel_id, message_data)
 
         # 创建响应对象
         async with with_db() as session:
-            user_resp = await UserModel.transform(user, includes=User.LIST_INCLUDES)
+            user_resp = await UserModel.transform(user, session=session, includes=User.LIST_INCLUDES)
             message_data["sender"] = user_resp
 
-        if is_multiplayer:
-            logger.info(
-                f"Multiplayer message {message_id} sent to Redis cache for channel {channel_id},"
-                " will not be persisted to database"
-            )
-        else:
-            logger.info(f"Message {message_id} sent to Redis cache for channel {channel_id}")
+        logger.info(f"Message {message_id} sent to Redis cache for channel {channel_id}")
         return message_data
 
     async def get_messages(self, channel_id: int, limit: int = 50, since: int = 0) -> list[ChatMessageDict]:
@@ -158,79 +142,40 @@ class RedisMessageSystem:
 
         return message_id
 
-    async def _store_to_redis(
-        self, message_id: int, channel_id: int, message_data: ChatMessageDict, is_multiplayer: bool = False
-    ):
+    async def _store_to_redis(self, message_id: int, channel_id: int, message_data: ChatMessageDict):
         """存储消息到 Redis"""
         try:
-            # 存储消息数据
-            await self.redis.hset(
+            # 存储消息数据为 JSON 字符串
+            await self.redis.set(
                 f"msg:{channel_id}:{message_id}",
-                mapping={k: json.dumps(v) if isinstance(v, (dict, list)) else str(v) for k, v in message_data.items()},
+                safe_json_dumps(message_data),
+                ex=604800,  # 7天过期
             )
 
-            # 设置消息过期时间（7天）
-            await self.redis.expire(f"msg:{channel_id}:{message_id}", 604800)
-
-            # 清理可能存在的错误类型键，然后添加到频道消息列表（按时间排序）
+            # 添加到频道消息列表（按时间排序）
             channel_messages_key = f"channel:{channel_id}:messages"
 
-            # 更健壮的键类型检查和清理
+            # 检查并清理错误类型的键
             try:
                 key_type = await self.redis.type(channel_messages_key)
-                if key_type == "none":
-                    # 键不存在，这是正常的
-                    pass
-                elif key_type != "zset":
-                    # 键类型错误，需要清理
+                if key_type not in ("none", "zset"):
                     logger.warning(f"Deleting Redis key {channel_messages_key} with wrong type: {key_type}")
                     await self.redis.delete(channel_messages_key)
-
-                    # 验证删除是否成功
-                    verify_type = await self.redis.type(channel_messages_key)
-                    if verify_type != "none":
-                        logger.error(
-                            f"Failed to delete problematic key {channel_messages_key}, type is still {verify_type}"
-                        )
-                        # 强制删除
-                        await self.redis.unlink(channel_messages_key)
-
             except Exception as type_check_error:
                 logger.warning(f"Failed to check key type for {channel_messages_key}: {type_check_error}")
-                # 如果检查失败，尝试强制删除键以确保清理
-                try:
-                    await self.redis.delete(channel_messages_key)
-                except Exception:
-                    # 最后的努力：使用unlink
-                    try:
-                        await self.redis.unlink(channel_messages_key)
-                    except Exception as final_error:
-                        logger.error(f"Critical: Unable to clear problematic key {channel_messages_key}: {final_error}")
+                await self.redis.delete(channel_messages_key)
 
             # 添加到频道消息列表（sorted set）
-            try:
-                await self.redis.zadd(
-                    channel_messages_key,
-                    mapping={f"msg:{channel_id}:{message_id}": message_id},
-                )
-            except Exception as zadd_error:
-                logger.error(f"Failed to add message to sorted set {channel_messages_key}: {zadd_error}")
-                # 如果添加失败，再次尝试清理并重试
-                await self.redis.delete(channel_messages_key)
-                await self.redis.zadd(
-                    channel_messages_key,
-                    mapping={f"msg:{channel_id}:{message_id}": message_id},
-                )
+            await self.redis.zadd(
+                channel_messages_key,
+                mapping={f"msg:{channel_id}:{message_id}": message_id},
+            )
 
             # 保持频道消息列表大小（最多1000条）
             await self.redis.zremrangebyrank(channel_messages_key, 0, -1001)
 
-            # 只有非多人房间消息才添加到待持久化队列
-            if not is_multiplayer:
-                await self.redis.lpush("pending_messages", f"{channel_id}:{message_id}")
-                logger.debug(f"Message {message_id} added to persistence queue")
-            else:
-                logger.debug(f"Message {message_id} in multiplayer room, skipped persistence queue")
+            await self.redis.lpush("pending_messages", f"{channel_id}:{message_id}")
+            logger.debug(f"Message {message_id} added to persistence queue")
 
         except Exception as e:
             logger.error(f"Failed to store message to Redis: {e}")
@@ -255,28 +200,16 @@ class RedisMessageSystem:
 
             messages = []
             for key in message_keys:
-                # 获取消息数据
-                raw_data = await self.redis.hgetall(key)
+                # 获取消息数据（JSON 字符串）
+                raw_data = await self.redis.get(key)
                 if raw_data:
-                    # 解码数据
-                    message_data: dict[str, Any] = {}
-                    for k, v in raw_data.items():
-                        # 尝试解析 JSON
-                        try:
-                            if k in ["grade_counts", "level"] or v.startswith(("{", "[")):
-                                message_data[k] = json.loads(v)
-                            elif k in ["message_id", "channel_id", "sender_id"]:
-                                message_data[k] = int(v)
-                            elif k == "is_multiplayer":
-                                message_data[k] = v == "True"
-                            elif k == "created_at":
-                                message_data[k] = float(v)
-                            else:
-                                message_data[k] = v
-                        except (json.JSONDecodeError, ValueError):
-                            message_data[k] = v
-
-                    messages.append(message_data)
+                    try:
+                        # 解析 JSON 字符串为字典
+                        message_data = json.loads(raw_data)
+                        messages.append(message_data)
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Failed to decode message JSON from {key}: {e}")
+                        continue
 
             # 确保消息按ID正序排序（时间顺序）
             messages.sort(key=lambda x: x.get("message_id", 0))
@@ -391,27 +324,17 @@ class RedisMessageSystem:
                     # 解析频道ID和消息ID
                     channel_id, message_id = map(int, key.split(":"))
 
-                    # 从 Redis 获取消息数据
-                    raw_data = await self.redis.hgetall(f"msg:{channel_id}:{message_id}")
+                    # 从 Redis 获取消息数据（JSON 字符串）
+                    raw_data = await self.redis.get(f"msg:{channel_id}:{message_id}")
 
                     if not raw_data:
                         continue
 
-                    # 解码数据
-                    message_data = {}
-                    for k, v in raw_data.items():
-                        message_data[k] = v
-
-                    # 检查是否是多人房间消息，如果是则跳过数据库存储
-                    is_multiplayer = message_data.get("is_multiplayer", "False") == "True"
-                    if is_multiplayer:
-                        # 多人房间消息不存储到数据库，直接标记为已跳过
-                        await self.redis.hset(
-                            f"msg:{channel_id}:{message_id}",
-                            "status",
-                            "skipped_multiplayer",
-                        )
-                        logger.debug(f"Message {message_id} in multiplayer room skipped from database storage")
+                    # 解析 JSON 字符串为字典
+                    try:
+                        message_data = json.loads(raw_data)
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Failed to decode message JSON for {channel_id}:{message_id}: {e}")
                         continue
 
                     # 检查消息是否已存在于数据库
@@ -431,13 +354,6 @@ class RedisMessageSystem:
                     )
 
                     session.add(db_message)
-
-                    # 更新 Redis 中的状态
-                    await self.redis.hset(
-                        f"msg:{channel_id}:{message_id}",
-                        "status",
-                        "persisted",
-                    )
 
                     logger.debug(f"Message {message_id} persisted to database")
 

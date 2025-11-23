@@ -297,7 +297,9 @@ async def create_new_pm(
         await session.refresh(current_user)
 
     await server.batch_join_channel([target, current_user], channel)
-    channel_resp = await ChatChannelModel.transform(channel, user=current_user, includes=["recent_messages.sender"])
+    channel_resp = await ChatChannelModel.transform(
+        channel, user=current_user, server=server, includes=["recent_messages.sender"]
+    )
     msg = ChatMessage(
         channel_id=channel.channel_id,
         content=req.message,
