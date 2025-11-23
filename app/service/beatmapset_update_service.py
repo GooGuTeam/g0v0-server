@@ -188,7 +188,7 @@ class BeatmapsetUpdateService:
                             BeatmapSync(
                                 beatmapset_id=missing,
                                 beatmap_status=BeatmapRankStatus.GRAVEYARD,
-                                next_sync_time=datetime.datetime.max,
+                                next_sync_time=datetime.datetime(year=6000, month=1, day=1),
                                 beatmaps=[],
                             )
                         )
@@ -282,7 +282,7 @@ class BeatmapsetUpdateService:
                 sync_record.next_sync_time = utcnow() + next_time_delta
             beatmapset_id = beatmapset.get("id")
             if beatmapset_id:
-                logger.opt(colors=True).info(f"<g>[{beatmapset_id}]</g> next sync at {sync_record.next_sync_time}")
+                logger.opt(colors=True).debug(f"<g>[{beatmapset_id}]</g> next sync at {sync_record.next_sync_time}")
             await session.commit()
 
     async def _sync_immediately(self, beatmapset: EnsuredBeatmapset) -> None:
@@ -307,7 +307,7 @@ class BeatmapsetUpdateService:
         *,
         beatmapset: EnsuredBeatmapset | None = None,
     ):
-        logger.opt(colors=True).info(f"<g>[{record.beatmapset_id}]</g> syncing...")
+        logger.opt(colors=True).debug(f"<g>[{record.beatmapset_id}]</g> syncing...")
         if beatmapset is None:
             try:
                 beatmapset = cast(EnsuredBeatmapset, await self.fetcher.get_beatmapset(record.beatmapset_id))
@@ -317,7 +317,6 @@ class BeatmapsetUpdateService:
                         f"<g>[{record.beatmapset_id}]</g> beatmapset not found (404), removing from sync list"
                     )
                     await session.delete(record)
-                    await session.commit()
                     return
                 if isinstance(e, HTTPError):
                     logger.opt(colors=True).warning(
@@ -367,7 +366,7 @@ class BeatmapsetUpdateService:
             await session.delete(record)
         else:
             record.next_sync_time = utcnow() + next_time_delta
-            logger.opt(colors=True).info(f"<g>[{record.beatmapset_id}]</g> next sync at {record.next_sync_time}")
+            logger.opt(colors=True).debug(f"<g>[{record.beatmapset_id}]</g> next sync at {record.next_sync_time}")
 
     async def _update_beatmaps(self):
         async with with_db() as session:
