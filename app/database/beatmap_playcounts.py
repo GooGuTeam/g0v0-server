@@ -1,9 +1,10 @@
 from typing import TYPE_CHECKING, NotRequired, TypedDict
 
 from app.config import settings
-from app.database._base import DatabaseModel, included
-from app.database.events import Event, EventType
 from app.utils import utcnow
+
+from ._base import DatabaseModel, included
+from .events import Event, EventType
 
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import (
@@ -50,7 +51,7 @@ class BeatmapPlaycountsModel(AsyncAttrs, DatabaseModel[BeatmapPlaycountsDict]):
     async def beatmap(
         _session: AsyncSession, obj: "BeatmapPlaycounts", includes: list[str] | None = None
     ) -> "BeatmapDict":
-        from app.database.beatmap import BeatmapModel
+        from .beatmap import BeatmapModel
 
         await obj.awaitable_attrs.beatmap
         return await BeatmapModel.transform(obj.beatmap, includes=includes)
@@ -60,7 +61,7 @@ class BeatmapPlaycountsModel(AsyncAttrs, DatabaseModel[BeatmapPlaycountsDict]):
     async def beatmapset(
         _session: AsyncSession, obj: "BeatmapPlaycounts", includes: list[str] | None = None
     ) -> "BeatmapsetDict":
-        from app.database.beatmap import BeatmapsetModel
+        from .beatmap import BeatmapsetModel
 
         await obj.awaitable_attrs.beatmap
         return await BeatmapsetModel.transform(obj.beatmap.beatmapset, includes=includes)

@@ -15,9 +15,6 @@ from app.calculator import (
     pre_fetch_and_calculate_pp,
 )
 from app.config import settings
-from app.database._base import DatabaseModel, OnDemand, included, ondemand
-from app.database.beatmap_playcounts import BeatmapPlaycounts
-from app.database.team import TeamMember
 from app.dependencies.database import get_redis
 from app.log import log
 from app.models.beatmap import BeatmapRankStatus
@@ -40,7 +37,9 @@ from app.models.scoring_mode import ScoringMode
 from app.storage import StorageService
 from app.utils import utcnow
 
+from ._base import DatabaseModel, OnDemand, included, ondemand
 from .beatmap import Beatmap, BeatmapDict, BeatmapModel
+from .beatmap_playcounts import BeatmapPlaycounts
 from .beatmapset import BeatmapsetDict, BeatmapsetModel
 from .best_scores import BestScore
 from .counts import MonthlyPlaycounts
@@ -51,6 +50,7 @@ from .relationship import (
     RelationshipType,
 )
 from .score_token import ScoreToken
+from .team import TeamMember
 from .total_score_best_scores import TotalScoreBestScore
 from .user import User, UserDict, UserModel
 

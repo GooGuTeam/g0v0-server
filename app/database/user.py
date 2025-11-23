@@ -3,7 +3,6 @@ import json
 from typing import TYPE_CHECKING, ClassVar, Literal, NotRequired, TypedDict, overload
 
 from app.config import settings
-from app.database.relationship import RelationshipModel
 from app.models.notification import NotificationName
 from app.models.score import GameMode
 from app.models.user import Country, Page
@@ -19,6 +18,7 @@ from .daily_challenge import DailyChallengeStats, DailyChallengeStatsResp
 from .events import Event
 from .notification import Notification, UserNotification
 from .rank_history import RankHistory, RankHistoryResp, RankTop
+from .relationship import RelationshipModel
 from .statistics import UserStatistics, UserStatisticsModel
 from .team import Team, TeamMember
 from .user_account_history import UserAccountHistory, UserAccountHistoryResp, UserAccountHistoryType

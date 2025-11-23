@@ -2,10 +2,11 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, ClassVar, NotRequired, TypedDict
 
-from app.database._base import DatabaseModel, included, ondemand
-from app.database.user import User, UserDict, UserModel
 from app.models.model import UTCBaseModel
 from app.utils import utcnow
+
+from ._base import DatabaseModel, included, ondemand
+from .user import User, UserDict, UserModel
 
 from pydantic import BaseModel
 from sqlmodel import (

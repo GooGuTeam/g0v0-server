@@ -4,16 +4,16 @@ from typing import TYPE_CHECKING, ClassVar, NotRequired, TypedDict
 
 from app.calculator import get_calculator
 from app.config import settings
-from app.database._base import DatabaseModel, OnDemand, included, ondemand
-from app.database.beatmap_tags import BeatmapTagVote
-from app.database.failtime import FailTime, FailTimeResp
 from app.models.beatmap import BeatmapRankStatus
 from app.models.mods import APIMod
 from app.models.performance import DifficultyAttributesUnion
 from app.models.score import GameMode
 
+from ._base import DatabaseModel, OnDemand, included, ondemand
 from .beatmap_playcounts import BeatmapPlaycounts
+from .beatmap_tags import BeatmapTagVote
 from .beatmapset import Beatmapset, BeatmapsetDict, BeatmapsetModel
+from .failtime import FailTime, FailTimeResp
 from .user import User, UserDict, UserModel
 
 from pydantic import BaseModel, TypeAdapter

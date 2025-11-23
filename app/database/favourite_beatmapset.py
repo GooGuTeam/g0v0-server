@@ -1,7 +1,7 @@
 import datetime
 
-from app.database.beatmapset import Beatmapset
-from app.database.user import User
+from .beatmapset import Beatmapset
+from .user import User
 
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import (

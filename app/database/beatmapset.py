@@ -2,11 +2,11 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, ClassVar, NotRequired, TypedDict
 
 from app.config import settings
-from app.database._base import DatabaseModel, OnDemand, included, ondemand
-from app.database.beatmap_playcounts import BeatmapPlaycounts
 from app.models.beatmap import BeatmapRankStatus, Genre, Language
 from app.models.score import GameMode
 
+from ._base import DatabaseModel, OnDemand, included, ondemand
+from .beatmap_playcounts import BeatmapPlaycounts
 from .user import User, UserDict
 
 from pydantic import BaseModel

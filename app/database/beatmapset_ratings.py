@@ -1,5 +1,5 @@
-from app.database.beatmapset import Beatmapset
-from app.database.user import User
+from .beatmapset import Beatmapset
+from .user import User
 
 from sqlmodel import BigInteger, Column, Field, ForeignKey, Relationship, SQLModel
 

@@ -1,8 +1,9 @@
 from enum import Enum
 from typing import TYPE_CHECKING, NotRequired, TypedDict
 
-from app.database._base import DatabaseModel, included, ondemand
 from app.models.score import GameMode
+
+from ._base import DatabaseModel, included, ondemand
 
 from sqlmodel import (
     BigInteger,

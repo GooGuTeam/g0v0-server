@@ -1,7 +1,6 @@
 from typing import Any, NotRequired, TypedDict
 
-from app.database._base import DatabaseModel, ondemand
-
+from ._base import DatabaseModel, ondemand
 from .playlist_best_score import PlaylistBestScore
 from .user import User, UserDict, UserModel
 

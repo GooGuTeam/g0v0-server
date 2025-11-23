@@ -1,10 +1,10 @@
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 
-from app.database._base import DatabaseModel, ondemand
 from app.models.mods import APIMod
 from app.models.playlist import PlaylistItem
 
+from ._base import DatabaseModel, ondemand
 from .beatmap import Beatmap, BeatmapDict, BeatmapModel
 
 from sqlmodel import (

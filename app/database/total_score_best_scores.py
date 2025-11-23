@@ -1,9 +1,9 @@
 from typing import TYPE_CHECKING
 
 from app.calculator import calculate_score_to_level
-from app.database.statistics import UserStatistics
 from app.models.score import GameMode, Rank
 
+from .statistics import UserStatistics
 from .user import User
 
 from sqlmodel import (

@@ -2,10 +2,10 @@ from datetime import timedelta
 import math
 from typing import TYPE_CHECKING, ClassVar, NotRequired, TypedDict
 
-from app.database._base import DatabaseModel, included, ondemand
 from app.models.score import GameMode
 from app.utils import utcnow
 
+from ._base import DatabaseModel, included, ondemand
 from .rank_history import RankHistory
 
 from pydantic import field_validator
@@ -137,7 +137,7 @@ class UserStatisticsModel(DatabaseModel[UserStatisticsDict]):
     @ondemand
     @staticmethod
     async def user(_session: AsyncSession, statistics: "UserStatistics") -> "UserDict":
-        from app.database.user import UserModel
+        from .user import UserModel
 
         user_instance = await statistics.awaitable_attrs.user
         return await UserModel.transform(user_instance)

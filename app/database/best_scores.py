@@ -1,8 +1,8 @@
 from typing import TYPE_CHECKING
 
-from app.database.statistics import UserStatistics
 from app.models.score import GameMode
 
+from .statistics import UserStatistics
 from .user import User
 
 from sqlmodel import (
