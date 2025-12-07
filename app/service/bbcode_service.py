@@ -277,11 +277,12 @@ class BBCodeService:
                 return ""
 
             # Protocol validation for image_url
+            # Broad exception handling is intentional for security - any parsing error should reject the URL
             try:
                 parsed = urlparse(image_url.strip())
                 if parsed.scheme.lower() not in ("http", "https"):
                     return ""
-            except Exception:
+            except Exception:  # noqa: S110
                 return ""
 
             # If there are no area definitions, treat as empty (consistent with empty content)
@@ -326,11 +327,12 @@ class BBCodeService:
                     continue
 
                 if href != "#":
+                    # Broad exception handling is intentional for security - any parsing error should reject the URL
                     try:
                         parsed = urlparse(href.strip())
                         if parsed.scheme.lower() not in ("http", "https"):
                             continue
-                    except Exception:
+                    except Exception:  # noqa: S110
                         continue
 
                 title = parts[5] if len(parts) > 5 else ""
