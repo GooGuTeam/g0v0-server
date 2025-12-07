@@ -303,9 +303,7 @@ class BBCodeService:
                 if href == "#":
                     links.append(f'<span class="imagemap__link" style="{style}" title="{title}"></span>')
                 else:
-                    links.append(
-                        f'<a class="imagemap__link" href="{href}" style="{style}" title="{title}"></a>'
-                    )
+                    links.append(f'<a class="imagemap__link" href="{href}" style="{style}" title="{title}"></a>')
 
             if not links:
                 return f'<img loading="lazy" src="{image_url}" alt="" style="max-width: 100%; height: auto;" />'
