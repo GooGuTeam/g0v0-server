@@ -7,6 +7,7 @@ BBCode处理服务
 import html
 import re
 from typing import ClassVar
+from urllib.parse import urlparse
 
 from app.models.userpage import (
     ContentEmptyError,
@@ -276,7 +277,11 @@ class BBCodeService:
                 return ""
 
             # Protocol validation for image_url
-            if not (image_url.lower().startswith("http://") or image_url.lower().startswith("https://")):
+            try:
+                parsed = urlparse(image_url.strip())
+                if parsed.scheme.lower() not in ("http", "https"):
+                    return ""
+            except Exception:
                 return ""
 
             # If there are no area definitions, treat as empty (consistent with empty content)
@@ -321,7 +326,11 @@ class BBCodeService:
                     continue
 
                 if href != "#":
-                    if not (href.lower().startswith("http://") or href.lower().startswith("https://")):
+                    try:
+                        parsed = urlparse(href.strip())
+                        if parsed.scheme.lower() not in ("http", "https"):
+                            continue
+                    except Exception:
                         continue
 
                 title = parts[5] if len(parts) > 5 else ""
