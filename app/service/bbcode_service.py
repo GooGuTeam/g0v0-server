@@ -275,6 +275,14 @@ class BBCodeService:
             if not image_url:
                 return ""
 
+            # Protocol validation for image_url
+            if not (image_url.startswith("http://") or image_url.startswith("https://")):
+                return ""
+
+            # If there are no area definitions, treat as empty (consistent with empty content)
+            if not raw_links:
+                return ""
+
             if len(raw_links) > cls.IMAGEMAP_MAX_AREAS:
                 raise ImageMapTooLargeError(max_areas=cls.IMAGEMAP_MAX_AREAS)
 
@@ -302,26 +310,32 @@ class BBCodeService:
                 except (ValueError, IndexError):
                     continue
 
-                if not (0 <= left <= 100 and 0 <= top <= 100 and 0 <= width <= 100 and 0 <= height <= 100):
+                if not (
+                    0 <= left < 100
+                    and 0 <= top < 100
+                    and 0 < width <= 100
+                    and 0 < height <= 100
+                    and left + width <= 100
+                    and top + height <= 100
+                ):
                     continue
 
                 if href != "#":
-                    if not (href.startswith("http://") or href.startswith("https://") or href.startswith("mailto:")):
+                    if not (href.startswith("http://") or href.startswith("https://")):
                         continue
 
                 title = parts[5] if len(parts) > 5 else ""
                 style = f"left: {left}%; top: {top}%; width: {width}%; height: {height}%;"
                 href_escaped = html.escape(href, quote=True)
                 title_escaped = html.escape(title, quote=True)
-                style_escaped = html.escape(style, quote=True)
 
                 if href == "#":
                     links.append(
-                        f'<span class="imagemap__link" style="{style_escaped}" title="{title_escaped}"></span>'
+                        f'<span class="imagemap__link" style="{style}" title="{title_escaped}"></span>'
                     )
                 else:
                     links.append(
-                        f'<a class="imagemap__link" href="{href_escaped}" style="{style_escaped}" '
+                        f'<a class="imagemap__link" href="{href_escaped}" style="{style}" '
                         f'title="{title_escaped}"></a>'
                     )
 
