@@ -306,11 +306,7 @@ class BBCodeService:
                     continue
 
                 if href != "#":
-                    if not (
-                        href.startswith("http://")
-                        or href.startswith("https://")
-                        or href.startswith("mailto:")
-                    ):
+                    if not (href.startswith("http://") or href.startswith("https://") or href.startswith("mailto:")):
                         continue
 
                 title = parts[5] if len(parts) > 5 else ""
@@ -331,10 +327,7 @@ class BBCodeService:
 
             if not links:
                 image_url_escaped = html.escape(image_url, quote=True)
-                return (
-                    f'<img loading="lazy" src="{image_url_escaped}" alt="" '
-                    f'style="max-width: 100%; height: auto;" />'
-                )
+                return f'<img loading="lazy" src="{image_url_escaped}" alt="" style="max-width: 100%; height: auto;" />'
 
             links_html = "".join(links)
             image_url_escaped = html.escape(image_url, quote=True)
