@@ -98,3 +98,26 @@ class ForbiddenTagError(UserpageError):
         message = f"Forbidden tag '{tag}' is not allowed."
         super().__init__(message, "forbidden_tag")
         self.tag = tag
+
+
+class ImageMapTooLargeError(UserpageError):
+    """图像映射内容过大的错误"""
+
+    def __init__(
+        self,
+        *,
+        max_areas: int | None = None,
+        max_length: int | None = None,
+        max_line_length: int | None = None,
+    ):
+        constraints: list[str] = []
+        if max_areas is not None:
+            constraints.append(f"maximum {max_areas} areas")
+        if max_length is not None:
+            constraints.append(f"maximum {max_length} characters in all areas")
+        if max_line_length is not None:
+            constraints.append(f"maximum {max_line_length} characters per area")
+
+        constraint_msg = ", ".join(constraints) if constraints else "imagemap content size"
+        message = f"Imagemap content too large: {constraint_msg}."
+        super().__init__(message, "imagemap_too_large")

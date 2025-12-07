@@ -12,6 +12,7 @@ from app.models.userpage import (
     ContentEmptyError,
     ContentTooLongError,
     ForbiddenTagError,
+    ImageMapTooLargeError,
 )
 
 import bleach
@@ -94,6 +95,10 @@ class BBCodeService:
         "html",
         "body",
     ]
+
+    IMAGEMAP_MAX_AREAS: ClassVar[int] = 200
+    IMAGEMAP_MAX_BODY_LENGTH: ClassVar[int] = 5000
+    IMAGEMAP_MAX_LINE_LENGTH: ClassVar[int] = 500
 
     @classmethod
     def parse_bbcode(cls, text: str) -> str:
@@ -257,61 +262,89 @@ class BBCodeService:
         解析 [imagemap] 标签
         基于 osu-web BBCodeFromDB.php 的实现
         """
-        pattern = r"\[imagemap\]\s*\n([^\s\n]+)\s*\n((?:[0-9.]+ [0-9.]+ [0-9.]+ [0-9.]+ (?:#|https?://[^\s]+|mailto:[^\s]+)[^\n]*\n?)+)\[/imagemap\]"
+        pattern = re.compile(r"\[imagemap\](.*?)\[/imagemap\]", flags=re.DOTALL | re.IGNORECASE)
 
-        def replace_imagemap(match):
-            image_url = match.group(1).strip()
-            links_data = match.group(2).strip()
+        def replace_imagemap(match: re.Match[str]) -> str:
+            content = match.group(1).strip()
+            lines = [line.strip() for line in content.splitlines() if line.strip()]
+            if len(lines) == 0:
+                return ""
 
-            if not links_data:
-                return f'<img loading="lazy" src="{image_url}" alt="" style="max-width: 100%; height: auto;" />'
+            image_url, *raw_links = lines
 
-            # 解析链接数据
+            if not image_url:
+                return ""
+
+            if len(raw_links) > cls.IMAGEMAP_MAX_AREAS:
+                raise ImageMapTooLargeError(max_areas=cls.IMAGEMAP_MAX_AREAS)
+
             links = []
-            for line in links_data.split("\n"):
-                line = line.strip()
-                if not line:
+            total_length = 0
+            for line in raw_links:
+                line_length = len(line)
+                if line_length > cls.IMAGEMAP_MAX_LINE_LENGTH:
+                    raise ImageMapTooLargeError(max_line_length=cls.IMAGEMAP_MAX_LINE_LENGTH)
+
+                total_length += line_length
+                if total_length > cls.IMAGEMAP_MAX_BODY_LENGTH:
+                    raise ImageMapTooLargeError(max_length=cls.IMAGEMAP_MAX_BODY_LENGTH)
+
+                parts = line.split(" ", 5)
+                if len(parts) < 5:
                     continue
 
-                # 按空格分割，最多分成6部分（前5个是数字和URL，第6个是标题）
-                parts = line.split(" ", 5)
-                if len(parts) >= 5:
-                    try:
-                        left = float(parts[0])
-                        top = float(parts[1])
-                        width = float(parts[2])
-                        height = float(parts[3])
-                        href = parts[4]
-                        # 标题可能包含空格，所以重新组合
-                        title = parts[5] if len(parts) > 5 else ""
+                try:
+                    left = float(parts[0])
+                    top = float(parts[1])
+                    width = float(parts[2])
+                    height = float(parts[3])
+                    href = parts[4]
+                except (ValueError, IndexError):
+                    continue
 
-                        # 构建样式
-                        style = f"left: {left}%; top: {top}%; width: {width}%; height: {height}%;"
+                if not (0 <= left <= 100 and 0 <= top <= 100 and 0 <= width <= 100 and 0 <= height <= 100):
+                    continue
 
-                        if href == "#":
-                            # 无链接区域
-                            links.append(f'<span class="imagemap__link" style="{style}" title="{title}"></span>')
-                        else:
-                            # 有链接区域
-                            links.append(
-                                f'<a class="imagemap__link" href="{href}" style="{style}" title="{title}"></a>'
-                            )
-                    except (ValueError, IndexError):
+                if href != "#":
+                    if not (
+                        href.startswith("http://")
+                        or href.startswith("https://")
+                        or href.startswith("mailto:")
+                    ):
                         continue
 
-            if links:
-                links_html = "".join(links)
-                # 基于官方实现的图片标签
-                image_html = (
-                    f'<img class="imagemap__image" loading="lazy" src="{image_url}" alt="" '
+                title = parts[5] if len(parts) > 5 else ""
+                style = f"left: {left}%; top: {top}%; width: {width}%; height: {height}%;"
+                href_escaped = html.escape(href, quote=True)
+                title_escaped = html.escape(title, quote=True)
+                style_escaped = html.escape(style, quote=True)
+
+                if href == "#":
+                    links.append(
+                        f'<span class="imagemap__link" style="{style_escaped}" title="{title_escaped}"></span>'
+                    )
+                else:
+                    links.append(
+                        f'<a class="imagemap__link" href="{href_escaped}" style="{style_escaped}" '
+                        f'title="{title_escaped}"></a>'
+                    )
+
+            if not links:
+                image_url_escaped = html.escape(image_url, quote=True)
+                return (
+                    f'<img loading="lazy" src="{image_url_escaped}" alt="" '
                     f'style="max-width: 100%; height: auto;" />'
                 )
-                # 使用imagemap容器
-                return f'<div class="imagemap">{image_html}{links_html}</div>'
-            else:
-                return f'<img loading="lazy" src="{image_url}" alt="" style="max-width: 100%; height: auto;" />'
 
-        return re.sub(pattern, replace_imagemap, text, flags=re.DOTALL | re.IGNORECASE)
+            links_html = "".join(links)
+            image_url_escaped = html.escape(image_url, quote=True)
+            image_html = (
+                f'<img class="imagemap__image" loading="lazy" src="{image_url_escaped}" alt="" '
+                f'style="max-width: 100%; height: auto;" />'
+            )
+            return f'<div class="imagemap">{image_html}{links_html}</div>'
+
+        return pattern.sub(replace_imagemap, text)
 
     @classmethod
     def _parse_italic(cls, text: str) -> str:
