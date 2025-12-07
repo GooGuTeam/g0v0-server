@@ -276,7 +276,7 @@ class BBCodeService:
                 return ""
 
             # Protocol validation for image_url
-            if not (image_url.startswith("http://") or image_url.startswith("https://")):
+            if not (image_url.lower().startswith("http://") or image_url.lower().startswith("https://")):
                 return ""
 
             # If there are no area definitions, treat as empty (consistent with empty content)
@@ -321,7 +321,7 @@ class BBCodeService:
                     continue
 
                 if href != "#":
-                    if not (href.startswith("http://") or href.startswith("https://")):
+                    if not (href.lower().startswith("http://") or href.lower().startswith("https://")):
                         continue
 
                 title = parts[5] if len(parts) > 5 else ""
