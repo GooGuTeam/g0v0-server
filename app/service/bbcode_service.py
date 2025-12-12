@@ -10,7 +10,6 @@ Reference:
 """
 
 import html
-import re
 from typing import ClassVar
 
 from app.models.userpage import (
@@ -21,8 +20,10 @@ from app.models.userpage import (
 
 import bleach
 from bleach.css_sanitizer import CSSSanitizer
+import regex as re
 
 HTTP_PATTERN = re.compile(r"^https?://", re.IGNORECASE)
+REGEX_TIMEOUT = 5
 
 
 class BBCodeService:
@@ -178,13 +179,13 @@ class BBCodeService:
             url = match.group(1).strip()
             return f'<audio controls preload="none" src="{url}"></audio>'
 
-        return re.sub(pattern, replace_audio, text, flags=re.IGNORECASE)
+        return re.sub(pattern, replace_audio, text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
 
     @classmethod
     def _parse_bold(cls, text: str) -> str:
         """解析 [b] 标签"""
-        text = re.sub(r"\[b\]", "<strong>", text, flags=re.IGNORECASE)
-        text = re.sub(r"\[/b\]", "</strong>", text, flags=re.IGNORECASE)
+        text = re.sub(r"\[b\]", "<strong>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
+        text = re.sub(r"\[/b\]", "</strong>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
         return text
 
     @classmethod
@@ -204,7 +205,7 @@ class BBCodeService:
                 f"<div class='js-spoilerbox__body bbcode-spoilerbox__body'>{content}</div></div>"
             )
 
-        text = re.sub(pattern, replace_box_with_title, text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(pattern, replace_box_with_title, text, flags=re.DOTALL | re.IGNORECASE, timeout=REGEX_TIMEOUT)
 
         # [spoilerbox] 格式
         pattern = r"\[spoilerbox\](.*?)\[/spoilerbox\]"
@@ -219,39 +220,51 @@ class BBCodeService:
                 f"<div class='js-spoilerbox__body bbcode-spoilerbox__body'>{content}</div></div>"
             )
 
-        return re.sub(pattern, replace_spoilerbox, text, flags=re.DOTALL | re.IGNORECASE)
+        return re.sub(pattern, replace_spoilerbox, text, flags=re.DOTALL | re.IGNORECASE, timeout=REGEX_TIMEOUT)
 
     @classmethod
     def _parse_centre(cls, text: str) -> str:
         """解析 [centre] 标签"""
-        text = re.sub(r"\[centre\]", "<center>", text, flags=re.IGNORECASE)
-        text = re.sub(r"\[/centre\]", "</center>", text, flags=re.IGNORECASE)
-        text = re.sub(r"\[center\]", "<center>", text, flags=re.IGNORECASE)
-        text = re.sub(r"\[/center\]", "</center>", text, flags=re.IGNORECASE)
+        text = re.sub(r"\[centre\]", "<center>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
+        text = re.sub(r"\[/centre\]", "</center>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
+        text = re.sub(r"\[center\]", "<center>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
+        text = re.sub(r"\[/center\]", "</center>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
         return text
 
     @classmethod
     def _parse_code(cls, text: str) -> str:
         """解析 [code] 标签"""
         pattern = r"\[code\]\n*(.*?)\n*\[/code\]"
-        return re.sub(pattern, r"<pre>\1</pre>", text, flags=re.DOTALL | re.IGNORECASE)
+        return re.sub(pattern, r"<pre>\1</pre>", text, flags=re.DOTALL | re.IGNORECASE, timeout=REGEX_TIMEOUT)
 
     @classmethod
     def _parse_colour(cls, text: str) -> str:
         """解析 [color] 标签"""
         pattern = r"\[color=([^\]]+)\](.*?)\[/color\]"
-        return re.sub(pattern, r'<span style="color:\1">\2</span>', text, flags=re.IGNORECASE)
+        return re.sub(pattern, r'<span style="color:\1">\2</span>', text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
 
     @classmethod
     def _parse_email(cls, text: str) -> str:
         """解析 [email] 标签"""
         # [email]email@example.com[/email]
         pattern1 = r"\[email\]([^\[]+)\[/email\]"
-        text = re.sub(pattern1, r'<a rel="nofollow" href="mailto:\1">\1</a>', text, flags=re.IGNORECASE)
+        text = re.sub(
+            pattern1,
+            r'<a rel="nofollow" href="mailto:\1">\1</a>',
+            text,
+            flags=re.IGNORECASE,
+            timeout=REGEX_TIMEOUT,
+        )
 
         # [email=email@example.com]text[/email]
         pattern2 = r"\[email=([^\]]+)\](.*?)\[/email\]"
-        text = re.sub(pattern2, r'<a rel="nofollow" href="mailto:\1">\2</a>', text, flags=re.IGNORECASE)
+        text = re.sub(
+            pattern2,
+            r'<a rel="nofollow" href="mailto:\1">\2</a>',
+            text,
+            flags=re.IGNORECASE,
+            timeout=REGEX_TIMEOUT,
+        )
 
         return text
 
@@ -259,7 +272,7 @@ class BBCodeService:
     def _parse_heading(cls, text: str) -> str:
         """解析 [heading] 标签"""
         pattern = r"\[heading\](.*?)\[/heading\]"
-        return re.sub(pattern, r"<h2>\1</h2>", text, flags=re.IGNORECASE)
+        return re.sub(pattern, r"<h2>\1</h2>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
 
     @classmethod
     def _parse_image(cls, text: str) -> str:
@@ -272,7 +285,7 @@ class BBCodeService:
             # 生成带有懒加载的图片标签
             return f'<img loading="lazy" src="{url}" alt="" style="max-width: 100%; height: auto;" />'
 
-        return re.sub(pattern, replace_image, text, flags=re.IGNORECASE)
+        return re.sub(pattern, replace_image, text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
 
     @classmethod
     def _parse_imagemap(cls, text: str) -> str:
@@ -302,7 +315,7 @@ class BBCodeService:
             if len(lines) < 2:
                 return text
             image_url = lines[0].strip()
-            if not HTTP_PATTERN.match(image_url):
+            if not HTTP_PATTERN.match(image_url, timeout=REGEX_TIMEOUT):
                 return text
             result.append(
                 cls.make_tag(
@@ -319,7 +332,7 @@ class BBCodeService:
                     continue
                 x, y, width, height, redirect = parts[:5]
                 title = " ".join(parts[5:]) if len(parts) > 5 else ""
-                if not redirect_pattern.match(redirect):
+                if not redirect_pattern.match(redirect, timeout=REGEX_TIMEOUT):
                     continue
 
                 result.append(
@@ -343,21 +356,22 @@ class BBCodeService:
             replace_imagemap,
             text,
             flags=re.DOTALL | re.IGNORECASE,
+            timeout=REGEX_TIMEOUT,
         )
         return imagemap_box
 
     @classmethod
     def _parse_italic(cls, text: str) -> str:
         """解析 [i] 标签"""
-        text = re.sub(r"\[i\]", "<em>", text, flags=re.IGNORECASE)
-        text = re.sub(r"\[/i\]", "</em>", text, flags=re.IGNORECASE)
+        text = re.sub(r"\[i\]", "<em>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
+        text = re.sub(r"\[/i\]", "</em>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
         return text
 
     @classmethod
     def _parse_inline_code(cls, text: str) -> str:
         """解析 [c] 内联代码标签"""
-        text = re.sub(r"\[c\]", "<code>", text, flags=re.IGNORECASE)
-        text = re.sub(r"\[/c\]", "</code>", text, flags=re.IGNORECASE)
+        text = re.sub(r"\[c\]", "<code>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
+        text = re.sub(r"\[/c\]", "</code>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
         return text
 
     @classmethod
@@ -365,15 +379,21 @@ class BBCodeService:
         """解析 [list] 标签"""
         # 有序列表
         pattern = r"\[list=1\](.*?)\[/list\]"
-        text = re.sub(pattern, r"<ol>\1</ol>", text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(pattern, r"<ol>\1</ol>", text, flags=re.DOTALL | re.IGNORECASE, timeout=REGEX_TIMEOUT)
 
         # 无序列表
         pattern = r"\[list\](.*?)\[/list\]"
-        text = re.sub(pattern, r"<ol class='unordered'>\1</ol>", text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(
+            pattern,
+            r"<ol class='unordered'>\1</ol>",
+            text,
+            flags=re.DOTALL | re.IGNORECASE,
+            timeout=REGEX_TIMEOUT,
+        )
 
         # 列表项
         pattern = r"\[\*\]\s*(.*?)(?=\[\*\]|\[/list\]|$)"
-        text = re.sub(pattern, r"<li>\1</li>", text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(pattern, r"<li>\1</li>", text, flags=re.DOTALL | re.IGNORECASE, timeout=REGEX_TIMEOUT)
 
         return text
 
@@ -381,7 +401,13 @@ class BBCodeService:
     def _parse_notice(cls, text: str) -> str:
         """解析 [notice] 标签"""
         pattern = r"\[notice\]\n*(.*?)\n*\[/notice\]"
-        return re.sub(pattern, r'<div class="well">\1</div>', text, flags=re.DOTALL | re.IGNORECASE)
+        return re.sub(
+            pattern,
+            r'<div class="well">\1</div>',
+            text,
+            flags=re.DOTALL | re.IGNORECASE,
+            timeout=REGEX_TIMEOUT,
+        )
 
     @classmethod
     def _parse_profile(cls, text: str) -> str:
@@ -397,7 +423,7 @@ class BBCodeService:
             else:
                 return f'<a href="/users/@{username}" class="user-profile-link">@{username}</a>'
 
-        return re.sub(pattern, replace_profile, text, flags=re.IGNORECASE)
+        return re.sub(pattern, replace_profile, text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
 
     @classmethod
     def _parse_quote(cls, text: str) -> str:
@@ -405,11 +431,23 @@ class BBCodeService:
         # [quote="author"]content[/quote]
         # Handle both raw quotes and HTML-escaped quotes (&quot;)
         pattern1 = r'\[quote=(?:&quot;|")(.+?)(?:&quot;|")\]\s*(.*?)\s*\[/quote\]'
-        text = re.sub(pattern1, r"<blockquote><h4>\1 wrote:</h4>\2</blockquote>", text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(
+            pattern1,
+            r"<blockquote><h4>\1 wrote:</h4>\2</blockquote>",
+            text,
+            flags=re.DOTALL | re.IGNORECASE,
+            timeout=REGEX_TIMEOUT,
+        )
 
         # [quote]content[/quote]
         pattern2 = r"\[quote\]\s*(.*?)\s*\[/quote\]"
-        text = re.sub(pattern2, r"<blockquote>\1</blockquote>", text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(
+            pattern2,
+            r"<blockquote>\1</blockquote>",
+            text,
+            flags=re.DOTALL | re.IGNORECASE,
+            timeout=REGEX_TIMEOUT,
+        )
 
         return text
 
@@ -424,8 +462,8 @@ class BBCodeService:
             return f'<span style="font-size:{size}%;">'
 
         pattern = r"\[size=(\d+)\]"
-        text = re.sub(pattern, replace_size, text, flags=re.IGNORECASE)
-        text = re.sub(r"\[/size\]", "</span>", text, flags=re.IGNORECASE)
+        text = re.sub(pattern, replace_size, text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
+        text = re.sub(r"\[/size\]", "</span>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
 
         return text
 
@@ -434,29 +472,29 @@ class BBCodeService:
         """解析表情符号标签"""
         # 处理 phpBB 风格的表情符号标记
         pattern = r"<!-- s(.*?) --><img src=\"\{SMILIES_PATH\}/(.*?) /><!-- s\1 -->"
-        return re.sub(pattern, r'<img class="smiley" src="/smilies/\2 />', text)
+        return re.sub(pattern, r'<img class="smiley" src="/smilies/\2 />', text, timeout=REGEX_TIMEOUT)
 
     @classmethod
     def _parse_spoiler(cls, text: str) -> str:
         """解析 [spoiler] 标签"""
-        text = re.sub(r"\[spoiler\]", "<span class='spoiler'>", text, flags=re.IGNORECASE)
-        text = re.sub(r"\[/spoiler\]", "</span>", text, flags=re.IGNORECASE)
+        text = re.sub(r"\[spoiler\]", "<span class='spoiler'>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
+        text = re.sub(r"\[/spoiler\]", "</span>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
         return text
 
     @classmethod
     def _parse_strike(cls, text: str) -> str:
         """解析 [s] 和 [strike] 标签"""
-        text = re.sub(r"\[s\]", "<del>", text, flags=re.IGNORECASE)
-        text = re.sub(r"\[/s\]", "</del>", text, flags=re.IGNORECASE)
-        text = re.sub(r"\[strike\]", "<del>", text, flags=re.IGNORECASE)
-        text = re.sub(r"\[/strike\]", "</del>", text, flags=re.IGNORECASE)
+        text = re.sub(r"\[s\]", "<del>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
+        text = re.sub(r"\[/s\]", "</del>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
+        text = re.sub(r"\[strike\]", "<del>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
+        text = re.sub(r"\[/strike\]", "</del>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
         return text
 
     @classmethod
     def _parse_underline(cls, text: str) -> str:
         """解析 [u] 标签"""
-        text = re.sub(r"\[u\]", "<u>", text, flags=re.IGNORECASE)
-        text = re.sub(r"\[/u\]", "</u>", text, flags=re.IGNORECASE)
+        text = re.sub(r"\[u\]", "<u>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
+        text = re.sub(r"\[/u\]", "</u>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
         return text
 
     @classmethod
@@ -464,11 +502,11 @@ class BBCodeService:
         """解析 [url] 标签"""
         # [url]http://example.com[/url]
         pattern1 = r"\[url\]([^\[]+)\[/url\]"
-        text = re.sub(pattern1, r'<a rel="nofollow" href="\1">\1</a>', text, flags=re.IGNORECASE)
+        text = re.sub(pattern1, r'<a rel="nofollow" href="\1">\1</a>', text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
 
         # [url=http://example.com]text[/url]
         pattern2 = r"\[url=([^\]]+)\](.*?)\[/url\]"
-        text = re.sub(pattern2, r'<a rel="nofollow" href="\1">\2</a>', text, flags=re.IGNORECASE)
+        text = re.sub(pattern2, r'<a rel="nofollow" href="\1">\2</a>', text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
 
         return text
 
@@ -484,7 +522,7 @@ class BBCodeService:
                 f"src='https://www.youtube.com/embed/{video_id}?rel=0' allowfullscreen></iframe>"
             )
 
-        return re.sub(pattern, replace_youtube, text, flags=re.IGNORECASE)
+        return re.sub(pattern, replace_youtube, text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
 
     @classmethod
     def sanitize_html(cls, html_content: str) -> str:
@@ -596,7 +634,7 @@ class BBCodeService:
         tag_stack = []
         tag_pattern = r"\[(/?)(\w+)(?:=[^\]]+)?\]"
 
-        for match in re.finditer(tag_pattern, content, re.IGNORECASE):
+        for match in re.finditer(tag_pattern, content, re.IGNORECASE, timeout=REGEX_TIMEOUT):
             is_closing = match.group(1) == "/"
             tag_name = match.group(2).lower()
 
@@ -632,7 +670,7 @@ class BBCodeService:
         # 基于官方实现的简化版本
         # 移除 [quote]...[/quote] 和 [quote=author]...[/quote]
         pattern = r"\[quote(?:=[^\]]+)?\].*?\[/quote\]"
-        result = re.sub(pattern, "", text, flags=re.DOTALL | re.IGNORECASE)
+        result = re.sub(pattern, "", text, flags=re.DOTALL | re.IGNORECASE, timeout=REGEX_TIMEOUT)
         return result.strip()
 
     @classmethod
@@ -649,7 +687,7 @@ class BBCodeService:
             r"(?:=.*?)?(:[a-zA-Z0-9]{1,5})?\]"
         )
 
-        return re.sub(pattern, "", text)
+        return re.sub(pattern, "", text, timeout=REGEX_TIMEOUT)
 
 
 # 服务实例

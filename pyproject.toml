@@ -31,6 +31,7 @@ dependencies = [
     "python-jose[cryptography]>=3.3.0",
     "python-multipart>=0.0.6",
     "redis>=5.0.1",
+    "regex>=2025.11.3",
     "sentry-sdk[fastapi,httpx,loguru,sqlalchemy]>=2.34.1",
     "sqlalchemy>=2.0.23",
     "sqlmodel>=0.0.24",
