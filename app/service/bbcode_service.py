@@ -27,9 +27,28 @@ REGEX_TIMEOUT = 5
 
 
 class BBCodeService:
-    """BBCode处理服务类 - 基于 osu-web 官方实现"""
+    """A service for parsing and sanitizing BBCode content.
 
-    # 允许的HTML标签和属性 - 基于官方实现
+    Attributes:
+        ALLOWED_TAGS: A list of allowed HTML tags in sanitized content.
+        ALLOWED_ATTRIBUTES: A dictionary mapping HTML tags to their allowed attributes.
+        FORBIDDEN_TAGS: A list of disallowed HTML tags that should not appear in user-generated content.
+
+    Methods:
+        parse_bbcode(text: str) -> str:
+            Parse BBCode text and convert it to HTML.
+
+        make_tag(tag: str, content: str, attributes: dict[str, str] | None = None, self_closing: bool = False) -> str:
+            Generate an HTML tag with optional attributes.
+
+        sanitize_html(html_content: str) -> str:
+            Clean and sanitize HTML content to prevent XSS attacks.
+
+        process_userpage_content(raw_content: str, max_length: int = 60000) -> dict[str, str]:
+            Process user page content based on osu-web's handling procedure.
+    """
+
+    # allowed HTML tags in sanitized content
     ALLOWED_TAGS: ClassVar[list[str]] = [
         "a",
         "audio",
@@ -53,10 +72,10 @@ class BBCodeService:
         "strong",
         "u",
         "ul",
-        # imagemap 相关
+        # imagemap
         "map",
         "area",
-        # 自定义容器
+        # custom box
         "details",
         "summary",
     ]
@@ -83,7 +102,7 @@ class BBCodeService:
         "*": ["class"],
     }
 
-    # 危险的BBCode标签（不允许）
+    # Disallowed tags that should not appear in user-generated content
     FORBIDDEN_TAGS: ClassVar[list[str]] = [
         "script",
         "iframe",
@@ -107,13 +126,15 @@ class BBCodeService:
     def parse_bbcode(cls, text: str) -> str:
         """
         Parse BBCode text and convert it to HTML.
-        Based on osu-web's BBCodeFromDB.php implementation.
 
         Args:
             text: Original text containing BBCode
 
         Returns:
             Converted HTML string
+
+        Reference:
+            - https://github.com/ppy/osu-web/blob/15e2d50067c8f5d3dfd2010a79a031efe0dfd10f/app/Libraries/BBCodeFromDB.php#L354
         """
         if not text:
             return ""
@@ -128,7 +149,7 @@ class BBCodeService:
         text = cls._parse_quote(text)
         text = cls._parse_heading(text)
 
-        # 行内标签处理
+        # inline tags
         text = cls._parse_audio(text)
         text = cls._parse_bold(text)
         text = cls._parse_centre(text)
@@ -146,7 +167,7 @@ class BBCodeService:
         text = cls._parse_youtube(text)
         text = cls._parse_profile(text)
 
-        # 换行处理
+        # replace newlines with <br />
         text = text.replace("\n", "<br />")
 
         return text
@@ -172,7 +193,13 @@ class BBCodeService:
 
     @classmethod
     def _parse_audio(cls, text: str) -> str:
-        """解析 [audio] 标签"""
+        """
+        Parse [audio] tag.
+
+        Reference:
+            - https://osu.ppy.sh/wiki/en/BBCode#audio
+            - https://github.com/ppy/osu-web/blob/15e2d50067c8f5d3dfd2010a79a031efe0dfd10f/app/Libraries/BBCodeFromDB.php#L41
+        """
         pattern = r"\[audio\]([^\[]+)\[/audio\]"
 
         def replace_audio(match):
@@ -183,15 +210,28 @@ class BBCodeService:
 
     @classmethod
     def _parse_bold(cls, text: str) -> str:
-        """解析 [b] 标签"""
+        """
+        Parse [b] tag.
+
+        Reference:
+            - https://osu.ppy.sh/wiki/en/BBCode#bold
+            - https://github.com/ppy/osu-web/blob/15e2d50067c8f5d3dfd2010a79a031efe0dfd10f/app/Libraries/BBCodeFromDB.php#L55
+        """
         text = re.sub(r"\[b\]", "<strong>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
         text = re.sub(r"\[/b\]", "</strong>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
         return text
 
     @classmethod
     def _parse_box(cls, text: str) -> str:
-        """解析 [box] 和 [spoilerbox] 标签"""
-        # [box=title] 格式
+        """
+        Parse [box] and [spoilerbox] tags.
+
+        Reference:
+            - https://osu.ppy.sh/wiki/en/BBCode#box
+            - https://osu.ppy.sh/wiki/en/BBCode#spoilerbox
+            - https://github.com/ppy/osu-web/blob/15e2d50067c8f5d3dfd2010a79a031efe0dfd10f/app/Libraries/BBCodeFromDB.php#L63
+        """
+        # [box=title] format
         pattern = r"\[box=([^\]]+)\](.*?)\[/box\]"
 
         def replace_box_with_title(match):
@@ -216,7 +256,7 @@ class BBCodeService:
 
         text = re.sub(pattern, replace_box_with_title, text, flags=re.DOTALL | re.IGNORECASE, timeout=REGEX_TIMEOUT)
 
-        # [spoilerbox] 格式
+        # [spoilerbox] format
         pattern = r"\[spoilerbox\](.*?)\[/spoilerbox\]"
 
         def replace_spoilerbox(match):
@@ -242,7 +282,13 @@ class BBCodeService:
 
     @classmethod
     def _parse_centre(cls, text: str) -> str:
-        """解析 [centre] 标签"""
+        """
+        Parse [centre] tag.
+
+        Reference:
+            - https://osu.ppy.sh/wiki/en/BBCode#centre
+            - https://github.com/ppy/osu-web/blob/15e2d50067c8f5d3dfd2010a79a031efe0dfd10f/app/Libraries/BBCodeFromDB.php#L86
+        """
         text = re.sub(r"\[centre\]", "<center>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
         text = re.sub(r"\[/centre\]", "</center>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
         text = re.sub(r"\[center\]", "<center>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
@@ -251,7 +297,13 @@ class BBCodeService:
 
     @classmethod
     def _parse_code(cls, text: str) -> str:
-        """解析 [code] 标签"""
+        """
+        Parse [code] tag.
+
+        Reference:
+            - https://osu.ppy.sh/wiki/en/BBCode#code-block
+            - https://github.com/ppy/osu-web/blob/15e2d50067c8f5d3dfd2010a79a031efe0dfd10f/app/Libraries/BBCodeFromDB.php#L94
+        """
         pattern = r"\[code\]\n*(.*?)\n*\[/code\]"
 
         def replace_code(match):
@@ -261,7 +313,13 @@ class BBCodeService:
 
     @classmethod
     def _parse_colour(cls, text: str) -> str:
-        """解析 [color] 标签"""
+        """
+        Parse [color] tag.
+
+        Reference:
+            - https://osu.ppy.sh/wiki/en/BBCode#colour
+            - https://github.com/ppy/osu-web/blob/15e2d50067c8f5d3dfd2010a79a031efe0dfd10f/app/Libraries/BBCodeFromDB.php#L103
+        """
         pattern = r"\[color=([^\]]+)\](.*?)\[/color\]"
 
         def replace_colour(match):
@@ -271,7 +329,13 @@ class BBCodeService:
 
     @classmethod
     def _parse_email(cls, text: str) -> str:
-        """解析 [email] 标签"""
+        """
+        Parse [email] tag.
+
+        Reference:
+            - https://osu.ppy.sh/wiki/en/BBCode#email
+            - https://github.com/ppy/osu-web/blob/15e2d50067c8f5d3dfd2010a79a031efe0dfd10f/app/Libraries/BBCodeFromDB.php#L111
+        """
         # [email]email@example.com[/email]
         pattern1 = r"\[email\]([^\[]+)\[/email\]"
 
@@ -307,7 +371,13 @@ class BBCodeService:
 
     @classmethod
     def _parse_heading(cls, text: str) -> str:
-        """解析 [heading] 标签"""
+        """
+        Parse [heading] tag.
+
+        Reference:
+            - https://osu.ppy.sh/wiki/en/BBCode#heading-(v1)
+            - https://github.com/ppy/osu-web/blob/15e2d50067c8f5d3dfd2010a79a031efe0dfd10f/app/Libraries/BBCodeFromDB.php#L124
+        """
         pattern = r"\[heading\](.*?)\[/heading\]"
 
         def replace_heading(match):
@@ -317,13 +387,18 @@ class BBCodeService:
 
     @classmethod
     def _parse_image(cls, text: str) -> str:
-        """解析 [img] 标签"""
+        """
+        Parse [img] tag.
+
+        Reference:
+            - https://osu.ppy.sh/wiki/en/BBCode#images
+            - https://github.com/ppy/osu-web/blob/15e2d50067c8f5d3dfd2010a79a031efe0dfd10f/app/Libraries/BBCodeFromDB.php#L194
+        """
         pattern = r"\[img\]([^\[]+)\[/img\]"
 
         def replace_image(match):
             url = match.group(1).strip()
-            # TODO: 可以在这里添加图片代理支持
-            # 生成带有懒加载的图片标签
+            # TODO: image reverse proxy support
             return cls.make_tag(
                 "img",
                 "",
@@ -408,22 +483,40 @@ class BBCodeService:
 
     @classmethod
     def _parse_italic(cls, text: str) -> str:
-        """解析 [i] 标签"""
+        """
+        Parse [i] tag.
+
+        Reference:
+            - https://osu.ppy.sh/wiki/en/BBCode#italic
+            - https://github.com/ppy/osu-web/blob/15e2d50067c8f5d3dfd2010a79a031efe0dfd10f/app/Libraries/BBCodeFromDB.php#L186
+        """
         text = re.sub(r"\[i\]", "<em>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
         text = re.sub(r"\[/i\]", "</em>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
         return text
 
     @classmethod
     def _parse_inline_code(cls, text: str) -> str:
-        """解析 [c] 内联代码标签"""
+        """
+        Parse [c] tag.
+
+        Reference:
+            - https://osu.ppy.sh/wiki/en/BBCode#inline-code
+            - https://github.com/ppy/osu-web/blob/15e2d50067c8f5d3dfd2010a79a031efe0dfd10f/app/Libraries/BBCodeFromDB.php#L236
+        """
         text = re.sub(r"\[c\]", "<code>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
         text = re.sub(r"\[/c\]", "</code>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
         return text
 
     @classmethod
     def _parse_list(cls, text: str) -> str:
-        """解析 [list] 标签"""
-        # 有序列表
+        """
+        Parse [list] tag.
+
+        Reference:
+            - https://osu.ppy.sh/wiki/en/BBCode#formatted-lists
+            - https://github.com/ppy/osu-web/blob/15e2d50067c8f5d3dfd2010a79a031efe0dfd10f/app/Libraries/BBCodeFromDB.php#L244
+        """
+        # ordedred list
         pattern = r"\[list=1\](.*?)\[/list\]"
 
         def replace_ordered(match):
@@ -431,7 +524,7 @@ class BBCodeService:
 
         text = re.sub(pattern, replace_ordered, text, flags=re.DOTALL | re.IGNORECASE, timeout=REGEX_TIMEOUT)
 
-        # 无序列表
+        # unordered list
         pattern = r"\[list\](.*?)\[/list\]"
 
         def replace_unordered(match):
@@ -445,7 +538,7 @@ class BBCodeService:
             timeout=REGEX_TIMEOUT,
         )
 
-        # 列表项
+        # list item
         pattern = r"\[\*\]\s*(.*?)(?=\[\*\]|\[/list\]|$)"
 
         def replace_item(match):
@@ -457,7 +550,13 @@ class BBCodeService:
 
     @classmethod
     def _parse_notice(cls, text: str) -> str:
-        """解析 [notice] 标签"""
+        """
+        Parse [notice] tag.
+
+        Reference:
+            - https://osu.ppy.sh/wiki/en/BBCode#notice
+            - https://github.com/ppy/osu-web/blob/15e2d50067c8f5d3dfd2010a79a031efe0dfd10f/app/Libraries/BBCodeFromDB.php#L264
+        """
         pattern = r"\[notice\]\n*(.*?)\n*\[/notice\]"
 
         def replace_notice(match):
@@ -473,7 +572,13 @@ class BBCodeService:
 
     @classmethod
     def _parse_profile(cls, text: str) -> str:
-        """解析 [profile] 标签"""
+        """
+        Parse [profile] tag.
+
+        Reference:
+            - https://osu.ppy.sh/wiki/en/BBCode#profile
+            - https://github.com/ppy/osu-web/blob/15e2d50067c8f5d3dfd2010a79a031efe0dfd10f/app/Libraries/BBCodeFromDB.php#L273
+        """
         pattern = r"\[profile(?:=(\d+))?\](.*?)\[/profile\]"
 
         def replace_profile(match):
@@ -495,7 +600,13 @@ class BBCodeService:
 
     @classmethod
     def _parse_quote(cls, text: str) -> str:
-        """解析 [quote] 标签"""
+        """
+        Parse [quote] tag.
+
+        Reference:
+            - https://osu.ppy.sh/wiki/en/BBCode#quote
+            - https://github.com/ppy/osu-web/blob/15e2d50067c8f5d3dfd2010a79a031efe0dfd10f/app/Libraries/BBCodeFromDB.php#L285
+        """
         # [quote="author"]content[/quote]
         # Handle both raw quotes and HTML-escaped quotes (&quot;)
         pattern1 = r'\[quote=(?:&quot;|")(.+?)(?:&quot;|")\]\s*(.*?)\s*\[/quote\]'
@@ -532,11 +643,17 @@ class BBCodeService:
 
     @classmethod
     def _parse_size(cls, text: str) -> str:
-        """解析 [size] 标签"""
+        """
+        Parse [size] tag.
+
+        Reference:
+            - https://osu.ppy.sh/wiki/en/BBCode#font-size
+            - https://github.com/ppy/osu-web/blob/15e2d50067c8f5d3dfd2010a79a031efe0dfd10f/app/Libraries/BBCodeFromDB.php#L326
+        """
 
         def replace_size(match):
             size = int(match.group(1))
-            # 限制字体大小范围 (30-200%)
+            # limit font size range (30-200%)
             size = max(30, min(200, size))
             return f'<span style="font-size:{size}%;">'
 
@@ -548,21 +665,39 @@ class BBCodeService:
 
     @classmethod
     def _parse_smilies(cls, text: str) -> str:
-        """解析表情符号标签"""
-        # 处理 phpBB 风格的表情符号标记
+        """
+        Parse smilies.
+
+        Reference:
+            - https://osu.ppy.sh/wiki/en/BBCode
+            - https://github.com/ppy/osu-web/blob/15e2d50067c8f5d3dfd2010a79a031efe0dfd10f/app/Libraries/BBCodeFromDB.php#L296
+        """
+        # handle phpBB style smilies
         pattern = r"<!-- s(.*?) --><img src=\"\{SMILIES_PATH\}/(.*?) /><!-- s\1 -->"
         return re.sub(pattern, r'<img class="smiley" src="/smilies/\2 />', text, timeout=REGEX_TIMEOUT)
 
     @classmethod
     def _parse_spoiler(cls, text: str) -> str:
-        """解析 [spoiler] 标签"""
+        """
+        Parse [spoiler] tag.
+
+        Reference:
+            - https://osu.ppy.sh/wiki/en/BBCode#spoiler
+            - https://github.com/ppy/osu-web/blob/15e2d50067c8f5d3dfd2010a79a031efe0dfd10f/app/Libraries/BBCodeFromDB.php#L318
+        """
         text = re.sub(r"\[spoiler\]", "<span class='spoiler'>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
         text = re.sub(r"\[/spoiler\]", "</span>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
         return text
 
     @classmethod
     def _parse_strike(cls, text: str) -> str:
-        """解析 [s] 和 [strike] 标签"""
+        """
+        Parse [s] and [strike] tags.
+
+        Reference:
+            - https://osu.ppy.sh/wiki/en/BBCode#strikethrough
+            - https://github.com/ppy/osu-web/blob/15e2d50067c8f5d3dfd2010a79a031efe0dfd10f/app/Libraries/BBCodeFromDB.php#L301
+        """
         text = re.sub(r"\[s\]", "<del>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
         text = re.sub(r"\[/s\]", "</del>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
         text = re.sub(r"\[strike\]", "<del>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
@@ -571,14 +706,26 @@ class BBCodeService:
 
     @classmethod
     def _parse_underline(cls, text: str) -> str:
-        """解析 [u] 标签"""
+        """
+        Parse [u] tag.
+
+        Reference:
+            - https://osu.ppy.sh/wiki/en/BBCode#underline
+            - https://github.com/ppy/osu-web/blob/15e2d50067c8f5d3dfd2010a79a031efe0dfd10f/app/Libraries/BBCodeFromDB.php#L310
+        """
         text = re.sub(r"\[u\]", "<u>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
         text = re.sub(r"\[/u\]", "</u>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
         return text
 
     @classmethod
     def _parse_url(cls, text: str) -> str:
-        """解析 [url] 标签"""
+        """
+        Parse [url] tag.
+
+        Reference:
+            - https://osu.ppy.sh/wiki/en/BBCode#url
+            - https://github.com/ppy/osu-web/blob/15e2d50067c8f5d3dfd2010a79a031efe0dfd10f/app/Libraries/BBCodeFromDB.php#L337
+        """
         # [url]http://example.com[/url]
         pattern1 = r"\[url\]([^\[]+)\[/url\]"
 
@@ -602,7 +749,13 @@ class BBCodeService:
 
     @classmethod
     def _parse_youtube(cls, text: str) -> str:
-        """解析 [youtube] 标签"""
+        """
+        Parse [youtube] tag.
+
+        Reference:
+            - https://osu.ppy.sh/wiki/en/BBCode#youtube
+            - https://github.com/ppy/osu-web/blob/15e2d50067c8f5d3dfd2010a79a031efe0dfd10f/app/Libraries/BBCodeFromDB.php#L346
+        """
         pattern = r"\[youtube\]([a-zA-Z0-9_-]{11})\[/youtube\]"
 
         def replace_youtube(match):
@@ -676,15 +829,14 @@ class BBCodeService:
     @classmethod
     def process_userpage_content(cls, raw_content: str, max_length: int = 60000) -> dict[str, str]:
         """
-        处理用户页面内容
-        基于 osu-web 的处理流程
+        Process userpage BBCode content.
 
         Args:
-            raw_content: 原始BBCode内容
-            max_length: 最大允许长度（字符数，支持多字节字符）
+            raw_content: Raw BBCode content
+            max_length: Maximum allowed length
 
         Returns:
-            包含raw和html两个版本的字典
+            A dictionary containing both raw and html versions
         """
         if not raw_content or not raw_content.strip():
             raise ContentEmptyError()
@@ -701,31 +853,21 @@ class BBCodeService:
         html_content = cls.parse_bbcode(raw_content)
         safe_html = cls.sanitize_html(html_content)
 
-        # 包装在 bbcode 容器中
+        # Wrap in a container div
         final_html = cls.make_tag("div", safe_html, attributes={"class": "bbcode"})
 
         return {"raw": raw_content, "html": final_html}
 
     @classmethod
     def validate_bbcode(cls, content: str) -> list[str]:
-        """
-        验证BBCode语法并返回错误列表
-        基于 osu-web 的验证逻辑
-
-        Args:
-            content: 要验证的BBCode内容
-
-        Returns:
-            错误消息列表
-        """
         errors = []
 
-        # 检查内容是否仅包含引用（参考官方逻辑）
+        # check for content that is only quotes
         content_without_quotes = cls._remove_block_quotes(content)
         if content.strip() and not content_without_quotes.strip():
             errors.append("Content cannot contain only quotes")
 
-        # 检查标签配对
+        # check for balanced tags
         tag_stack = []
         tag_pattern = r"\[(/?)(\w+)(?:=[^\]]+)?\]"
 
@@ -745,7 +887,7 @@ class BBCodeService:
                 if tag_name not in ["*"]:
                     tag_stack.append(tag_name)
 
-        # 检查未关闭的标签
+        # check for any unclosed tags
         for unclosed_tag in tag_stack:
             errors.append(f"Unclosed tag '[{unclosed_tag}]'")
 
@@ -754,16 +896,18 @@ class BBCodeService:
     @classmethod
     def _remove_block_quotes(cls, text: str) -> str:
         """
-        移除引用块（参考 osu-web BBCodeFromDB::removeBlockQuotes）
+        Remove block quotes.
 
         Args:
-            text: 原始文本
+            text: Original text
 
         Returns:
-            移除引用后的文本
+            Text with block quotes removed
+
+        Reference:
+            - https://github.com/ppy/osu-web/blob/15e2d50067c8f5d3dfd2010a79a031efe0dfd10f/app/Libraries/BBCodeFromDB.php#L456
         """
-        # 基于官方实现的简化版本
-        # 移除 [quote]...[/quote] 和 [quote=author]...[/quote]
+        # remove [quote]...[/quote] blocks
         pattern = r"\[quote(?:=[^\]]+)?\].*?\[/quote\]"
         result = re.sub(pattern, "", text, flags=re.DOTALL | re.IGNORECASE, timeout=REGEX_TIMEOUT)
         return result.strip()
@@ -771,11 +915,13 @@ class BBCodeService:
     @classmethod
     def remove_bbcode_tags(cls, text: str) -> str:
         """
-        移除所有BBCode标签，只保留纯文本
-        用于搜索索引等场景
-        基于官方实现
+        Remove all BBCode tags, keeping only plain text.
+        Used for search indexing etc.
+
+        Reference:
+            - https://github.com/ppy/osu-web/blob/15e2d50067c8f5d3dfd2010a79a031efe0dfd10f/app/Libraries/BBCodeFromDB.php#L446
         """
-        # 基于官方实现的完整BBCode标签模式
+        # remove all BBCode tags
         pattern = (
             r"\[/?(\*|\*:m|audio|b|box|color|spoilerbox|centre|center|code|email|heading|i|img|"
             r"list|list:o|list:u|notice|profile|quote|s|strike|u|spoiler|size|url|youtube|c)"
@@ -785,5 +931,4 @@ class BBCodeService:
         return re.sub(pattern, "", text, timeout=REGEX_TIMEOUT)
 
 
-# 服务实例
 bbcode_service = BBCodeService()
