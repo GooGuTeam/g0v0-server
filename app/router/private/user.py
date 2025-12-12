@@ -105,6 +105,11 @@ async def update_userpage(
         raise HTTPException(403, "Your account is restricted and cannot perform this action.")
 
     try:
+        errors = bbcode_service.validate_bbcode(request.body)
+        if errors:
+            msg = "Invalid BBCode content: " + "; ".join(errors)
+            raise UserpageError(msg)
+
         # 处理BBCode内容
         processed_page = bbcode_service.process_userpage_content(request.body)
 
