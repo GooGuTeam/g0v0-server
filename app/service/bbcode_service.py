@@ -659,7 +659,7 @@ class BBCodeService:
             size = int(match.group(1))
             # limit font size range (30-200%)
             size = max(30, min(200, size))
-            return cls.make_tag("span", "", style=f"font-size:{size}%")
+            return cls.make_tag("span", "", attributes={"style": f"font-size:{size}%"})
 
         pattern = r"\[size=(\d+)\]"
         text = re.sub(pattern, replace_size, text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
