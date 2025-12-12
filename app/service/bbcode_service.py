@@ -1,7 +1,12 @@
 """
-BBCode处理服务
-基于 osu-web 官方实现的 BBCode 解析器
-支持所有 osu! 官方 BBCode 标签
+BBCode markup language to HTML.
+
+This module provides functionality to parse BBCode into HTML, sanitize the HTML,
+and validate BBCode syntax, based on the implementation from osu-web.
+
+Reference:
+    - https://osu.ppy.sh/wiki/BBCode
+    - https://github.com/ppy/osu-web/blob/master/app/Libraries/BBCodeFromDB.php
 """
 
 import html
@@ -16,6 +21,8 @@ from app.models.userpage import (
 
 import bleach
 from bleach.css_sanitizer import CSSSanitizer
+
+HTTP_PATTERN = re.compile(r"^https?://", re.IGNORECASE)
 
 
 class BBCodeService:
@@ -98,23 +105,20 @@ class BBCodeService:
     @classmethod
     def parse_bbcode(cls, text: str) -> str:
         """
-        解析BBCode文本并转换为HTML
-        基于 osu-web BBCodeFromDB.php 的实现
+        Parse BBCode text and convert it to HTML.
+        Based on osu-web's BBCodeFromDB.php implementation.
 
         Args:
-            text: 包含BBCode的原始文本
+            text: Original text containing BBCode
 
         Returns:
-            转换后的HTML字符串
+            Converted HTML string
         """
         if not text:
             return ""
 
-        # 预处理：转义HTML实体
         text = html.escape(text)
 
-        # 按照 osu-web 的解析顺序进行处理
-        # 块级标签处理
         text = cls._parse_imagemap(text)
         text = cls._parse_box(text)
         text = cls._parse_code(text)
@@ -145,6 +149,25 @@ class BBCodeService:
         text = text.replace("\n", "<br />")
 
         return text
+
+    @classmethod
+    def make_tag(
+        cls,
+        tag: str,
+        content: str,
+        attributes: dict[str, str] | None = None,
+        self_closing: bool = False,
+    ) -> str:
+        """Generate an HTML tag with optional attributes."""
+        attr_str = ""
+        if attributes:
+            attr_parts = [f'{key}="{html.escape(value)}"' for key, value in attributes.items()]
+            attr_str = " " + " ".join(attr_parts)
+
+        if self_closing:
+            return f"<{tag}{attr_str} />"
+        else:
+            return f"<{tag}{attr_str}>{content}</{tag}>"
 
     @classmethod
     def _parse_audio(cls, text: str) -> str:
@@ -254,64 +277,74 @@ class BBCodeService:
     @classmethod
     def _parse_imagemap(cls, text: str) -> str:
         """
-        解析 [imagemap] 标签
-        基于 osu-web BBCodeFromDB.php 的实现
+        Parse [imagemap] tag.
+        Use a simple parser to avoid ReDos vulnerabilities.
+
+        Structure:
+           [imagemap]
+           IMAGE_URL
+           X(int) Y(int) WIDTH(int) HEIGHT(int) REDIRECT(url or #) TITLE(optional)
+           ...
+           [/imagemap]
+
+        Reference:
+            - https://osu.ppy.sh/wiki/en/BBCode#imagemap
+            - https://github.com/ppy/osu-web/blob/15e2d50067c8f5d3dfd2010a79a031efe0dfd10f/app/Libraries/BBCodeFromDB.php#L132
         """
-        pattern = r"\[imagemap\]\s*\n([^\s\n]+)\s*\n((?:[0-9.]+ [0-9.]+ [0-9.]+ [0-9.]+ (?:#|https?://[^\s]+|mailto:[^\s]+)[^\n]*\n?)+)\[/imagemap\]"
+        redirect_pattern = re.compile(r"^(#|https?://[^\s]+|mailto:[^\s]+)$", re.IGNORECASE)
 
-        def replace_imagemap(match):
-            image_url = match.group(1).strip()
-            links_data = match.group(2).strip()
+        def replace_imagemap(match: re.Match) -> str:
+            content = match.group(1)
+            content = html.unescape(content)
 
-            if not links_data:
-                return f'<img loading="lazy" src="{image_url}" alt="" style="max-width: 100%; height: auto;" />'
+            result = ["<div class='imagemap'>"]
+            lines = content.strip().splitlines()
+            if len(lines) < 2:
+                return text
+            image_url = lines[0].strip()
+            if not HTTP_PATTERN.match(image_url):
+                return text
+            result.append(
+                cls.make_tag(
+                    "img",
+                    "",
+                    attributes={"src": image_url, "loading": "lazy", "class": "imagemap__image"},
+                    self_closing=True,
+                )
+            )
 
-            # 解析链接数据
-            links = []
-            for line in links_data.split("\n"):
-                line = line.strip()
-                if not line:
+            for line in lines[1:]:
+                parts = line.strip().split()
+                if len(parts) < 5:
+                    continue
+                x, y, width, height, redirect = parts[:5]
+                title = " ".join(parts[5:]) if len(parts) > 5 else ""
+                if not redirect_pattern.match(redirect):
                     continue
 
-                # 按空格分割，最多分成6部分（前5个是数字和URL，第6个是标题）
-                parts = line.split(" ", 5)
-                if len(parts) >= 5:
-                    try:
-                        left = float(parts[0])
-                        top = float(parts[1])
-                        width = float(parts[2])
-                        height = float(parts[3])
-                        href = parts[4]
-                        # 标题可能包含空格，所以重新组合
-                        title = parts[5] if len(parts) > 5 else ""
-
-                        # 构建样式
-                        style = f"left: {left}%; top: {top}%; width: {width}%; height: {height}%;"
-
-                        if href == "#":
-                            # 无链接区域
-                            links.append(f'<span class="imagemap__link" style="{style}" title="{title}"></span>')
-                        else:
-                            # 有链接区域
-                            links.append(
-                                f'<a class="imagemap__link" href="{href}" style="{style}" title="{title}"></a>'
-                            )
-                    except (ValueError, IndexError):
-                        continue
-
-            if links:
-                links_html = "".join(links)
-                # 基于官方实现的图片标签
-                image_html = (
-                    f'<img class="imagemap__image" loading="lazy" src="{image_url}" alt="" '
-                    f'style="max-width: 100%; height: auto;" />'
+                result.append(
+                    cls.make_tag(
+                        "a" if redirect == "#" else "span",
+                        "",
+                        attributes={
+                            "href": redirect,
+                            "style": f"left: {x}%; top: {y}%; width: {width}%; height: {height}%;",
+                            "title": title,
+                            "class": "imagemap__link",
+                        },
+                        self_closing=True,
+                    )
                 )
-                # 使用imagemap容器
-                return f'<div class="imagemap">{image_html}{links_html}</div>'
-            else:
-                return f'<img loading="lazy" src="{image_url}" alt="" style="max-width: 100%; height: auto;" />'
+            result.append("</div>")
+            return "".join(result)
 
-        return re.sub(pattern, replace_imagemap, text, flags=re.DOTALL | re.IGNORECASE)
+        imagemap_box = re.sub(
+            r"\[imagemap\]((?:(?!\[/imagemap\]).)*?)\[/imagemap\]",
+            replace_imagemap,
+            text,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+        return imagemap_box
 
     @classmethod
     def _parse_italic(cls, text: str) -> str:
@@ -370,7 +403,8 @@ class BBCodeService:
     def _parse_quote(cls, text: str) -> str:
         """解析 [quote] 标签"""
         # [quote="author"]content[/quote]
-        pattern1 = r'\[quote="([^"]+)"\]\s*(.*?)\s*\[/quote\]'
+        # Handle both raw quotes and HTML-escaped quotes (&quot;)
+        pattern1 = r'\[quote=(?:&quot;|")(.+?)(?:&quot;|")\]\s*(.*?)\s*\[/quote\]'
         text = re.sub(pattern1, r"<blockquote><h4>\1 wrote:</h4>\2</blockquote>", text, flags=re.DOTALL | re.IGNORECASE)
 
         # [quote]content[/quote]
@@ -455,19 +489,18 @@ class BBCodeService:
     @classmethod
     def sanitize_html(cls, html_content: str) -> str:
         """
-        清理HTML内容，移除危险标签和属性
-        基于 osu-web 的安全策略
+        Clean and sanitize HTML content to prevent XSS attacks.
+        Uses bleach to allow only a safe subset of HTML tags and attributes.
 
         Args:
-            html_content: 要清理的HTML内容
+            html_content: Original HTML content
 
         Returns:
-            清理后的安全HTML
+            Sanitized HTML content
         """
         if not html_content:
             return ""
 
-        # 使用bleach清理HTML，配置CSS清理器以允许安全的样式
         css_sanitizer = CSSSanitizer(
             allowed_css_properties=[
                 "color",
@@ -520,25 +553,19 @@ class BBCodeService:
         Returns:
             包含raw和html两个版本的字典
         """
-        # 检查内容是否为空或仅包含空白字符
         if not raw_content or not raw_content.strip():
             raise ContentEmptyError()
 
-        # 检查长度限制（Python的len()本身支持Unicode字符计数）
         content_length = len(raw_content)
         if content_length > max_length:
             raise ContentTooLongError(content_length, max_length)
 
-        # 检查是否包含禁止的标签
         content_lower = raw_content.lower()
         for forbidden_tag in cls.FORBIDDEN_TAGS:
             if f"[{forbidden_tag}" in content_lower or f"<{forbidden_tag}" in content_lower:
                 raise ForbiddenTagError(forbidden_tag)
 
-        # 转换BBCode为HTML
         html_content = cls.parse_bbcode(raw_content)
-
-        # 清理HTML
         safe_html = cls.sanitize_html(html_content)
 
         # 包装在 bbcode 容器中
@@ -619,7 +646,7 @@ class BBCodeService:
         pattern = (
             r"\[/?(\*|\*:m|audio|b|box|color|spoilerbox|centre|center|code|email|heading|i|img|"
             r"list|list:o|list:u|notice|profile|quote|s|strike|u|spoiler|size|url|youtube|c)"
-            r"(=.*?(?=:))?(:[a-zA-Z0-9]{1,5})?\]"
+            r"(?:=.*?)?(:[a-zA-Z0-9]{1,5})?\]"
         )
 
         return re.sub(pattern, "", text)
