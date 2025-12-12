@@ -177,7 +177,7 @@ class BBCodeService:
 
         def replace_audio(match):
             url = match.group(1).strip()
-            return f'<audio controls preload="none" src="{url}"></audio>'
+            return cls.make_tag("audio", "", attributes={"controls": "", "preload": "none", "src": url})
 
         return re.sub(pattern, replace_audio, text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
 
@@ -197,13 +197,22 @@ class BBCodeService:
         def replace_box_with_title(match):
             title = match.group(1)
             content = match.group(2)
-            return (
-                f"<div class='js-spoilerbox bbcode-spoilerbox'>"
-                f"<button type='button' class='js-spoilerbox__link bbcode-spoilerbox__link' "
-                f"style='background: none; border: none; cursor: pointer; padding: 0; text-align: left; width: 100%;'>"
-                f"<span class='bbcode-spoilerbox__link-icon'></span>{title}</button>"
-                f"<div class='js-spoilerbox__body bbcode-spoilerbox__body'>{content}</div></div>"
+
+            icon = cls.make_tag("span", "", attributes={"class": "bbcode-spoilerbox__link-icon"})
+            button_content = icon + title
+            button = cls.make_tag(
+                "button",
+                button_content,
+                attributes={
+                    "type": "button",
+                    "class": "js-spoilerbox__link bbcode-spoilerbox__link",
+                    "style": (
+                        "background: none; border: none; cursor: pointer; padding: 0; text-align: left; width: 100%;"
+                    ),
+                },
             )
+            body = cls.make_tag("div", content, attributes={"class": "js-spoilerbox__body bbcode-spoilerbox__body"})
+            return cls.make_tag("div", button + body, attributes={"class": "js-spoilerbox bbcode-spoilerbox"})
 
         text = re.sub(pattern, replace_box_with_title, text, flags=re.DOTALL | re.IGNORECASE, timeout=REGEX_TIMEOUT)
 
@@ -212,13 +221,22 @@ class BBCodeService:
 
         def replace_spoilerbox(match):
             content = match.group(1)
-            return (
-                f"<div class='js-spoilerbox bbcode-spoilerbox'>"
-                f"<button type='button' class='js-spoilerbox__link bbcode-spoilerbox__link' "
-                f"style='background: none; border: none; cursor: pointer; padding: 0; text-align: left; width: 100%;'>"
-                f"<span class='bbcode-spoilerbox__link-icon'></span>SPOILER</button>"
-                f"<div class='js-spoilerbox__body bbcode-spoilerbox__body'>{content}</div></div>"
+
+            icon = cls.make_tag("span", "", attributes={"class": "bbcode-spoilerbox__link-icon"})
+            button_content = icon + "SPOILER"
+            button = cls.make_tag(
+                "button",
+                button_content,
+                attributes={
+                    "type": "button",
+                    "class": "js-spoilerbox__link bbcode-spoilerbox__link",
+                    "style": (
+                        "background: none; border: none; cursor: pointer; padding: 0; text-align: left; width: 100%;"
+                    ),
+                },
             )
+            body = cls.make_tag("div", content, attributes={"class": "js-spoilerbox__body bbcode-spoilerbox__body"})
+            return cls.make_tag("div", button + body, attributes={"class": "js-spoilerbox bbcode-spoilerbox"})
 
         return re.sub(pattern, replace_spoilerbox, text, flags=re.DOTALL | re.IGNORECASE, timeout=REGEX_TIMEOUT)
 
@@ -235,22 +253,35 @@ class BBCodeService:
     def _parse_code(cls, text: str) -> str:
         """解析 [code] 标签"""
         pattern = r"\[code\]\n*(.*?)\n*\[/code\]"
-        return re.sub(pattern, r"<pre>\1</pre>", text, flags=re.DOTALL | re.IGNORECASE, timeout=REGEX_TIMEOUT)
+
+        def replace_code(match):
+            return cls.make_tag("pre", match.group(1))
+
+        return re.sub(pattern, replace_code, text, flags=re.DOTALL | re.IGNORECASE, timeout=REGEX_TIMEOUT)
 
     @classmethod
     def _parse_colour(cls, text: str) -> str:
         """解析 [color] 标签"""
         pattern = r"\[color=([^\]]+)\](.*?)\[/color\]"
-        return re.sub(pattern, r'<span style="color:\1">\2</span>', text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
+
+        def replace_colour(match):
+            return cls.make_tag("span", match.group(2), attributes={"style": f"color:{match.group(1)}"})
+
+        return re.sub(pattern, replace_colour, text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
 
     @classmethod
     def _parse_email(cls, text: str) -> str:
         """解析 [email] 标签"""
         # [email]email@example.com[/email]
         pattern1 = r"\[email\]([^\[]+)\[/email\]"
+
+        def replace_email1(match):
+            email = match.group(1)
+            return cls.make_tag("a", email, attributes={"rel": "nofollow", "href": f"mailto:{email}"})
+
         text = re.sub(
             pattern1,
-            r'<a rel="nofollow" href="mailto:\1">\1</a>',
+            replace_email1,
             text,
             flags=re.IGNORECASE,
             timeout=REGEX_TIMEOUT,
@@ -258,9 +289,15 @@ class BBCodeService:
 
         # [email=email@example.com]text[/email]
         pattern2 = r"\[email=([^\]]+)\](.*?)\[/email\]"
+
+        def replace_email2(match):
+            email = match.group(1)
+            content = match.group(2)
+            return cls.make_tag("a", content, attributes={"rel": "nofollow", "href": f"mailto:{email}"})
+
         text = re.sub(
             pattern2,
-            r'<a rel="nofollow" href="mailto:\1">\2</a>',
+            replace_email2,
             text,
             flags=re.IGNORECASE,
             timeout=REGEX_TIMEOUT,
@@ -272,7 +309,11 @@ class BBCodeService:
     def _parse_heading(cls, text: str) -> str:
         """解析 [heading] 标签"""
         pattern = r"\[heading\](.*?)\[/heading\]"
-        return re.sub(pattern, r"<h2>\1</h2>", text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
+
+        def replace_heading(match):
+            return cls.make_tag("h2", match.group(1))
+
+        return re.sub(pattern, replace_heading, text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
 
     @classmethod
     def _parse_image(cls, text: str) -> str:
@@ -283,7 +324,12 @@ class BBCodeService:
             url = match.group(1).strip()
             # TODO: 可以在这里添加图片代理支持
             # 生成带有懒加载的图片标签
-            return f'<img loading="lazy" src="{url}" alt="" style="max-width: 100%; height: auto;" />'
+            return cls.make_tag(
+                "img",
+                "",
+                attributes={"loading": "lazy", "src": url, "alt": "", "style": "max-width: 100%; height: auto;"},
+                self_closing=True,
+            )
 
         return re.sub(pattern, replace_image, text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
 
@@ -379,13 +425,21 @@ class BBCodeService:
         """解析 [list] 标签"""
         # 有序列表
         pattern = r"\[list=1\](.*?)\[/list\]"
-        text = re.sub(pattern, r"<ol>\1</ol>", text, flags=re.DOTALL | re.IGNORECASE, timeout=REGEX_TIMEOUT)
+
+        def replace_ordered(match):
+            return cls.make_tag("ol", match.group(1))
+
+        text = re.sub(pattern, replace_ordered, text, flags=re.DOTALL | re.IGNORECASE, timeout=REGEX_TIMEOUT)
 
         # 无序列表
         pattern = r"\[list\](.*?)\[/list\]"
+
+        def replace_unordered(match):
+            return cls.make_tag("ol", match.group(1), attributes={"class": "unordered"})
+
         text = re.sub(
             pattern,
-            r"<ol class='unordered'>\1</ol>",
+            replace_unordered,
             text,
             flags=re.DOTALL | re.IGNORECASE,
             timeout=REGEX_TIMEOUT,
@@ -393,7 +447,11 @@ class BBCodeService:
 
         # 列表项
         pattern = r"\[\*\]\s*(.*?)(?=\[\*\]|\[/list\]|$)"
-        text = re.sub(pattern, r"<li>\1</li>", text, flags=re.DOTALL | re.IGNORECASE, timeout=REGEX_TIMEOUT)
+
+        def replace_item(match):
+            return cls.make_tag("li", match.group(1))
+
+        text = re.sub(pattern, replace_item, text, flags=re.DOTALL | re.IGNORECASE, timeout=REGEX_TIMEOUT)
 
         return text
 
@@ -401,9 +459,13 @@ class BBCodeService:
     def _parse_notice(cls, text: str) -> str:
         """解析 [notice] 标签"""
         pattern = r"\[notice\]\n*(.*?)\n*\[/notice\]"
+
+        def replace_notice(match):
+            return cls.make_tag("div", match.group(1), attributes={"class": "well"})
+
         return re.sub(
             pattern,
-            r'<div class="well">\1</div>',
+            replace_notice,
             text,
             flags=re.DOTALL | re.IGNORECASE,
             timeout=REGEX_TIMEOUT,
@@ -419,9 +481,15 @@ class BBCodeService:
             username = match.group(2)
 
             if user_id:
-                return f'<a href="/users/{user_id}" class="user-profile-link" data-user-id="{user_id}">{username}</a>'
+                return cls.make_tag(
+                    "a",
+                    username,
+                    attributes={"href": f"/users/{user_id}", "class": "user-profile-link", "data-user-id": user_id},
+                )
             else:
-                return f'<a href="/users/@{username}" class="user-profile-link">@{username}</a>'
+                return cls.make_tag(
+                    "a", f"@{username}", attributes={"href": f"/users/@{username}", "class": "user-profile-link"}
+                )
 
         return re.sub(pattern, replace_profile, text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
 
@@ -431,9 +499,16 @@ class BBCodeService:
         # [quote="author"]content[/quote]
         # Handle both raw quotes and HTML-escaped quotes (&quot;)
         pattern1 = r'\[quote=(?:&quot;|")(.+?)(?:&quot;|")\]\s*(.*?)\s*\[/quote\]'
+
+        def replace_quote1(match):
+            author = match.group(1)
+            content = match.group(2)
+            heading = cls.make_tag("h4", f"{author} wrote:")
+            return cls.make_tag("blockquote", heading + content)
+
         text = re.sub(
             pattern1,
-            r"<blockquote><h4>\1 wrote:</h4>\2</blockquote>",
+            replace_quote1,
             text,
             flags=re.DOTALL | re.IGNORECASE,
             timeout=REGEX_TIMEOUT,
@@ -441,9 +516,13 @@ class BBCodeService:
 
         # [quote]content[/quote]
         pattern2 = r"\[quote\]\s*(.*?)\s*\[/quote\]"
+
+        def replace_quote2(match):
+            return cls.make_tag("blockquote", match.group(1))
+
         text = re.sub(
             pattern2,
-            r"<blockquote>\1</blockquote>",
+            replace_quote2,
             text,
             flags=re.DOTALL | re.IGNORECASE,
             timeout=REGEX_TIMEOUT,
@@ -502,11 +581,22 @@ class BBCodeService:
         """解析 [url] 标签"""
         # [url]http://example.com[/url]
         pattern1 = r"\[url\]([^\[]+)\[/url\]"
-        text = re.sub(pattern1, r'<a rel="nofollow" href="\1">\1</a>', text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
+
+        def replace_url1(match):
+            url = match.group(1)
+            return cls.make_tag("a", url, attributes={"rel": "nofollow", "href": url})
+
+        text = re.sub(pattern1, replace_url1, text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
 
         # [url=http://example.com]text[/url]
         pattern2 = r"\[url=([^\]]+)\](.*?)\[/url\]"
-        text = re.sub(pattern2, r'<a rel="nofollow" href="\1">\2</a>', text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
+
+        def replace_url2(match):
+            url = match.group(1)
+            content = match.group(2)
+            return cls.make_tag("a", content, attributes={"rel": "nofollow", "href": url})
+
+        text = re.sub(pattern2, replace_url2, text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
 
         return text
 
@@ -517,9 +607,14 @@ class BBCodeService:
 
         def replace_youtube(match):
             video_id = match.group(1)
-            return (
-                f"<iframe class='u-embed-wide u-embed-wide--bbcode' "
-                f"src='https://www.youtube.com/embed/{video_id}?rel=0' allowfullscreen></iframe>"
+            return cls.make_tag(
+                "iframe",
+                "",
+                attributes={
+                    "class": "u-embed-wide u-embed-wide--bbcode",
+                    "src": f"https://www.youtube.com/embed/{video_id}?rel=0",
+                    "allowfullscreen": "",
+                },
             )
 
         return re.sub(pattern, replace_youtube, text, flags=re.IGNORECASE, timeout=REGEX_TIMEOUT)
@@ -607,7 +702,7 @@ class BBCodeService:
         safe_html = cls.sanitize_html(html_content)
 
         # 包装在 bbcode 容器中
-        final_html = f'<div class="bbcode">{safe_html}</div>'
+        final_html = cls.make_tag("div", safe_html, attributes={"class": "bbcode"})
 
         return {"raw": raw_content, "html": final_html}
 
