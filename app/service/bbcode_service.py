@@ -16,6 +16,7 @@ from app.models.userpage import (
     ContentEmptyError,
     ContentTooLongError,
     ForbiddenTagError,
+    MaliciousBBCodeError,
 )
 
 import bleach
@@ -141,31 +142,34 @@ class BBCodeService:
 
         text = html.escape(text)
 
-        text = cls._parse_imagemap(text)
-        text = cls._parse_box(text)
-        text = cls._parse_code(text)
-        text = cls._parse_list(text)
-        text = cls._parse_notice(text)
-        text = cls._parse_quote(text)
-        text = cls._parse_heading(text)
+        try:
+            text = cls._parse_imagemap(text)
+            text = cls._parse_box(text)
+            text = cls._parse_code(text)
+            text = cls._parse_list(text)
+            text = cls._parse_notice(text)
+            text = cls._parse_quote(text)
+            text = cls._parse_heading(text)
 
-        # inline tags
-        text = cls._parse_audio(text)
-        text = cls._parse_bold(text)
-        text = cls._parse_centre(text)
-        text = cls._parse_inline_code(text)
-        text = cls._parse_colour(text)
-        text = cls._parse_email(text)
-        text = cls._parse_image(text)
-        text = cls._parse_italic(text)
-        text = cls._parse_size(text)
-        text = cls._parse_smilies(text)
-        text = cls._parse_spoiler(text)
-        text = cls._parse_strike(text)
-        text = cls._parse_underline(text)
-        text = cls._parse_url(text)
-        text = cls._parse_youtube(text)
-        text = cls._parse_profile(text)
+            # inline tags
+            text = cls._parse_audio(text)
+            text = cls._parse_bold(text)
+            text = cls._parse_centre(text)
+            text = cls._parse_inline_code(text)
+            text = cls._parse_colour(text)
+            text = cls._parse_email(text)
+            text = cls._parse_image(text)
+            text = cls._parse_italic(text)
+            text = cls._parse_size(text)
+            text = cls._parse_smilies(text)
+            text = cls._parse_spoiler(text)
+            text = cls._parse_strike(text)
+            text = cls._parse_underline(text)
+            text = cls._parse_url(text)
+            text = cls._parse_youtube(text)
+            text = cls._parse_profile(text)
+        except TimeoutError:
+            raise MaliciousBBCodeError("Regular expression processing timed out.")
 
         # replace newlines with <br />
         text = text.replace("\n", "<br />")

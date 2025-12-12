@@ -98,3 +98,12 @@ class ForbiddenTagError(UserpageError):
         message = f"Forbidden tag '{tag}' is not allowed."
         super().__init__(message, "forbidden_tag")
         self.tag = tag
+
+
+class MaliciousBBCodeError(UserpageError):
+    """恶意BBCode错误"""
+
+    def __init__(self, detail: str):
+        message = f"Malicious BBCode detected: {detail}"
+        super().__init__(message, "malicious_bbcode")
+        self.detail = detail
