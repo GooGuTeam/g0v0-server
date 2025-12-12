@@ -462,7 +462,7 @@ class BBCodeService:
 
                 result.append(
                     cls.make_tag(
-                        "a" if redirect == "#" else "span",
+                        "span" if redirect == "#" else "a",
                         "",
                         attributes={
                             "href": redirect,
@@ -887,7 +887,7 @@ class BBCodeService:
                 else:
                     tag_stack.pop()
             else:
-                # 特殊处理自闭合标签（只有列表项 * 是真正的自闭合）
+                # Self-closing tags
                 if tag_name not in ["*"]:
                     tag_stack.append(tag_name)
 
