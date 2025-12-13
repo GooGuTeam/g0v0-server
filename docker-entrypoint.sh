@@ -12,7 +12,7 @@ done
 echo "Database connected."
 
 echo "Running alembic..."
-uv run --no-sync alembic upgrade head
+uv run --no-sync g0v0-migrate upgrade-all
 
 # 把控制权交给最终命令
 exec "$@"
