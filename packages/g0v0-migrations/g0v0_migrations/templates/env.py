@@ -60,6 +60,9 @@ def process_revision_directives(context, revision, directives):  # noqa: ARG001
 def include_object(object, name, type_, reflected, compare_to) -> bool:  # noqa: ARG001
     if type_ != "table":
         return True
+    if name.startswith("plugin_"):
+        # Only include tables with the current plugin prefix to avoid affecting other plugins' tables
+        return is_plugin_prefix(name)
     return not (name.endswith("alembic_version") and name != ALEMBIC_VERSION_TABLE_NAME)
 
 
