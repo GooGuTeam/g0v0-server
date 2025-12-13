@@ -2,8 +2,6 @@ import asyncio  # noqa: INP001
 from logging.config import fileConfig
 
 # <import_placeholder>
-from app.database import *  # noqa: F403
-
 from alembic import context
 from alembic.autogenerate import rewriter
 from alembic.operations import ops

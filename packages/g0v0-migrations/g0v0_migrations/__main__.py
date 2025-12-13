@@ -42,7 +42,8 @@ def _ensure_env(obj: ContextObject, autogenerate: bool = False):
                             f"import sys; "
                             f"sys.path.insert(0, r'{plugin_path.parent.as_posix()}'); "
                             f"sys.path.insert(0, r'{obj['g0v0_server_path'].as_posix()}'); "
-                            f"from {plugin_import_name} import *"
+                            f"from {plugin_import_name} import *; "
+                            "from app.database import *"
                         ),
                     )
             dest_file.write_text(txt)
