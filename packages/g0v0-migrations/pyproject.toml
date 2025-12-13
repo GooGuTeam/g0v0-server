@@ -1,0 +1,15 @@
+[project]
+name = "g0v0-migrations"
+version = "0.1.0"
+description = "Migration tools for g0v0-server and plugins."
+requires-python = ">=3.12"
+dependencies = [
+    "aiomysql>=0.3.2",
+    "alembic>=1.17.2",
+    "click>=8.3.0",
+    "pydantic>=2.11.9",
+    "pydantic-settings>=2.12.0",
+]
+
+[project.scripts]
+g0v0-migrate = "g0v0_migrations.__main__:g0v0_migrate"

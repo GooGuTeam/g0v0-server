@@ -231,3 +231,4 @@ config/*
 !config/.gitkeep
 osu-web-master/*
 performance-server
+plugins/

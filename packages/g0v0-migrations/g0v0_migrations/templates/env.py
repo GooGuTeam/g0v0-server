@@ -1,10 +1,12 @@
-import asyncio
+import asyncio  # noqa: INP001
 from logging.config import fileConfig
 
-from app.config import settings
+# <import_placeholder>
 from app.database import *  # noqa: F403
 
 from alembic import context
+from alembic.autogenerate import rewriter
+from alembic.operations import ops
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
@@ -30,11 +32,37 @@ target_metadata = SQLModel.metadata
 # my_important_option = config.get_main_option("my_important_option")
 # ... etc.
 
+PLUGIN_NAME = "<name_placeholder>"
+ALEMBIC_VERSION_TABLE_NAME = f"{PLUGIN_NAME}_alembic_version" if PLUGIN_NAME else "alembic_version"
+writer = rewriter.Rewriter()
+
+
+def is_plugin_prefix(name: str) -> bool:
+    return bool(PLUGIN_NAME) and name.startswith(f"plugin_{PLUGIN_NAME}_")
+
+
+def process_revision_directives(context, revision, directives):  # noqa: ARG001
+    script = directives[0]
+    if script.upgrade_ops.is_empty():
+        directives[:] = []
+    for op in [*script.upgrade_ops.ops, *script.downgrade_ops.ops]:
+        if isinstance(op, ops.RenameTableOp):
+            old_name = op.table_name
+            new_name = op.new_table_name
+            if not is_plugin_prefix(old_name):
+                op.table_name = f"plugin_{PLUGIN_NAME}_{old_name}"
+            if not is_plugin_prefix(new_name):
+                op.new_table_name = f"plugin_{PLUGIN_NAME}_{new_name}"
+        else:
+            table_name = getattr(op, "table_name", None)
+            if table_name and not is_plugin_prefix(table_name):
+                setattr(op, "table_name", f"plugin_{PLUGIN_NAME}_{table_name}")
+
 
 def include_object(object, name, type_, reflected, compare_to) -> bool:  # noqa: ARG001
     if type_ != "table":
         return True
-    return not name.endswith("alembic_version") and not name.startswith("plugin_")
+    return not (name.endswith("alembic_version") and name != ALEMBIC_VERSION_TABLE_NAME)
 
 
 def run_migrations_offline() -> None:
@@ -49,13 +77,13 @@ def run_migrations_offline() -> None:
     script output.
 
     """
-    url = settings.database_url
     context.configure(
-        url=url,
         target_metadata=target_metadata,
         literal_binds=True,
         compare_type=True,
         dialect_opts={"paramstyle": "named"},
+        version_table=ALEMBIC_VERSION_TABLE_NAME,
+        process_revision_directives=process_revision_directives,
         include_object=include_object,
     )
 
@@ -68,6 +96,8 @@ def do_run_migrations(connection: Connection) -> None:
         connection=connection,
         target_metadata=target_metadata,
         compare_type=True,
+        version_table=ALEMBIC_VERSION_TABLE_NAME,
+        process_revision_directives=process_revision_directives,
         include_object=include_object,
     )
 
@@ -81,7 +111,6 @@ async def run_async_migrations() -> None:
 
     """
     sa_config = config.get_section(config.config_ini_section, {})
-    sa_config["sqlalchemy.url"] = settings.database_url
     connectable = async_engine_from_config(
         sa_config,
         prefix="sqlalchemy.",
