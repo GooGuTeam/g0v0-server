@@ -14,6 +14,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV UV_PROJECT_ENVIRONMENT=/app/.venv
 
 COPY pyproject.toml uv.lock ./
+COPY packages/ ./packages/
 
 RUN uv sync --frozen --no-dev
 
@@ -21,7 +22,6 @@ COPY alembic.ini ./
 COPY tools/ ./tools/
 COPY migrations/ ./migrations/
 COPY static/ ./static/
-COPY packages/ ./packages/
 COPY app/ ./app/
 COPY main.py ./
 
