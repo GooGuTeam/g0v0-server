@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/GooGuTeam/g0v0-server/main/static/plugin_meta_schema.json",
+  "title": "PluginMeta",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "The unique identifier of the plugin"
+    },
+    "name": {
+      "type": "string",
+      "description": "The name of the plugin"
+    },
+    "author": {
+      "type": "string",
+      "description": "The author of the plugin"
+    },
+    "version": {
+      "type": "string",
+      "description": "The version of the plugin"
+    },
+    "description": {
+      "type": "string",
+      "description": "The description of the plugin",
+      "nullable": true
+    },
+    "dependencies": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "The list of plugin dependencies"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "author",
+    "version"
+  ],
+  "additionalProperties": false
+}

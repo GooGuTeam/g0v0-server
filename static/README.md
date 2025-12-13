@@ -1,6 +1,7 @@
-# 静态文件
+# Static files
 
-- `mods.json`: 包含了游戏中的所有可用mod的详细信息。
-  - Origin: https://github.com/ppy/osu-web/blob/master/database/mods.json
-  - Version: 2025/7/30 `ff49b66b27a2850aea4b6b3ba563cfe936cb6082`
-- `iso3166.json`: 包含了所有国家和地区的ISO 3166-1代码。
+- `mods.json`: Contains detailed information about all available mods in the game, generated using [CustomRulesetMetadataGenerator](https://github.com/GooGuTeam/custom-rulesets/tree/main/CustomRulesetMetadataGenerator).
+- `custom_ruleset_version_hash.json`: Contains version hash information for custom rulesets, generated using [CustomRulesetMetadataGenerator](https://github.com/GooGuTeam/custom-rulesets/tree/main/CustomRulesetMetadataGenerator).
+- `iso3166.json`: Contains ISO 3166-1 codes for all countries and regions.
+- `plugin_schema.json`: Defines the JSON Schema for the plugin metadata file `plugin.json`, used to validate the structure and content of plugin metadata.
+- `beatmap_tag.json`: Contains the beatmap tags used by osu!, as described in the [osu! wiki](https://osu.ppy.sh/wiki/Beatmap/Beatmap_tags).
