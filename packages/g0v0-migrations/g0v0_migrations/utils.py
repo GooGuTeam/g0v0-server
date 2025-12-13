@@ -11,7 +11,10 @@ def detect_g0v0_server_path() -> Path | None:
     cwd = Path.cwd()
     for path in [cwd, *list(cwd.parents)]:
         if (pyproject := (path / "pyproject.toml")).exists():
-            content = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+            try:
+                content = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+            except tomllib.TOMLDecodeError:
+                continue
             if "project" in content and content["project"].get("name") == "g0v0-server":
                 return path.resolve()
 

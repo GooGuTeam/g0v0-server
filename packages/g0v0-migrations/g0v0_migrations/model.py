@@ -46,6 +46,6 @@ class G0v0ServerDatabaseConfig(BaseSettings):
 
 class ContextObject(TypedDict):
     g0v0_server_path: Path
-    plugin_path: Path | None
+    plugin_path: Path
     alembic_config: AlembicConfig
     plugin_id: str | None

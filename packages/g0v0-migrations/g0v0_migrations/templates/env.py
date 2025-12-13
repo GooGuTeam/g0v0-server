@@ -3,7 +3,6 @@ from logging.config import fileConfig
 
 # <import_placeholder>
 from alembic import context
-from alembic.autogenerate import rewriter
 from alembic.operations import ops
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
@@ -31,8 +30,11 @@ target_metadata = SQLModel.metadata
 # ... etc.
 
 PLUGIN_NAME = "<name_placeholder>"
+if PLUGIN_NAME == "":
+    raise ValueError(
+        "PLUGIN_NAME cannot be an empty string, please report a bug to developers: https://github.com/GooGuTeam/g0v0-server/issues"
+    )
 ALEMBIC_VERSION_TABLE_NAME = f"{PLUGIN_NAME}_alembic_version" if PLUGIN_NAME else "alembic_version"
-writer = rewriter.Rewriter()
 
 
 def is_plugin_prefix(name: str) -> bool:

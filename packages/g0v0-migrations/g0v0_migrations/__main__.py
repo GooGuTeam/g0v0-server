@@ -30,7 +30,7 @@ def _ensure_env(obj: ContextObject, autogenerate: bool = False):
             dest_file = Path(migrations_path).joinpath(file.name)
             if dest_file.exists():
                 continue
-            txt = file.read_text()
+            txt = file.read_text(encoding="utf-8")
             if file.name == "env.py":
                 txt = txt.replace("<name_placeholder>", obj["plugin_id"] or "")
                 plugin_path = obj["plugin_path"]
@@ -46,7 +46,7 @@ def _ensure_env(obj: ContextObject, autogenerate: bool = False):
                             "from app.database import *"
                         ),
                     )
-            dest_file.write_text(txt)
+            dest_file.write_text(txt, encoding="utf-8")
     db_config = G0v0ServerDatabaseConfig(_env_file=obj["g0v0_server_path"] / ".env")  # pyright: ignore[reportCallIssue]
     alembic_config = obj["alembic_config"]
     original_url = obj["alembic_config"].get_section_option(alembic_config.config_ini_section, "sqlalchemy.url")
@@ -126,7 +126,10 @@ def g0v0_migrate(
     plugin_id: str | None = None
     cwd = (plugin_path or Path.cwd()).resolve()
     if cwd.joinpath("plugin.json").exists():
-        meta = json.loads(cwd.joinpath("plugin.json").read_text())
+        try:
+            meta = json.loads(cwd.joinpath("plugin.json").read_text(encoding="utf-8"))
+        except json.JSONDecodeError as e:
+            raise click.ClickException(f"Malformed plugin.json at {cwd / 'plugin.json'}: {e}")
         plugin_id = meta.get("id")
         if plugin_id is None:
             raise click.ClickException(f"Could not detect plugin id from {cwd / 'plugin.json'}.")
@@ -410,6 +413,7 @@ def upgrade_all(ctx: click.Context):
             {
                 **obj,
                 "plugin_id": plugin_id,
+                "plugin_path": plugin_dir,
             }
         ):
             alembic.command.upgrade(obj["alembic_config"], "head")
