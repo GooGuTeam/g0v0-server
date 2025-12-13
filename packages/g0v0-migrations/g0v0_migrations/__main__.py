@@ -1,9 +1,8 @@
 from contextlib import contextmanager
-import json
 from pathlib import Path
 
 from g0v0_migrations.model import ContextObject, G0v0ServerDatabaseConfig
-from g0v0_migrations.utils import detect_g0v0_server_path
+from g0v0_migrations.utils import detect_g0v0_server_path, get_plugin_id
 
 import alembic.command
 from alembic.config import Config as AlembicConfig
@@ -127,12 +126,9 @@ def g0v0_migrate(
     cwd = (plugin_path or Path.cwd()).resolve()
     if cwd.joinpath("plugin.json").exists():
         try:
-            meta = json.loads(cwd.joinpath("plugin.json").read_text(encoding="utf-8"))
-        except json.JSONDecodeError as e:
-            raise click.ClickException(f"Malformed plugin.json at {cwd / 'plugin.json'}: {e}")
-        plugin_id = meta.get("id")
-        if plugin_id is None:
-            raise click.ClickException(f"Could not detect plugin id from {cwd / 'plugin.json'}.")
+            plugin_id = get_plugin_id(cwd)
+        except ValueError as e:
+            raise click.ClickException(str(e))
         click.echo(f"Detected plugin {plugin_id} at {cwd}")
 
         alembic_config.set_section_option(
@@ -397,12 +393,10 @@ def upgrade_all(ctx: click.Context):
     for plugin_dir in plugins_path.iterdir():
         if not plugin_dir.is_dir():
             continue
-        if not (plugin_meta_path := plugin_dir.joinpath("plugin.json")).exists():
-            continue
-        plugin_meta = json.loads(plugin_meta_path.read_text(encoding="utf-8"))
-        plugin_id = plugin_meta.get("id")
-        if plugin_id is None:
-            click.echo(f"Could not detect plugin id from {plugin_meta_path}, skipping...")
+        try:
+            plugin_id = get_plugin_id(plugin_dir)
+        except ValueError as e:
+            click.echo(f"{e}, skipping...")
             continue
         click.echo(f"Upgrading plugin {plugin_id}...")
         alembic_config = obj["alembic_config"]
