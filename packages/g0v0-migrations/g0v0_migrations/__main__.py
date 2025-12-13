@@ -71,7 +71,7 @@ def _ensure_env(obj: ContextObject, autogenerate: bool = False):
     "-c",
     "--config",
     default=None,
-    help="Path to config file of Alembic. ",
+    help="Path to config file of Alembic.",
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
 )
 @click.option(
