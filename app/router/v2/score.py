@@ -123,14 +123,11 @@ async def _process_user(score_id: int, user_id: int, redis: Redis, fetcher: Fetc
 async def submit_score(
     background_task: BackgroundTasks,
     info: SoloScoreSubmissionInfo,
-    beatmap: int,
     token: int,
     current_user: User,
     db: AsyncSession,
     redis: Redis,
     fetcher: Fetcher,
-    item_id: int | None = None,
-    room_id: int | None = None,
 ):
     # 立即获取用户ID，避免后续的懒加载问题
     user_id = current_user.id
@@ -154,6 +151,7 @@ async def submit_score(
         if not score:
             raise HTTPException(status_code=404, detail="Score not found")
     else:
+        beatmap = score_token.beatmap_id
         try:
             cache_service = get_beatmap_cache_service(redis, fetcher)
             await cache_service.smart_preload_for_score(beatmap)
@@ -172,8 +170,6 @@ async def submit_score(
             score_token,
             info,
             db,
-            item_id,
-            room_id,
         )
         await db.refresh(score_token)
         score_id = score.id
@@ -474,7 +470,7 @@ async def submit_solo_score(
     redis: Redis,
     fetcher: Fetcher,
 ):
-    return await submit_score(background_task, info, beatmap_id, token, current_user, db, redis, fetcher)
+    return await submit_score(background_task, info, token, current_user, db, redis, fetcher)
 
 
 @router.post(
@@ -555,6 +551,7 @@ async def create_playlist_score(
         beatmap_id=beatmap_id,
         ruleset_id=GameMode.from_int(ruleset_id),
         playlist_item_id=playlist_id,
+        room_id=room_id,
     )
     session.add(score_token)
     await session.commit()
@@ -595,14 +592,11 @@ async def submit_playlist_score(
     score_resp = await submit_score(
         background_task,
         info,
-        item.beatmap_id,
         token,
         current_user,
         session,
         redis,
         fetcher,
-        item.id,
-        room_id,
     )
     await process_playlist_best_score(
         room_id,

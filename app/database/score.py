@@ -975,8 +975,6 @@ async def process_score(
     score_token: ScoreToken,
     info: SoloScoreSubmissionInfo,
     session: AsyncSession,
-    item_id: int | None = None,
-    room_id: int | None = None,
 ) -> Score:
     gamemode = GameMode.from_int(info.ruleset_id).to_special_mode(info.mods)
     logger.info(
@@ -1014,8 +1012,8 @@ async def process_score(
         nsmall_tick_hit=info.statistics.get(HitResult.SMALL_TICK_HIT, 0),
         nlarge_tick_hit=info.statistics.get(HitResult.LARGE_TICK_HIT, 0),
         nslider_tail_hit=info.statistics.get(HitResult.SLIDER_TAIL_HIT, 0),
-        playlist_item_id=item_id,
-        room_id=room_id,
+        playlist_item_id=score_token.playlist_item_id,
+        room_id=score_token.room_id,
         maximum_statistics=info.maximum_statistics,
         processed=True,
         ranked=ranked,
