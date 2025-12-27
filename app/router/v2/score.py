@@ -747,7 +747,9 @@ async def show_playlist_score(
     ]
     if completed:
         includes.append("scores_around")
-    resp = await ScoreModel.transform(score_record.score, includes=includes)
+    resp = await ScoreModel.transform(
+        score_record.score, includes=includes, playlist_id=playlist_id, room_id=room_id, is_playlist=is_playlist,
+    )
     return resp
 
 
