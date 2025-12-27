@@ -158,7 +158,7 @@ class ScoreModel(AsyncAttrs, DatabaseModel[ScoreDict]):
     total_score: int = Field(default=0, sa_column=Column(BigInteger))
     maximum_statistics: ScoreStatistics = Field(sa_column=Column(JSON), default_factory=dict)
     mods: list[APIMod] = Field(sa_column=Column(JSON))
-    total_score_without_mods: int = Field(default=0, sa_column=Column(BigInteger), exclude=True)
+    total_score_without_mods: int = Field(default=0, sa_column=Column(BigInteger))
 
     # solo
     classic_total_score: int | None = Field(default=0, sa_column=Column(BigInteger))
