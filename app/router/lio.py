@@ -59,11 +59,8 @@ async def _ensure_room_chat_channel(
         await db.commit()
         await db.refresh(ch)
         await db.refresh(room)
-        if room.channel_id is None:
+        if room.channel_id == 0:
             room.channel_id = ch.channel_id
-            await db.commit()
-            await db.refresh(ch)
-            await db.refresh(room)
     else:
         room.channel_id = ch.channel_id
 
