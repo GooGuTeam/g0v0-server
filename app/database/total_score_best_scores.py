@@ -6,6 +6,7 @@ from app.models.score import GameMode, Rank
 from .statistics import UserStatistics
 from .user import User
 
+from sqlalchemy import Index
 from sqlmodel import (
     JSON,
     BigInteger,
@@ -27,6 +28,10 @@ if TYPE_CHECKING:
 
 class TotalScoreBestScore(SQLModel, table=True):
     __tablename__: str = "total_score_best_scores"
+    __table_args__ = (
+        Index("ix_total_score_best_scores_user_mode_score", "user_id", "gamemode", "score_id"),
+        Index("ix_total_score_best_scores_beatmap_mode_score", "beatmap_id", "gamemode", "total_score"),
+    )
     user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
     score_id: int = Field(sa_column=Column(BigInteger, ForeignKey("scores.id"), primary_key=True))
     beatmap_id: int = Field(foreign_key="beatmaps.id", index=True)

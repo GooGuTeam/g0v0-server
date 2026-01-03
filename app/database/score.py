@@ -56,9 +56,9 @@ from .user import User, UserDict, UserModel
 
 from pydantic import BaseModel, field_serializer, field_validator
 from redis.asyncio import Redis
-from sqlalchemy import Boolean, Column, DateTime, TextClause
+from sqlalchemy import Boolean, Column, DateTime, Index, TextClause, exists
 from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlalchemy.orm import Mapped, joinedload
+from sqlalchemy.orm import Mapped, aliased, joinedload
 from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import (
     JSON,
@@ -414,6 +414,11 @@ class ScoreModel(AsyncAttrs, DatabaseModel[ScoreDict]):
 
 class Score(ScoreModel, table=True):
     __tablename__: str = "scores"
+    __table_args__ = (
+        Index("idx_score_user_mode_pinned", "user_id", "gamemode", "pinned_order", "id"),
+        Index("idx_score_user_mode_pp", "user_id", "gamemode", "pp", "id"),
+        Index("idx_score_user_mode_date", "user_id", "gamemode", "ended_at", "id"),
+    )
 
     # ScoreStatistics
     n300: int = Field(exclude=True)
@@ -828,64 +833,54 @@ async def get_user_best_score_with_mod_in_beatmap(
 
 
 async def get_user_first_scores(
-    session: AsyncSession, user_id: int, mode: GameMode, limit: int = 5, offset: int = 0
+    session: AsyncSession,
+    user_id: int,
+    mode: GameMode,
+    limit: int = 5,
+    offset: int = 0,
+    cursor_id: int | None = None,
 ) -> list[TotalScoreBestScore]:
-    rownum = (
-        func.row_number()
-        .over(
-            partition_by=(col(TotalScoreBestScore.beatmap_id), col(TotalScoreBestScore.gamemode)),
-            order_by=col(TotalScoreBestScore.total_score).desc(),
-        )
-        .label("rn")
+    # Alias for the subquery table
+    s2 = aliased(TotalScoreBestScore)
+
+    query = select(TotalScoreBestScore).where(
+        TotalScoreBestScore.user_id == user_id,
+        TotalScoreBestScore.gamemode == mode,
     )
 
-    # Step 1: Fetch top score_ids in Python
-    subq = (
-        select(
-            col(TotalScoreBestScore.score_id).label("score_id"),
-            col(TotalScoreBestScore.user_id).label("user_id"),
-            rownum,
-        )
-        .where(col(TotalScoreBestScore.gamemode) == mode)
-        .subquery()
+    # Subquery for NOT EXISTS
+    # Check if there is a score with same beatmap, same mode, but higher total_score
+    subq = select(1).where(
+        s2.beatmap_id == TotalScoreBestScore.beatmap_id,
+        s2.gamemode == TotalScoreBestScore.gamemode,
+        s2.total_score > TotalScoreBestScore.total_score,
     )
 
-    top_ids_stmt = select(subq.c.score_id).where(subq.c.rn == 1, subq.c.user_id == user_id).limit(limit).offset(offset)
+    query = query.where(~exists(subq))
 
-    top_ids = await session.exec(top_ids_stmt)
-    top_ids = list(top_ids)
+    if cursor_id:
+        query = query.where(TotalScoreBestScore.score_id < cursor_id)
 
-    stmt = (
-        select(TotalScoreBestScore)
-        .where(col(TotalScoreBestScore.score_id).in_(top_ids))
-        .order_by(col(TotalScoreBestScore.total_score).desc())
-    )
+    query = query.order_by(col(TotalScoreBestScore.score_id).desc()).limit(limit).offset(offset)
 
-    result = await session.exec(stmt)
+    result = await session.exec(query)
     return list(result.all())
 
 
 async def get_user_first_score_count(session: AsyncSession, user_id: int, mode: GameMode) -> int:
-    rownum = (
-        func.row_number()
-        .over(
-            partition_by=(col(TotalScoreBestScore.beatmap_id), col(TotalScoreBestScore.gamemode)),
-            order_by=col(TotalScoreBestScore.total_score).desc(),
-        )
-        .label("rn")
+    s2 = aliased(TotalScoreBestScore)
+    query = select(func.count()).where(
+        TotalScoreBestScore.user_id == user_id,
+        TotalScoreBestScore.gamemode == mode,
     )
-    subq = (
-        select(
-            col(TotalScoreBestScore.score_id).label("score_id"),
-            col(TotalScoreBestScore.user_id).label("user_id"),
-            rownum,
-        )
-        .where(col(TotalScoreBestScore.gamemode) == mode)
-        .subquery()
+    subq = select(1).where(
+        s2.beatmap_id == TotalScoreBestScore.beatmap_id,
+        s2.gamemode == TotalScoreBestScore.gamemode,
+        s2.total_score > TotalScoreBestScore.total_score,
     )
-    count_stmt = select(func.count()).where(subq.c.rn == 1, subq.c.user_id == user_id)
+    query = query.where(~exists(subq))
 
-    result = await session.exec(count_stmt)
+    result = await session.exec(query)
     return result.one()
 
 

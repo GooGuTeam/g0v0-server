@@ -8,6 +8,7 @@ from app.database import (
     BeatmapModel,
     BeatmapPlaycounts,
     BeatmapsetModel,
+    FavouriteBeatmapset,
     User,
 )
 from app.database.beatmap_playcounts import BeatmapPlaycountsModel
@@ -30,7 +31,7 @@ from app.utils import api_doc, utcnow
 from .router import router
 
 from fastapi import BackgroundTasks, HTTPException, Path, Query, Request, Security
-from sqlmodel import exists, false, select
+from sqlmodel import exists, select, tuple_
 from sqlmodel.sql.expression import col
 
 
@@ -418,7 +419,7 @@ async def get_user_beatmapsets(
         return cached_result
 
     user = await session.get(User, user_id)
-    if not user or user.id == BANCHOBOT_ID:
+    if not user or user.id == BANCHOBOT_ID or not await visible_to_current_user(user, current_user, session):
         raise HTTPException(404, detail="User not found")
 
     if type in {
@@ -433,10 +434,21 @@ async def get_user_beatmapsets(
         resp = []
 
     elif type == BeatmapsetType.FAVOURITE:
-        user = await session.get(User, user_id)
-        if user is None or not await visible_to_current_user(user, current_user, session):
-            raise HTTPException(404, detail="User not found")
-        favourites = await user.awaitable_attrs.favourite_beatmapsets
+        cursor = (
+            await session.exec(
+                select(FavouriteBeatmapset.id).where(FavouriteBeatmapset.user_id == user_id).limit(1).offset(offset)
+            )
+        ).first()
+        if cursor is None:
+            return []
+        favourites = (
+            await session.exec(
+                select(FavouriteBeatmapset)
+                .where(FavouriteBeatmapset.user_id == user_id, FavouriteBeatmapset.id > cursor)
+                .order_by(col(FavouriteBeatmapset.date).desc())
+                .limit(limit)
+            )
+        ).all()
         resp = [
             await BeatmapsetModel.transform(
                 favourite.beatmapset, session=session, user=user, includes=beatmapset_includes
@@ -445,16 +457,26 @@ async def get_user_beatmapsets(
         ]
 
     elif type == BeatmapsetType.MOST_PLAYED:
-        user = await session.get(User, user_id)
-        if user is None or not await visible_to_current_user(user, current_user, session):
-            raise HTTPException(404, detail="User not found")
-
+        cursor = (
+            await session.exec(
+                select(BeatmapPlaycounts.playcount, BeatmapPlaycounts.id)
+                .where(BeatmapPlaycounts.user_id == user_id)
+                .order_by(col(BeatmapPlaycounts.playcount).desc(), col(BeatmapPlaycounts.id).desc())
+                .limit(1)
+                .offset(offset)
+            )
+        ).first()
+        if cursor is None:
+            return []
+        cursor_pc, cursor_id = cursor
         most_played = await session.exec(
             select(BeatmapPlaycounts)
-            .where(BeatmapPlaycounts.user_id == user_id)
-            .order_by(col(BeatmapPlaycounts.playcount).desc())
+            .where(
+                BeatmapPlaycounts.user_id == user_id,
+                tuple_(BeatmapPlaycounts.playcount, BeatmapPlaycounts.id) < tuple_(cursor_pc, cursor_id),
+            )
+            .order_by(col(BeatmapPlaycounts.playcount).desc(), col(BeatmapPlaycounts.id).desc())
             .limit(limit)
-            .offset(offset)
         )
         resp = [
             await BeatmapPlaycountsModel.transform(most_played_beatmap, user=user, includes=beatmapset_includes)
@@ -520,32 +542,83 @@ async def get_user_scores(
         raise HTTPException(404, detail="User not found")
 
     gamemode = mode or db_user.playmode
-    order_by = None
     where_clause = (col(Score.user_id) == db_user.id) & (col(Score.gamemode) == gamemode)
     includes = Score.USER_PROFILE_INCLUDES.copy()
     if not include_fails:
         where_clause &= col(Score.passed).is_(True)
+
+    scores = []
     if type == "pinned":
         where_clause &= Score.pinned_order > 0
-        order_by = col(Score.pinned_order).asc()
+        cursor = (
+            await session.exec(
+                select(Score.pinned_order, Score.id)
+                .where(where_clause)
+                .order_by(col(Score.pinned_order).asc(), col(Score.id).desc())
+                .limit(1)
+                .offset(offset)
+            )
+        ).first()
+        if cursor:
+            cursor_pinned, cursor_id = cursor
+            where_clause &= (col(Score.pinned_order) > cursor_pinned) | (
+                (col(Score.pinned_order) == cursor_pinned) & (col(Score.id) < cursor_id)
+            )
+            scores = (
+                await session.exec(
+                    select(Score)
+                    .where(where_clause)
+                    .order_by(col(Score.pinned_order).asc(), col(Score.id).desc())
+                    .limit(limit)
+                )
+            ).all()
+
     elif type == "best":
         where_clause &= exists().where(col(BestScore.score_id) == Score.id)
-        order_by = col(Score.pp).desc()
         includes.append("weight")
+        cursor = (
+            await session.exec(
+                select(Score.pp, Score.id)
+                .where(where_clause)
+                .order_by(col(Score.pp).desc(), col(Score.id).desc())
+                .limit(1)
+                .offset(offset)
+            )
+        ).first()
+        if cursor:
+            cursor_pp, cursor_id = cursor
+            where_clause &= tuple_(col(Score.pp), col(Score.id)) < tuple_(cursor_pp, cursor_id)
+            scores = (
+                await session.exec(
+                    select(Score).where(where_clause).order_by(col(Score.pp).desc(), col(Score.id).desc()).limit(limit)
+                )
+            ).all()
+
     elif type == "recent":
         where_clause &= Score.ended_at > utcnow() - timedelta(hours=24)
-        order_by = col(Score.ended_at).desc()
-    elif type == "firsts":
-        where_clause &= false()
+        cursor = (
+            await session.exec(
+                select(Score.ended_at, Score.id)
+                .where(where_clause)
+                .order_by(col(Score.ended_at).desc(), col(Score.id).desc())
+                .limit(1)
+                .offset(offset)
+            )
+        ).first()
+        if cursor:
+            cursor_date, cursor_id = cursor
+            where_clause &= tuple_(col(Score.ended_at), col(Score.id)) < tuple_(cursor_date, cursor_id)
+            scores = (
+                await session.exec(
+                    select(Score)
+                    .where(where_clause)
+                    .order_by(col(Score.ended_at).desc(), col(Score.id).desc())
+                    .limit(limit)
+                )
+            ).all()
 
-    if type != "firsts":
-        scores = (
-            await session.exec(select(Score).where(where_clause).order_by(order_by).limit(limit).offset(offset))
-        ).all()
-        if not scores:
-            return []
-    else:
-        best_scores = await get_user_first_scores(session, db_user.id, gamemode, limit)
+    elif type == "firsts":
+        best_scores = await get_user_first_scores(session, db_user.id, gamemode, limit, offset)
         scores = [best_score.score for best_score in best_scores]
 
     score_responses = [

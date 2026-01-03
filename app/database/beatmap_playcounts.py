@@ -12,6 +12,7 @@ from sqlmodel import (
     Column,
     Field,
     ForeignKey,
+    Index,
     Relationship,
     select,
 )
@@ -32,11 +33,7 @@ class BeatmapPlaycountsDict(TypedDict):
 
 
 class BeatmapPlaycountsModel(AsyncAttrs, DatabaseModel[BeatmapPlaycountsDict]):
-    __tablename__: str = "beatmap_playcounts"
-
-    id: int | None = Field(
-        default=None, sa_column=Column(BigInteger, primary_key=True, autoincrement=True), exclude=True
-    )
+    id: int = Field(default=None, sa_column=Column(BigInteger, primary_key=True, autoincrement=True), exclude=True)
     user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
     beatmap_id: int = Field(foreign_key="beatmaps.id", index=True)
     playcount: int = Field(default=0, exclude=True)
@@ -68,6 +65,9 @@ class BeatmapPlaycountsModel(AsyncAttrs, DatabaseModel[BeatmapPlaycountsDict]):
 
 
 class BeatmapPlaycounts(BeatmapPlaycountsModel, table=True):
+    __tablename__: str = "beatmap_playcounts"
+    __table_args__ = (Index("idx_beatmap_playcounts_playcount_id", "playcount", "id"),)
+
     user: "User" = Relationship()
     beatmap: "Beatmap" = Relationship()
 

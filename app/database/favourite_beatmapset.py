@@ -17,7 +17,8 @@ from sqlmodel import (
 
 class FavouriteBeatmapset(AsyncAttrs, SQLModel, table=True):
     __tablename__: str = "favourite_beatmapset"
-    id: int | None = Field(
+
+    id: int = Field(
         default=None,
         sa_column=Column(BigInteger, autoincrement=True, primary_key=True),
         exclude=True,
