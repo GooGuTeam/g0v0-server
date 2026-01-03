@@ -445,7 +445,7 @@ async def get_user_beatmapsets(
             await session.exec(
                 select(FavouriteBeatmapset)
                 .where(FavouriteBeatmapset.user_id == user_id, FavouriteBeatmapset.id > cursor)
-                .order_by(col(FavouriteBeatmapset.date).desc())
+                .order_by(col(FavouriteBeatmapset.id).desc())
                 .limit(limit)
             )
         ).all()
