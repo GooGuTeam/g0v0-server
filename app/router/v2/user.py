@@ -1,4 +1,5 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
+import sys
 from typing import Annotated, Literal
 
 from app.config import settings
@@ -141,20 +142,39 @@ async def get_users(
 async def get_user_events(
     session: Database,
     user_id: Annotated[int, Path(description="用户 ID")],
-    limit: Annotated[int | None, Query(description="限制返回的活动数量")] = None,
+    limit: Annotated[int, Query(description="限制返回的活动数量")] = 50,
     offset: Annotated[int | None, Query(description="活动日志的偏移量")] = None,
     current_user: User | None = Security(get_optional_user, scopes=["public"]),
 ):
     db_user = await session.get(User, user_id)
     if db_user is None or not await visible_to_current_user(db_user, current_user, session):
         raise HTTPException(404, "User Not found")
+    if offset is None:
+        offset = 0
+    if limit > 100:
+        limit = 100
+
+    if offset == 0:
+        cursor = sys.maxsize
+    else:
+        cursor = (
+            await session.exec(
+                select(Event.id)
+                .where(Event.user_id == db_user.id, Event.created_at >= utcnow() - timedelta(days=30))
+                .order_by(col(Event.id).desc())
+                .limit(1)
+                .offset(offset - 1)
+            )
+        ).first()
+        if cursor is None:
+            return []
+
     events = (
         await session.exec(
             select(Event)
-            .where(Event.user_id == db_user.id, Event.created_at >= utcnow() - timedelta(days=30))
-            .order_by(col(Event.created_at).desc())
+            .where(Event.user_id == db_user.id, Event.created_at >= utcnow() - timedelta(days=30), Event.id < cursor)
+            .order_by(col(Event.id).desc())
             .limit(limit)
-            .offset(offset)
         )
     ).all()
     return events
@@ -434,17 +454,24 @@ async def get_user_beatmapsets(
         resp = []
 
     elif type == BeatmapsetType.FAVOURITE:
-        cursor = (
-            await session.exec(
-                select(FavouriteBeatmapset.id).where(FavouriteBeatmapset.user_id == user_id).limit(1).offset(offset)
-            )
-        ).first()
+        if offset == 0:
+            cursor = sys.maxsize
+        else:
+            cursor = (
+                await session.exec(
+                    select(FavouriteBeatmapset.id)
+                    .where(FavouriteBeatmapset.user_id == user_id)
+                    .order_by(col(FavouriteBeatmapset.id).desc())
+                    .limit(1)
+                    .offset(offset - 1)
+                )
+            ).first()
         if cursor is None:
             return []
         favourites = (
             await session.exec(
                 select(FavouriteBeatmapset)
-                .where(FavouriteBeatmapset.user_id == user_id, FavouriteBeatmapset.id > cursor)
+                .where(FavouriteBeatmapset.user_id == user_id, FavouriteBeatmapset.id < cursor)
                 .order_by(col(FavouriteBeatmapset.id).desc())
                 .limit(limit)
             )
@@ -457,15 +484,18 @@ async def get_user_beatmapsets(
         ]
 
     elif type == BeatmapsetType.MOST_PLAYED:
-        cursor = (
-            await session.exec(
-                select(BeatmapPlaycounts.playcount, BeatmapPlaycounts.id)
-                .where(BeatmapPlaycounts.user_id == user_id)
-                .order_by(col(BeatmapPlaycounts.playcount).desc(), col(BeatmapPlaycounts.id).desc())
-                .limit(1)
-                .offset(offset)
-            )
-        ).first()
+        if offset == 0:
+            cursor = sys.maxsize, sys.maxsize
+        else:
+            cursor = (
+                await session.exec(
+                    select(BeatmapPlaycounts.playcount, BeatmapPlaycounts.id)
+                    .where(BeatmapPlaycounts.user_id == user_id)
+                    .order_by(col(BeatmapPlaycounts.playcount).desc(), col(BeatmapPlaycounts.id).desc())
+                    .limit(1)
+                    .offset(offset - 1)
+                )
+            ).first()
         if cursor is None:
             return []
         cursor_pc, cursor_id = cursor
@@ -509,7 +539,6 @@ async def get_user_beatmapsets(
 )
 @asset_proxy_response
 async def get_user_scores(
-    request: Request,
     session: Database,
     api_version: APIVersion,
     background_task: BackgroundTasks,
@@ -550,15 +579,18 @@ async def get_user_scores(
     scores = []
     if type == "pinned":
         where_clause &= Score.pinned_order > 0
-        cursor = (
-            await session.exec(
-                select(Score.pinned_order, Score.id)
-                .where(where_clause)
-                .order_by(col(Score.pinned_order).asc(), col(Score.id).desc())
-                .limit(1)
-                .offset(offset)
-            )
-        ).first()
+        if offset == 0:
+            cursor = 0, sys.maxsize
+        else:
+            cursor = (
+                await session.exec(
+                    select(Score.pinned_order, Score.id)
+                    .where(where_clause)
+                    .order_by(col(Score.pinned_order).asc(), col(Score.id).desc())
+                    .limit(1)
+                    .offset(offset - 1)
+                )
+            ).first()
         if cursor:
             cursor_pinned, cursor_id = cursor
             where_clause &= (col(Score.pinned_order) > cursor_pinned) | (
@@ -576,15 +608,19 @@ async def get_user_scores(
     elif type == "best":
         where_clause &= exists().where(col(BestScore.score_id) == Score.id)
         includes.append("weight")
-        cursor = (
-            await session.exec(
-                select(Score.pp, Score.id)
-                .where(where_clause)
-                .order_by(col(Score.pp).desc(), col(Score.id).desc())
-                .limit(1)
-                .offset(offset)
-            )
-        ).first()
+
+        if offset == 0:
+            cursor = sys.maxsize, sys.maxsize
+        else:
+            cursor = (
+                await session.exec(
+                    select(Score.pp, Score.id)
+                    .where(where_clause)
+                    .order_by(col(Score.pp).desc(), col(Score.id).desc())
+                    .limit(1)
+                    .offset(offset - 1)
+                )
+            ).first()
         if cursor:
             cursor_pp, cursor_id = cursor
             where_clause &= tuple_(col(Score.pp), col(Score.id)) < tuple_(cursor_pp, cursor_id)
@@ -596,15 +632,18 @@ async def get_user_scores(
 
     elif type == "recent":
         where_clause &= Score.ended_at > utcnow() - timedelta(hours=24)
-        cursor = (
-            await session.exec(
-                select(Score.ended_at, Score.id)
-                .where(where_clause)
-                .order_by(col(Score.ended_at).desc(), col(Score.id).desc())
-                .limit(1)
-                .offset(offset)
-            )
-        ).first()
+        if offset == 0:
+            cursor = datetime.max, sys.maxsize
+        else:
+            cursor = (
+                await session.exec(
+                    select(Score.ended_at, Score.id)
+                    .where(where_clause)
+                    .order_by(col(Score.ended_at).desc(), col(Score.id).desc())
+                    .limit(1)
+                    .offset(offset - 1)
+                )
+            ).first()
         if cursor:
             cursor_date, cursor_id = cursor
             where_clause &= tuple_(col(Score.ended_at), col(Score.id)) < tuple_(cursor_date, cursor_id)
