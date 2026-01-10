@@ -33,7 +33,7 @@ class AvailableRulesetResp(TypedDict):
 
 
 class PerformanceServerPerformanceCalculator(BasePerformanceCalculator):
-    def __init__(self, server_url: str = "http://localhost:5225") -> None:
+    def __init__(self, server_url: str = "http://localhost:5225", **kwargs) -> None:  # noqa: ARG002
         self.server_url = server_url
 
         self._available_modes: AvailableModes | None = None

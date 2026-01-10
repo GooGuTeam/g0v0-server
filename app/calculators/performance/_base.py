@@ -31,6 +31,9 @@ class AvailableModes(NamedTuple):
 
 
 class PerformanceCalculator(abc.ABC):
+    def __init__(self, **kwargs) -> None:
+        pass
+
     @abc.abstractmethod
     async def get_available_modes(self) -> AvailableModes:
         raise NotImplementedError
