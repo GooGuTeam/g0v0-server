@@ -158,7 +158,7 @@ v1 API 采用 API Key 鉴权，将 API Key 放入 Query `k` 中。
 
 # 检查 New Relic 配置文件是否存在，如果存在则初始化 New Relic
 newrelic_config_path = Path("newrelic.ini")
-if newrelic_config_path.exists():
+if newrelic_config_path.is_file():
     try:
         import newrelic.agent
 
