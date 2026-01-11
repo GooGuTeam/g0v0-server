@@ -6,6 +6,7 @@ from . import (
     database_cleanup,
     recalculate_banned_beatmap,
     recalculate_failed_score,
+    update_client_version,
 )
 from .cache import start_cache_tasks, stop_cache_tasks
 from .calculate_all_user_rank import calculate_user_rank

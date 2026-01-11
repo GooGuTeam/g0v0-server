@@ -705,6 +705,19 @@ CALCULATOR_CONFIG='{}'
         Field(default=True, description="检查自定义 ruleset 版本"),
         "反作弊设置",
     ]
+    check_client_version: Annotated[
+        bool,
+        Field(default=True, description="检查客户端版本"),
+        "反作弊设置",
+    ]
+    client_version_urls: Annotated[
+        list[str],
+        Field(
+            default=["https://raw.githubusercontent.com/GooGuTeam/g0v0-client-versions/main/version_list.json"],
+            description="客户端版本列表 URL",
+        ),
+        "反作弊设置",
+    ]
 
     # 存储设置
     storage_service: Annotated[
