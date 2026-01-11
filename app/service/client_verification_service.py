@@ -14,7 +14,7 @@ HASHES_DIR = CONFIG_DIR / "client_versions.json"
 
 
 class ClientVerificationService:
-    """A serivce to verify client versions against known valid versions.
+    """A service to verify client versions against known valid versions.
 
     Attributes:
         version_lists (list[VersionList]): A list of version lists fetched from remote sources.
