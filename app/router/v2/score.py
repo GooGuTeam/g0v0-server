@@ -35,6 +35,7 @@ from app.database.score import (
 )
 from app.dependencies.api_version import APIVersion
 from app.dependencies.cache import UserCacheService
+from app.dependencies.client_verification import ClientVerificationService
 from app.dependencies.database import Database, Redis, get_redis, with_db
 from app.dependencies.fetcher import Fetcher, get_fetcher
 from app.dependencies.storage import StorageService
@@ -415,6 +416,8 @@ async def get_user_all_beatmap_scores(
 async def create_solo_score(
     background_task: BackgroundTasks,
     db: Database,
+    fetcher: Fetcher,
+    verification_service: ClientVerificationService,
     beatmap_id: Annotated[int, Path(description="谱面 ID")],
     beatmap_hash: Annotated[str, Form(description="谱面文件哈希")],
     ruleset_id: Annotated[int, Form(..., description="ruleset 数字 ID (0-3)")],
@@ -429,6 +432,21 @@ async def create_solo_score(
         gamemode = GameMode.from_int(ruleset_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid ruleset ID")
+
+    if not (
+        client_version := await verification_service.validate_client_version(
+            version_hash,
+        )
+    ):
+        logger.info(
+            f"Client version check failed for user {current_user.id} on beatmap {beatmap_id} "
+            f"(version hash: {version_hash})"
+        )
+        raise HTTPException(status_code=422, detail="invalid client hash")
+
+    beatmap = await Beatmap.get_or_fetch(db, fetcher, md5=beatmap_hash)
+    if not beatmap or beatmap.id != beatmap_id:
+        raise HTTPException(status_code=422, detail="invalid or missing beatmap_hash")
 
     if not (result := gamemode.check_ruleset_version(ruleset_hash)):
         logger.info(
@@ -450,6 +468,15 @@ async def create_solo_score(
         db.add(score_token)
         await db.commit()
         await db.refresh(score_token)
+        logger.debug(
+            "User {user_id} created solo score {score_token} for beatmap {beatmap_id} "
+            "(mode: {mode}), using client {client_version}",
+            user_id=user_id,
+            score_token=score_token.id,
+            beatmap_id=beatmap_id,
+            mode=ruleset_id,
+            client_version=str(client_version),
+        )
         return ScoreTokenResp.from_db(score_token)
 
 
@@ -485,8 +512,9 @@ async def create_playlist_score(
     background_task: BackgroundTasks,
     room_id: int,
     playlist_id: int,
+    verification_service: ClientVerificationService,
     beatmap_id: Annotated[int, Form(description="谱面 ID")],
-    beatmap_hash: Annotated[str, Form(description="游戏版本哈希")],
+    beatmap_hash: Annotated[str, Form(description="谱面文件哈希")],
     ruleset_id: Annotated[int, Form(..., description="ruleset 数字 ID (0-3)")],
     current_user: ClientUser,
     version_hash: Annotated[str, Form(description="谱面版本哈希")] = "",
@@ -496,6 +524,17 @@ async def create_playlist_score(
         gamemode = GameMode.from_int(ruleset_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid ruleset ID")
+
+    if not (
+        client_version := await verification_service.validate_client_version(
+            version_hash,
+        )
+    ):
+        logger.info(
+            f"Client version check failed for user {current_user.id} on room {room_id}, playlist {playlist_id} "
+            f"(version hash: {version_hash})"
+        )
+        raise HTTPException(status_code=422, detail="invalid client hash")
 
     if not (result := gamemode.check_ruleset_version(ruleset_hash)):
         logger.info(
@@ -556,6 +595,17 @@ async def create_playlist_score(
     session.add(score_token)
     await session.commit()
     await session.refresh(score_token)
+    logger.debug(
+        "User {user_id} created playlist score {score_token} for beatmap {beatmap_id} "
+        "(mode: {mode}, room {room_id}, item {playlist_id}), using client {client_version}",
+        user_id=user_id,
+        score_token=score_token.id,
+        beatmap_id=beatmap_id,
+        mode=ruleset_id,
+        room_id=room_id,
+        playlist_id=playlist_id,
+        client_version=str(client_version),
+    )
     return ScoreTokenResp.from_db(score_token)
 
 
