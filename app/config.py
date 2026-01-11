@@ -714,7 +714,9 @@ CALCULATOR_CONFIG='{}'
         list[str],
         Field(
             default=["https://raw.githubusercontent.com/GooGuTeam/g0v0-client-versions/main/version_list.json"],
-            description="客户端版本列表 URL",
+            description=(
+                "客户端版本列表 URL, 查看 https://github.com/GooGuTeam/g0v0-client-versions 来添加你自己的客户端"
+            ),
         ),
         "反作弊设置",
     ]
