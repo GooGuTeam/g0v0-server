@@ -9,4 +9,5 @@ if settings.check_client_version:
     async def update_client_version():
         logger.info("Updating client version lists...")
         client_verification_service = get_client_verification_service()
-        await client_verification_service.init()
+        await client_verification_service.refresh()
+        await client_verification_service.load_from_disk()

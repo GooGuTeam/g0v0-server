@@ -434,7 +434,7 @@ async def create_solo_score(
         raise HTTPException(status_code=400, detail="Invalid ruleset ID")
 
     if not (
-        client_version := verification_service.validate_client_version(
+        client_version := await verification_service.validate_client_version(
             version_hash,
         )
     ):
@@ -514,7 +514,7 @@ async def create_playlist_score(
     playlist_id: int,
     verification_service: ClientVerificationService,
     beatmap_id: Annotated[int, Form(description="谱面 ID")],
-    beatmap_hash: Annotated[str, Form(description="游戏版本哈希")],
+    beatmap_hash: Annotated[str, Form(description="谱面文件哈希")],
     ruleset_id: Annotated[int, Form(..., description="ruleset 数字 ID (0-3)")],
     current_user: ClientUser,
     version_hash: Annotated[str, Form(description="谱面版本哈希")] = "",
@@ -526,7 +526,7 @@ async def create_playlist_score(
         raise HTTPException(status_code=400, detail="Invalid ruleset ID")
 
     if not (
-        client_version := verification_service.validate_client_version(
+        client_version := await verification_service.validate_client_version(
             version_hash,
         )
     ):
