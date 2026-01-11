@@ -87,7 +87,7 @@ async def send_message(
     if channel.isdigit():
         db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.channel_id == int(channel)))).first()
     else:
-        db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.name == channel))).first()
+        db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.channel_name == channel))).first()
 
     if db_channel is None:
         raise HTTPException(status_code=404, detail="Channel not found")
@@ -95,7 +95,7 @@ async def send_message(
     # 立即提取所有需要的属性，避免后续延迟加载
     channel_id = db_channel.channel_id
     channel_type = db_channel.type
-    channel_name = db_channel.name
+    channel_name = db_channel.channel_name
     user_id = current_user.id
 
     # 对于多人游戏房间，在发送消息前进行Redis键检查
@@ -169,7 +169,7 @@ async def get_message(
     if channel.isdigit():
         db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.channel_id == int(channel)))).first()
     else:
-        db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.name == channel))).first()
+        db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.channel_name == channel))).first()
 
     if db_channel is None:
         raise HTTPException(status_code=404, detail="Channel not found")
@@ -231,7 +231,7 @@ async def mark_as_read(
     if channel.isdigit():
         db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.channel_id == int(channel)))).first()
     else:
-        db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.name == channel))).first()
+        db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.channel_name == channel))).first()
 
     if db_channel is None:
         raise HTTPException(status_code=404, detail="Channel not found")

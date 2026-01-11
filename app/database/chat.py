@@ -93,7 +93,7 @@ class ChatChannelModel(DatabaseModel[ChatChannelDict]):
             target_user_id = next(u for u in users if u != user.id)
             target_name = await session.exec(select(User.username).where(User.id == target_user_id))
             return target_name.one()
-        return channel.name
+        return channel.channel_name
 
     @included
     @staticmethod
@@ -208,7 +208,7 @@ class ChatChannelModel(DatabaseModel[ChatChannelDict]):
 class ChatChannel(ChatChannelModel, table=True):
     __tablename__: str = "chat_channels"
 
-    name: str = Field(sa_column=Column(VARCHAR(50), index=True))
+    channel_name: str = Field(sa_column=Column(name="name", type_=VARCHAR(50), index=True))
 
     @classmethod
     async def get(cls, channel: str | int, session: AsyncSession) -> "ChatChannel | None":
@@ -218,7 +218,7 @@ class ChatChannel(ChatChannelModel, table=True):
             channel_ = result.first()
             if channel_ is not None:
                 return channel_
-        result = await session.exec(select(ChatChannel).where(ChatChannel.name == channel))
+        result = await session.exec(select(ChatChannel).where(ChatChannel.channel_name == channel))
         return result.first()
 
     @classmethod

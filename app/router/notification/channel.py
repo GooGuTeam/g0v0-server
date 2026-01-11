@@ -99,7 +99,7 @@ async def join_channel(
     if channel.isdigit():
         db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.channel_id == int(channel)))).first()
     else:
-        db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.name == channel))).first()
+        db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.channel_name == channel))).first()
 
     if db_channel is None:
         raise HTTPException(status_code=404, detail="Channel not found")
@@ -126,7 +126,7 @@ async def leave_channel(
     if channel.isdigit():
         db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.channel_id == int(channel)))).first()
     else:
-        db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.name == channel))).first()
+        db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.channel_name == channel))).first()
 
     if db_channel is None:
         raise HTTPException(status_code=404, detail="Channel not found")
@@ -182,14 +182,14 @@ async def get_channel(
     if channel.isdigit():
         db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.channel_id == int(channel)))).first()
     else:
-        db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.name == channel))).first()
+        db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.channel_name == channel))).first()
 
     if db_channel is None:
         raise HTTPException(status_code=404, detail="Channel not found")
 
     # 立即提取需要的属性
     channel_type = db_channel.type
-    channel_name = db_channel.name
+    channel_name = db_channel.channel_name
 
     users = []
     if channel_type == ChannelType.PM:
@@ -270,7 +270,7 @@ async def create_channel(
         channel_name = f"pm_{current_user.id}_{req.target_id}"
     else:
         channel_name = req.channel.name if req.channel else "Unnamed Channel"
-        result = await session.exec(select(ChatChannel).where(ChatChannel.name == channel_name))
+        result = await session.exec(select(ChatChannel).where(ChatChannel.channel_name == channel_name))
         channel = result.first()
 
     if channel is None:
