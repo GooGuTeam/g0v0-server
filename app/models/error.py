@@ -5,20 +5,6 @@ from typing import Any
 from fastapi import HTTPException
 
 
-class ErrorEntry:
-    """
-    Records basic information of an error.
-
-    Args:
-        msg_key (str): The key of the error message.
-        status_code (int): The status code should be responded, defaults to 422 to match osu!api's behavior.
-    """
-
-    def __init__(self, msg_key: str, status_code: int = 422):
-        self.msg_key = msg_key
-        self.status_code = status_code
-
-
 class ErrorType(Enum):
     """
     All possible error types that could be passed to the client.
