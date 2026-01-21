@@ -17,6 +17,7 @@ from app.database.user_preference import (
 from app.dependencies.cache import UserCacheService
 from app.dependencies.database import Database
 from app.dependencies.user import ClientUser
+from app.models.error import ErrorType, RequestError
 from app.models.score import GameMode
 from app.models.user import Page
 from app.models.userpage import (
@@ -31,7 +32,6 @@ from app.utils import hex_to_hue, utcnow
 
 from .router import router
 
-from app.models.error import ErrorType, RequestError
 from fastapi import Body
 from pydantic import BaseModel, Field
 from sqlmodel import exists, select

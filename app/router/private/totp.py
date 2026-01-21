@@ -11,11 +11,11 @@ from app.const import BACKUP_CODE_LENGTH
 from app.database.auth import TotpKeys
 from app.dependencies.database import Database, Redis
 from app.dependencies.user import ClientUser
+from app.models.error import ErrorType, RequestError
 from app.models.totp import FinishStatus, StartCreateTotpKeyResp
 
 from .router import router
 
-from app.models.error import ErrorType, RequestError
 from fastapi import Body
 from pydantic import BaseModel
 import pyotp

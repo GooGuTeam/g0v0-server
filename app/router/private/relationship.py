@@ -4,10 +4,10 @@ from app.database import Relationship
 from app.database.relationship import RelationshipType
 from app.dependencies.database import Database
 from app.dependencies.user import ClientUser
+from app.models.error import ErrorType, RequestError
 
 from .router import router
 
-from app.models.error import ErrorType, RequestError
 from fastapi import Path
 from pydantic import BaseModel, Field
 from sqlmodel import select

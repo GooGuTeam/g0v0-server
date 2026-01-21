@@ -3,8 +3,9 @@ from dataclasses import dataclass
 from datetime import datetime
 import logging
 
-import httpx
 from app.models.error import ErrorType, RequestError
+
+import httpx
 
 logger = logging.getLogger(__name__)
 

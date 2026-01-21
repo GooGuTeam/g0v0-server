@@ -5,12 +5,12 @@ from app.database.statistics import UserStatistics, UserStatisticsModel
 from app.database.user import User
 from app.dependencies.database import Database, get_redis
 from app.log import logger
+from app.models.error import ErrorType, RequestError
 from app.models.score import GameMode
 from app.service.user_cache_service import get_user_cache_service
 
 from .router import AllStrModel, router
 
-from app.models.error import ErrorType, RequestError
 from fastapi import BackgroundTasks, Query
 from sqlmodel import col, select
 

@@ -14,6 +14,7 @@ from app.dependencies.geoip import IPAddress
 from app.dependencies.user import UserAndToken, get_client_user_and_token
 from app.dependencies.user_agent import UserAgentInfo
 from app.log import log
+from app.models.error import ErrorType, RequestError
 from app.service.login_log_service import LoginLogService
 from app.service.verification_service import (
     EmailVerificationService,
@@ -22,7 +23,6 @@ from app.service.verification_service import (
 
 from .router import router
 
-from app.models.error import ErrorType, RequestError
 from fastapi import Depends, Form, Header, Request, Security, status
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel

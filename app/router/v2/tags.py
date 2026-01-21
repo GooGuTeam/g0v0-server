@@ -6,9 +6,9 @@ from app.database.score import Score
 from app.database.user import User
 from app.dependencies.database import Database
 from app.dependencies.user import get_client_user
+from app.models.error import ErrorType, RequestError
 from app.models.score import Rank
 from app.models.tags import BeatmapTags, get_all_tags, get_tag_by_id
-from app.models.error import ErrorType, RequestError
 
 from .router import router
 

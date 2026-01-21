@@ -41,8 +41,8 @@ from app.dependencies.fetcher import Fetcher, get_fetcher
 from app.dependencies.storage import StorageService
 from app.dependencies.user import ClientUser, get_current_user
 from app.log import log
-from app.models.error import ErrorType, RequestError
 from app.models.beatmap import BeatmapRankStatus
+from app.models.error import ErrorType, RequestError
 from app.models.room import RoomCategory
 from app.models.score import (
     GameMode,
@@ -966,7 +966,10 @@ async def reorder_score_pin(
         raise RequestError(ErrorType.SCORE_NOT_PINNED)
 
     if (after_score_id is None) == (before_score_id is None):
-        raise RequestError(ErrorType.INVALID_REQUEST, {"reason": "Either after_score_id or before_score_id must be provided (but not both)"})
+        raise RequestError(
+            ErrorType.INVALID_REQUEST,
+            {"reason": "Either after_score_id or before_score_id must be provided (but not both)"},
+        )
 
     all_pinned_scores = (
         await db.exec(

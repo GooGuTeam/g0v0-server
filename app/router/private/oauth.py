@@ -4,10 +4,10 @@ from typing import Annotated
 from app.database.auth import OAuthClient, OAuthToken
 from app.dependencies.database import Database, Redis
 from app.dependencies.user import ClientUser
+from app.models.error import ErrorType, RequestError
 
 from .router import router
 
-from app.models.error import ErrorType, RequestError
 from fastapi import Body
 from sqlmodel import select, text
 

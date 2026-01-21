@@ -5,10 +5,10 @@ from app.database.verification import LoginSession, LoginSessionResp, TrustedDev
 from app.dependencies.database import Database
 from app.dependencies.geoip import GeoIPService
 from app.dependencies.user import UserAndToken, get_client_user_and_token
+from app.models.error import ErrorType, RequestError
 
 from .router import router
 
-from app.models.error import ErrorType, RequestError
 from fastapi import Security
 from pydantic import BaseModel
 from sqlmodel import col, select

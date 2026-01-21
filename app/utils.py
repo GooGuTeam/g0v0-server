@@ -9,9 +9,10 @@ import re
 from types import NoneType, UnionType
 from typing import TYPE_CHECKING, Any, ParamSpec, TypedDict, TypeVar, Union, get_args, get_origin
 
+from app.models.error import ErrorType, RequestError
+
 from fastapi.encoders import jsonable_encoder
 from PIL import Image
-from app.models.error import ErrorType, RequestError
 
 if TYPE_CHECKING:
     from app.models.model import UserAgentInfo

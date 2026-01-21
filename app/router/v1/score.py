@@ -5,13 +5,13 @@ from app.database.best_scores import BestScore
 from app.database.score import Score, get_leaderboard
 from app.database.user import User
 from app.dependencies.database import Database
+from app.models.error import ErrorType, RequestError
 from app.models.mods import int_to_mods, mod_to_save, mods_to_int
 from app.models.score import GameMode, LeaderboardType
 from app.utils import utcnow
 
 from .router import AllStrModel, router
 
-from app.models.error import ErrorType, RequestError
 from fastapi import Query
 from sqlalchemy.orm import joinedload
 from sqlmodel import col, exists, select

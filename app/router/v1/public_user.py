@@ -4,6 +4,7 @@ from app.database.statistics import UserStatistics
 from app.database.user import User
 from app.dependencies.database import Database, get_redis
 from app.log import logger
+from app.models.error import ErrorType, RequestError
 from app.models.score import GameMode
 from app.models.v1_user import (
     GetPlayerCountResponse,
@@ -17,7 +18,6 @@ from app.models.v1_user import (
 )
 from app.router.v1.public_router import public_router
 
-from app.models.error import ErrorType, RequestError
 from fastapi import Query
 from sqlmodel import select
 

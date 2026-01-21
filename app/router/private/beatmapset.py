@@ -6,11 +6,11 @@ from app.database.beatmapset_ratings import BeatmapRating
 from app.database.score import Score
 from app.dependencies.database import Database
 from app.dependencies.user import ClientUser
+from app.models.error import ErrorType, RequestError
 from app.service.beatmapset_update_service import get_beatmapset_update_service
 
 from .router import router
 
-from app.models.error import ErrorType, RequestError
 from fastapi import Body, Depends, Path, Query
 from fastapi_limiter.depends import RateLimiter
 from sqlmodel import col, exists, select

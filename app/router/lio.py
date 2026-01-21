@@ -13,8 +13,8 @@ from app.database.user import User
 from app.dependencies.database import Database, Redis
 from app.dependencies.fetcher import Fetcher
 from app.dependencies.storage import StorageService
-from app.models.error import ErrorType, RequestError
 from app.log import log
+from app.models.error import ErrorType, RequestError
 from app.models.playlist import PlaylistItem
 from app.models.room import MatchType, QueueMode, RoomCategory, RoomStatus
 from app.models.score import RULESETS_VERSION_HASH, GameMode, VersionEntry
@@ -22,7 +22,7 @@ from app.utils import camel_to_snake, utcnow
 
 from .notification.server import server
 
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from sqlalchemy import update
 from sqlmodel import col, select

@@ -3,11 +3,11 @@ from app.database.score import Score
 from app.dependencies.database import Database, Redis
 from app.dependencies.storage import StorageService
 from app.dependencies.user import ClientUser
+from app.models.error import ErrorType, RequestError
 from app.service.user_cache_service import refresh_user_cache_background
 
 from .router import router
 
-from app.models.error import ErrorType, RequestError
 from fastapi import BackgroundTasks
 
 if settings.allow_delete_scores:

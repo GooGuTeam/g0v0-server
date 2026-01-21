@@ -15,8 +15,8 @@ from app.dependencies.database import Database, Redis, redis_message_client
 from app.dependencies.param import BodyOrForm
 from app.dependencies.user import get_current_user
 from app.log import log
-from app.models.notification import ChannelMessage, ChannelMessageTeam
 from app.models.error import ErrorType, RequestError
+from app.models.notification import ChannelMessage, ChannelMessageTeam
 from app.router.v2 import api_v2_router as router
 from app.service.redis_message_system import redis_message_system
 from app.utils import api_doc

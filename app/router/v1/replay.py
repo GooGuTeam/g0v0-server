@@ -6,12 +6,12 @@ from app.database.counts import ReplayWatchedCount
 from app.database.score import Score
 from app.dependencies.database import Database
 from app.dependencies.storage import StorageService
+from app.models.error import ErrorType, RequestError
 from app.models.mods import int_to_mods
 from app.models.score import GameMode
 
 from .router import router
 
-from app.models.error import ErrorType, RequestError
 from fastapi import Depends, Query
 from fastapi_limiter.depends import RateLimiter
 from pydantic import BaseModel

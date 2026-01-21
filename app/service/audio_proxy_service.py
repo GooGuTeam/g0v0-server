@@ -5,6 +5,7 @@
 
 from app.log import logger
 from app.models.error import ErrorType, RequestError
+
 import httpx
 import redis.asyncio as redis
 

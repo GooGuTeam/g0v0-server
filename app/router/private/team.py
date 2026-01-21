@@ -6,6 +6,7 @@ from app.database.user import User, UserModel
 from app.dependencies.database import Database, Redis
 from app.dependencies.storage import StorageService
 from app.dependencies.user import ClientUser
+from app.models.error import ErrorType, RequestError
 from app.models.notification import (
     TeamApplicationAccept,
     TeamApplicationReject,
@@ -18,7 +19,6 @@ from app.utils import api_doc, check_image, utcnow
 
 from .router import router
 
-from app.models.error import ErrorType, RequestError
 from fastapi import File, Form, Path, Query, Request
 from sqlmodel import col, exists, select
 

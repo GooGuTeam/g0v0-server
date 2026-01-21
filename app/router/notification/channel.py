@@ -12,9 +12,9 @@ from app.database.user import User, UserModel
 from app.dependencies.database import Database, Redis
 from app.dependencies.param import BodyOrForm
 from app.dependencies.user import get_current_user
+from app.models.error import ErrorType, RequestError
 from app.router.v2 import api_v2_router as router
 from app.utils import api_doc
-from app.models.error import ErrorType, RequestError
 
 from .server import server
 

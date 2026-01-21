@@ -17,8 +17,8 @@ from app.dependencies.fetcher import Fetcher
 from app.dependencies.geoip import IPAddress, get_geoip_helper
 from app.dependencies.user import ClientUser, get_current_user
 from app.helpers.asset_proxy_helper import asset_proxy_response
-from app.models.error import ErrorType, RequestError
 from app.models.beatmap import SearchQueryModel
+from app.models.error import ErrorType, RequestError
 from app.service.beatmapset_cache_service import generate_hash
 from app.utils import api_doc
 

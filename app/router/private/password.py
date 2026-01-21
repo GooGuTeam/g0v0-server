@@ -13,8 +13,8 @@ from app.database.verification import LoginSession, TrustedDevice
 from app.dependencies.database import Database, Redis
 from app.dependencies.user import ClientUser
 from app.log import log
-
 from app.models.error import ErrorType, RequestError
+
 from .router import router
 
 from fastapi import Depends, Form
@@ -61,7 +61,10 @@ async def change_password(
         if not totp_code:
             raise RequestError(
                 ErrorType.INVALID_REQUEST,
-                {"required": ["totp_code"], "message": "TOTP code is required. Please provide 6-digit code or backup code."},
+                {
+                    "required": ["totp_code"],
+                    "message": "TOTP code is required. Please provide 6-digit code or backup code.",
+                },
             )
 
         is_verified = False

@@ -52,7 +52,11 @@ class ErrorType(Enum):
     JOIN_REQUEST_NOT_FOUND = ("join_request_not_found", 404, "Join request not found")
     OAUTH_APP_NOT_FOUND = ("oauth_app_not_found", 404, "OAuth app not found")
     AUDIO_PREVIEW_NOT_FOUND = ("audio_preview_not_found", 404, "Audio preview not found for this beatmapset")
-    AUDIO_PREVIEW_NOT_AVAILABLE = ("audio_preview_not_available", 404, "Audio preview not available for this beatmapset")
+    AUDIO_PREVIEW_NOT_AVAILABLE = (
+        "audio_preview_not_available",
+        404,
+        "Audio preview not available for this beatmapset",
+    )
     SESSION_NOT_FOUND = ("session_not_found", 404, "Session not found")
     TRUSTED_DEVICE_NOT_FOUND = ("trusted_device_not_found", 404, "Trusted device not found")
 
@@ -60,16 +64,32 @@ class ErrorType(Enum):
     INVALID_REQUEST = ("invalid_request", 400, "Invalid request")
     INVALID_RULESET_ID = ("invalid_ruleset_id", 422, "Invalid ruleset ID")
     INVALID_BEATMAPSET_TYPE = ("invalid_beatmapset_type", 400, "Invalid beatmapset type")
-    BEATMAP_LOOKUP_ARGS_MISSING = ("beatmap_lookup_args_missing", 400, "At least one of 'id', 'checksum', or 'filename' must be provided.")
+    BEATMAP_LOOKUP_ARGS_MISSING = (
+        "beatmap_lookup_args_missing",
+        400,
+        "At least one of 'id', 'checksum', or 'filename' must be provided.",
+    )
     BEATMAPSET_IDS_TOO_MANY = ("beatmapset_ids_too_many", 413, "beatmapset_ids cannot exceed 50 items")
     INVALID_CLIENT_HASH = ("invalid_client_hash", 422, "Invalid client hash")
     INVALID_OR_MISSING_BEATMAP_HASH = ("invalid_or_missing_beatmap_hash", 422, "Invalid or missing beatmap_hash")
     RULESET_VERSION_CHECK_FAILED = ("ruleset_version_check_failed", 422, "Ruleset version check failed")
-    CANNOT_CALCULATE_DIFFICULTY = ("cannot_calculate_difficulty", 422, "Cannot calculate difficulty for the specified ruleset")
+    CANNOT_CALCULATE_DIFFICULTY = (
+        "cannot_calculate_difficulty",
+        422,
+        "Cannot calculate difficulty for the specified ruleset",
+    )
     ROOM_HAS_ENDED = ("room_has_ended", 400, "Room has ended")
-    ROOM_ENDED_CANNOT_ACCEPT_NEW = ("room_ended_cannot_accept_new", 410, "Room has ended and cannot accept new participants")
+    ROOM_ENDED_CANNOT_ACCEPT_NEW = (
+        "room_ended_cannot_accept_new",
+        410,
+        "Room has ended and cannot accept new participants",
+    )
     RULESET_MISMATCH_PLAYLIST_ITEM = ("ruleset_mismatch_playlist_item", 400, "Ruleset mismatch in playlist item")
-    BEATMAP_ID_MISMATCH_PLAYLIST_ITEM = ("beatmap_id_mismatch_playlist_item", 400, "Beatmap ID mismatch in playlist item")
+    BEATMAP_ID_MISMATCH_PLAYLIST_ITEM = (
+        "beatmap_id_mismatch_playlist_item",
+        400,
+        "Beatmap ID mismatch in playlist item",
+    )
     PLAYLIST_ITEM_EXPIRED = ("playlist_item_expired", 400, "Playlist item has expired")
     PLAYLIST_ITEM_ALREADY_PLAYED = ("playlist_item_already_played", 400, "Playlist item has already been played")
     SCORE_NOT_PINNED = ("score_not_pinned", 400, "Score is not pinned")
@@ -84,7 +104,11 @@ class ErrorType(Enum):
     AUDIO_FILE_TOO_LARGE = ("audio_file_too_large", 413, "Audio file too large")
 
     BEATMAPSET_RATING_FORBIDDEN = ("beatmapset_rating_forbidden", 403, "User Cannot Rate This Beatmapset")
-    PLAYLIST_EMPTY_ON_CREATION = ("playlist_empty_on_creation", 400, "At least one playlist item is required to create a room")
+    PLAYLIST_EMPTY_ON_CREATION = (
+        "playlist_empty_on_creation",
+        400,
+        "At least one playlist item is required to create a room",
+    )
 
     # Profile / user settings
     INVALID_PROFILE_ORDER = ("invalid_profile_order", 400, "Invalid profile order")
@@ -96,12 +120,24 @@ class ErrorType(Enum):
     USER_ALREADY_TEAM_MEMBER = ("user_already_team_member", 409, "User is already a member of the team")
     NOT_TEAM_LEADER = ("not_team_leader", 403, "You are not the team leader")
     ALREADY_IN_TEAM = ("already_in_team", 403, "You are already in a team")
-    CANNOT_LEAVE_AS_TEAM_LEADER = ("cannot_leave_as_team_leader", 403, "You cannot leave because you are the team leader")
+    CANNOT_LEAVE_AS_TEAM_LEADER = (
+        "cannot_leave_as_team_leader",
+        403,
+        "You cannot leave because you are the team leader",
+    )
     CANNOT_DELETE_CURRENT_SESSION = ("cannot_delete_current_session", 400, "Cannot delete the current session")
-    CANNOT_DELETE_CURRENT_TRUSTED_DEVICE = ("cannot_delete_current_trusted_device", 400, "Cannot delete the current trusted device")
+    CANNOT_DELETE_CURRENT_TRUSTED_DEVICE = (
+        "cannot_delete_current_trusted_device",
+        400,
+        "Cannot delete the current trusted device",
+    )
 
     # Relationship
-    CANNOT_CHECK_RELATIONSHIP_WITH_SELF = ("cannot_check_relationship_with_self", 422, "Cannot check relationship with yourself")
+    CANNOT_CHECK_RELATIONSHIP_WITH_SELF = (
+        "cannot_check_relationship_with_self",
+        422,
+        "Cannot check relationship with yourself",
+    )
     CANNOT_ADD_RELATIONSHIP_TO_SELF = ("cannot_add_relationship_to_self", 422, "Cannot add relationship to yourself")
     RELATIONSHIP_TYPE_MISMATCH = ("relationship_type_mismatch", 422, "Relationship type mismatch")
 
@@ -110,7 +146,11 @@ class ErrorType(Enum):
     NO_TOTP_SETUP_OR_INVALID_DATA = ("no_totp_setup_or_invalid_data", 400, "No TOTP setup in progress or invalid data")
     TOO_MANY_FAILED_ATTEMPTS = ("too_many_failed_attempts", 400, "Too many failed attempts. Please start over.")
     INVALID_TOTP_CODE = ("invalid_totp_code", 400, "Invalid TOTP code")
-    INVALID_TOTP_FORMAT = ("invalid_totp_format", 400, "Invalid TOTP code format. Expected 6-digit code or 10-character backup code.")
+    INVALID_TOTP_FORMAT = (
+        "invalid_totp_format",
+        400,
+        "Invalid TOTP code format. Expected 6-digit code or 10-character backup code.",
+    )
     TOTP_NOT_ENABLED = ("totp_not_enabled", 400, "TOTP is not enabled for this user")
     INVALID_TOTP_OR_BACKUP_CODE = ("invalid_totp_or_backup_code", 400, "Invalid TOTP code or backup code")
 
