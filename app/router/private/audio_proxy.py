@@ -6,9 +6,10 @@
 from typing import Annotated
 
 from app.dependencies.database import get_redis, get_redis_binary
+from app.models.error import ErrorType, RequestError
 from app.service.audio_proxy_service import AudioProxyService, get_audio_proxy_service
 
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, Path
 from fastapi.responses import Response
 from fastapi_limiter.depends import RateLimiter
 from loguru import logger
@@ -67,9 +68,9 @@ async def get_beatmapset_audio(
             },
         )
 
-    except HTTPException:
-        # 重新抛出HTTP异常
+    except RequestError:
+        # 重新抛出 API 级错误
         raise
     except Exception as e:
         logger.error(f"Unexpected error getting beatmapset audio: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error") from e
+        raise RequestError(ErrorType.INTERNAL_ERROR_FETCHING_AUDIO) from e

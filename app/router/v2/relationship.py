@@ -6,11 +6,12 @@ from app.database.user import UserModel
 from app.dependencies.api_version import APIVersion
 from app.dependencies.database import Database
 from app.dependencies.user import ClientUser, get_current_user
+from app.models.error import ErrorType, RequestError
 from app.utils import api_doc
 
 from .router import router
 
-from fastapi import HTTPException, Path, Query, Request, Security
+from fastapi import Path, Query, Request, Security
 from sqlmodel import col, exists, select
 
 
@@ -88,15 +89,15 @@ async def add_relationship(
     current_user: ClientUser,
 ):
     if await current_user.is_restricted(db):
-        raise HTTPException(403, "Your account is restricted and cannot perform this action.")
+        raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
     if not (
         await db.exec(select(exists()).where((User.id == target) & ~User.is_restricted_query(col(User.id))))
     ).first():
-        raise HTTPException(404, "Target user not found")
+        raise RequestError(ErrorType.TARGET_USER_NOT_FOUND)
 
     relationship_type = RelationshipType.FOLLOW if request.url.path.endswith("/friends") else RelationshipType.BLOCK
     if target == current_user.id:
-        raise HTTPException(422, "Cannot add relationship to yourself")
+        raise RequestError(ErrorType.CANNOT_ADD_RELATIONSHIP_TO_SELF)
     relationship = (
         await db.exec(
             select(Relationship).where(
@@ -168,11 +169,11 @@ async def delete_relationship(
     current_user: ClientUser,
 ):
     if await current_user.is_restricted(db):
-        raise HTTPException(403, "Your account is restricted and cannot perform this action.")
+        raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
     if not (
         await db.exec(select(exists()).where((User.id == target) & ~User.is_restricted_query(col(User.id))))
     ).first():
-        raise HTTPException(404, "Target user not found")
+        raise RequestError(ErrorType.TARGET_USER_NOT_FOUND)
 
     relationship_type = RelationshipType.BLOCK if "/blocks/" in request.url.path else RelationshipType.FOLLOW
     relationship = (
@@ -184,8 +185,8 @@ async def delete_relationship(
         )
     ).first()
     if not relationship:
-        raise HTTPException(404, "Relationship not found")
+        raise RequestError(ErrorType.RELATIONSHIP_NOT_FOUND)
     if relationship.type != relationship_type:
-        raise HTTPException(422, "Relationship type mismatch")
+        raise RequestError(ErrorType.RELATIONSHIP_TYPE_MISMATCH)
     await db.delete(relationship)
     await db.commit()

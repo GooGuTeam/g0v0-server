@@ -17,7 +17,8 @@ from app.models.v1_user import (
 )
 from app.router.v1.public_router import public_router
 
-from fastapi import HTTPException, Query
+from app.models.error import ErrorType, RequestError
+from fastapi import Query
 from sqlmodel import select
 
 
@@ -193,7 +194,7 @@ async def api_get_player_info(
     """
     # 验证参数
     if not id and not name:
-        raise HTTPException(400, "Must provide either id or name")
+        raise RequestError(ErrorType.INVALID_REQUEST, {"required": ["id", "name"]}, status_code=400)
 
     # 查询用户
     if id:
@@ -257,7 +258,7 @@ async def api_get_player_info(
 
     except Exception as e:
         logger.error(f"Error processing get_player_info for user {user.id}: {e}")
-        raise HTTPException(500, "Internal server error")
+        raise RequestError(ErrorType.INTERNAL)
 
 
 @public_router.get(
@@ -316,4 +317,4 @@ async def api_get_player_count(
 
     except Exception as e:
         logger.error(f"Error getting player count: {e}")
-        raise HTTPException(500, "Internal server error")
+        raise RequestError(ErrorType.INTERNAL)

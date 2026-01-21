@@ -8,7 +8,8 @@ from app.dependencies.user import UserAndToken, get_client_user_and_token
 
 from .router import router
 
-from fastapi import HTTPException, Security
+from app.models.error import ErrorType, RequestError
+from fastapi import Security
 from pydantic import BaseModel
 from sqlmodel import col, select
 
@@ -68,11 +69,11 @@ async def delete_session(
 ):
     current_user, token = user_and_token
     if session_id == token.id:
-        raise HTTPException(status_code=400, detail="Cannot delete the current session")
+        raise RequestError(ErrorType.CANNOT_DELETE_CURRENT_SESSION)
 
     db_session = await session.get(LoginSession, session_id)
     if not db_session or db_session.user_id != current_user.id:
-        raise HTTPException(status_code=404, detail="Session not found")
+        raise RequestError(ErrorType.SESSION_NOT_FOUND)
 
     await session.delete(db_session)
 
@@ -154,10 +155,10 @@ async def delete_trusted_device(
         )
     ).first()
     if device_id == current_device_id:
-        raise HTTPException(status_code=400, detail="Cannot delete the current trusted device")
+        raise RequestError(ErrorType.CANNOT_DELETE_CURRENT_TRUSTED_DEVICE)
 
     if not device or device.user_id != current_user.id:
-        raise HTTPException(status_code=404, detail="Trusted device not found")
+        raise RequestError(ErrorType.TRUSTED_DEVICE_NOT_FOUND)
 
     await session.delete(device)
     await session.commit()

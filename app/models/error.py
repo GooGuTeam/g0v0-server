@@ -16,6 +16,7 @@ class ErrorType(Enum):
 
     # Default / Undisclosed
     UNKNOWN = ("unknown", 500, "Something bad has happened, please try again later.")
+    INTERNAL = ("internal_error", 500, "Something has gone wrong on our side, please try again later.")
 
     # Auth & tokens
     NOT_AUTHENTICATED = ("not_authenticated", 401, "Not authenticated")
@@ -46,6 +47,9 @@ class ErrorType(Enum):
     RELATIONSHIP_NOT_FOUND = ("relationship_not_found", 404, "Relationship not found")
     TEAM_NOT_FOUND = ("team_not_found", 404, "Team not found")
     LEADER_NOT_FOUND = ("leader_not_found", 404, "Leader not found")
+    LEADER_NOT_TEAM_MEMBER = ("leader_not_team_member", 404, "Leader is not a member of the team")
+    USER_NOT_TEAM_MEMBER = ("user_not_team_member", 404, "User is not a member of the team")
+    JOIN_REQUEST_NOT_FOUND = ("join_request_not_found", 404, "Join request not found")
     OAUTH_APP_NOT_FOUND = ("oauth_app_not_found", 404, "OAuth app not found")
     AUDIO_PREVIEW_NOT_FOUND = ("audio_preview_not_found", 404, "Audio preview not found for this beatmapset")
     AUDIO_PREVIEW_NOT_AVAILABLE = ("audio_preview_not_available", 404, "Audio preview not available for this beatmapset")
@@ -56,6 +60,7 @@ class ErrorType(Enum):
     INVALID_REQUEST = ("invalid_request", 400, "Invalid request")
     INVALID_RULESET_ID = ("invalid_ruleset_id", 422, "Invalid ruleset ID")
     INVALID_BEATMAPSET_TYPE = ("invalid_beatmapset_type", 400, "Invalid beatmapset type")
+    BEATMAP_LOOKUP_ARGS_MISSING = ("beatmap_lookup_args_missing", 400, "At least one of 'id', 'checksum', or 'filename' must be provided.")
     BEATMAPSET_IDS_TOO_MANY = ("beatmapset_ids_too_many", 413, "beatmapset_ids cannot exceed 50 items")
     INVALID_CLIENT_HASH = ("invalid_client_hash", 422, "Invalid client hash")
     INVALID_OR_MISSING_BEATMAP_HASH = ("invalid_or_missing_beatmap_hash", 422, "Invalid or missing beatmap_hash")
@@ -70,13 +75,16 @@ class ErrorType(Enum):
     SCORE_NOT_PINNED = ("score_not_pinned", 400, "Score is not pinned")
     MAX_ATTEMPTS_REACHED = ("max_attempts_reached", 422, "You have reached the maximum attempts for this room")
 
-    # Image/file validation
+    # File / IO
     FILE_SIZE_EXCEEDS_LIMIT = ("file_size_exceeds_limit", 400, "File size exceeds 10MB limit")
     FILE_EMPTY = ("file_empty", 400, "File cannot be empty")
     INVALID_IMAGE_FORMAT = ("invalid_image_format", 400, "Invalid image format")
     IMAGE_DIMENSIONS_EXCEED_LIMIT = ("image_dimensions_exceed_limit", 400, "Image size exceeds the limit")
     ERROR_PROCESSING_IMAGE = ("error_processing_image", 400, "Error processing image")
     AUDIO_FILE_TOO_LARGE = ("audio_file_too_large", 413, "Audio file too large")
+
+    BEATMAPSET_RATING_FORBIDDEN = ("beatmapset_rating_forbidden", 403, "User Cannot Rate This Beatmapset")
+    PLAYLIST_EMPTY_ON_CREATION = ("playlist_empty_on_creation", 400, "At least one playlist item is required to create a room")
 
     # Profile / user settings
     INVALID_PROFILE_ORDER = ("invalid_profile_order", 400, "Invalid profile order")
@@ -89,17 +97,20 @@ class ErrorType(Enum):
     NOT_TEAM_LEADER = ("not_team_leader", 403, "You are not the team leader")
     ALREADY_IN_TEAM = ("already_in_team", 403, "You are already in a team")
     CANNOT_LEAVE_AS_TEAM_LEADER = ("cannot_leave_as_team_leader", 403, "You cannot leave because you are the team leader")
+    CANNOT_DELETE_CURRENT_SESSION = ("cannot_delete_current_session", 400, "Cannot delete the current session")
+    CANNOT_DELETE_CURRENT_TRUSTED_DEVICE = ("cannot_delete_current_trusted_device", 400, "Cannot delete the current trusted device")
 
     # Relationship
     CANNOT_CHECK_RELATIONSHIP_WITH_SELF = ("cannot_check_relationship_with_self", 422, "Cannot check relationship with yourself")
     CANNOT_ADD_RELATIONSHIP_TO_SELF = ("cannot_add_relationship_to_self", 422, "Cannot add relationship to yourself")
     RELATIONSHIP_TYPE_MISMATCH = ("relationship_type_mismatch", 422, "Relationship type mismatch")
 
-    # TOTP / verification
+    # TOTP
     TOTP_ALREADY_ENABLED = ("totp_already_enabled", 400, "TOTP is already enabled for this user")
     NO_TOTP_SETUP_OR_INVALID_DATA = ("no_totp_setup_or_invalid_data", 400, "No TOTP setup in progress or invalid data")
     TOO_MANY_FAILED_ATTEMPTS = ("too_many_failed_attempts", 400, "Too many failed attempts. Please start over.")
     INVALID_TOTP_CODE = ("invalid_totp_code", 400, "Invalid TOTP code")
+    INVALID_TOTP_FORMAT = ("invalid_totp_format", 400, "Invalid TOTP code format. Expected 6-digit code or 10-character backup code.")
     TOTP_NOT_ENABLED = ("totp_not_enabled", 400, "TOTP is not enabled for this user")
     INVALID_TOTP_OR_BACKUP_CODE = ("invalid_totp_or_backup_code", 400, "Invalid TOTP code or backup code")
 
@@ -107,14 +118,12 @@ class ErrorType(Enum):
     PASSWORD_INCORRECT = ("password_incorrect", 403, "Current password is incorrect")
     PASSWORD_REQUIRED = ("password_required", 403, "Password required")
     INVALID_PASSWORD = ("invalid_password", 403, "Invalid password")
+    ROOM_PASSWORD_REQUIRED = ("room_password_required", 403, "Password required")
+    ROOM_INVALID_PASSWORD = ("room_invalid_password", 403, "Invalid password")
     FORBIDDEN_NOT_OWNER = ("forbidden_not_owner", 403, "Forbidden: Not the owner of this app")
     REDIRECT_URI_NOT_ALLOWED = ("redirect_uri_not_allowed", 403, "Redirect URI not allowed for this client")
 
-    # Admin
-    CANNOT_DELETE_CURRENT_SESSION = ("cannot_delete_current_session", 400, "Cannot delete the current session")
-    CANNOT_DELETE_CURRENT_TRUSTED_DEVICE = ("cannot_delete_current_trusted_device", 400, "Cannot delete the current trusted device")
-
-    # Download / audio services
+    # Beatmap / proxy services
     NO_DOWNLOAD_ENDPOINTS_AVAILABLE = ("no_download_endpoints_available", 503, "No download endpoints available")
     FAILED_CONNECT_OSU_SERVERS = ("failed_connect_osu_servers", 503, "Failed to connect to osu! servers")
     INTERNAL_ERROR_FETCHING_AUDIO = ("internal_error_fetching_audio", 500, "Internal server error while fetching audio")
@@ -152,13 +161,13 @@ class RequestError(HTTPException):
         self.msg_key, self.status_code, self.fallback_msg = error_type
 
         # Optional details
-        detail = {"error": self.msg_key}
+        detail = {"key": self.msg_key}
         if extra:
             detail.update(extra)
 
         # Fallback message
         if self.fallback_msg:
-            detail.update({"message": self.fallback_msg})
+            detail.update({"fallback": self.fallback_msg})
 
         final_status = status_code if status_code is not None else self.status_code
         super().__init__(final_status, detail=detail, headers=headers)

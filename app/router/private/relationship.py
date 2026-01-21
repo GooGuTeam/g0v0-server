@@ -7,7 +7,8 @@ from app.dependencies.user import ClientUser
 
 from .router import router
 
-from fastapi import HTTPException, Path
+from app.models.error import ErrorType, RequestError
+from fastapi import Path
 from pydantic import BaseModel, Field
 from sqlmodel import select
 
@@ -31,7 +32,7 @@ async def check_user_relationship(
     current_user: ClientUser,
 ):
     if user_id == current_user.id:
-        raise HTTPException(422, "Cannot check relationship with yourself")
+        raise RequestError(ErrorType.CANNOT_CHECK_RELATIONSHIP_WITH_SELF)
 
     my_relationship = (
         await db.exec(

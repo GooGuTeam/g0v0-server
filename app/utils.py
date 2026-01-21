@@ -9,9 +9,9 @@ import re
 from types import NoneType, UnionType
 from typing import TYPE_CHECKING, Any, ParamSpec, TypedDict, TypeVar, Union, get_args, get_origin
 
-from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
 from PIL import Image
+from app.models.error import ErrorType, RequestError
 
 if TYPE_CHECKING:
     from app.models.model import UserAgentInfo
@@ -142,21 +142,21 @@ def truncate(text: str, limit: int = 100, ellipsis: str = "...") -> str:
 
 def check_image(content: bytes, size: int, width: int, height: int) -> str:
     if len(content) > size:  # 10MB limit
-        raise HTTPException(status_code=400, detail="File size exceeds 10MB limit")
+        raise RequestError(ErrorType.FILE_SIZE_EXCEEDS_LIMIT)
     elif len(content) == 0:
-        raise HTTPException(status_code=400, detail="File cannot be empty")
+        raise RequestError(ErrorType.FILE_EMPTY)
     try:
         with Image.open(BytesIO(content)) as img:
             if img.format not in ["PNG", "JPEG", "GIF"]:
-                raise HTTPException(status_code=400, detail="Invalid image format")
+                raise RequestError(ErrorType.INVALID_IMAGE_FORMAT)
             if img.size[0] > width or img.size[1] > height:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Image size exceeds {width}x{height} pixels",
+                raise RequestError(
+                    ErrorType.IMAGE_DIMENSIONS_EXCEED_LIMIT,
+                    {"limit_width": width, "limit_height": height},
                 )
             return img.format.lower()
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error processing image: {e}")
+        raise RequestError(ErrorType.ERROR_PROCESSING_IMAGE, {"reason": str(e)})
 
 
 def extract_user_agent(user_agent: str | None) -> "UserAgentInfo":

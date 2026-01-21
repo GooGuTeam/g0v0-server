@@ -22,7 +22,8 @@ from app.service.verification_service import (
 
 from .router import router
 
-from fastapi import Depends, Form, Header, HTTPException, Request, Security, status
+from app.models.error import ErrorType, RequestError
+from fastapi import Depends, Form, Header, Request, Security, status
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
@@ -254,7 +255,7 @@ async def fallback_email(
     current_user = user_and_token[0]
     token_id = user_and_token[1].id
     if not await LoginSessionService.get_login_method(current_user.id, token_id, redis):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前会话不需要回退")
+        raise RequestError(ErrorType.INVALID_REQUEST, {"message": "当前会话不需要回退"}, status_code=400)
 
     await LoginSessionService.set_login_method(current_user.id, token_id, "mail", redis)
     success, message, _ = await EmailVerificationService.resend_verification_code(

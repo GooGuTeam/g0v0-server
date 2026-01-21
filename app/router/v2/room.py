@@ -15,13 +15,14 @@ from app.database.score import Score
 from app.database.user import User, UserModel
 from app.dependencies.database import Database, Redis
 from app.dependencies.user import ClientUser, get_current_user
+from app.models.error import ErrorType, RequestError
 from app.models.room import MatchType, RoomCategory, RoomStatus
 from app.service.room import create_playlist_room_from_api
 from app.utils import api_doc, utcnow
 
 from .router import router
 
-from fastapi import HTTPException, Path, Query, Security
+from fastapi import Path, Query, Security
 from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import col, exists, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -166,7 +167,7 @@ async def create_room(
     redis: Redis,
 ):
     if await current_user.is_restricted(db):
-        raise HTTPException(status_code=403, detail="Your account is restricted from multiplayer.")
+        raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
     user_id = current_user.id
     db_room = await create_playlist_room_from_api(db, room, user_id)
     await _participate_room(db_room.id, user_id, db_room, db, redis)
@@ -202,7 +203,7 @@ async def get_room(
 ):
     db_room = (await db.exec(select(Room).where(Room.id == room_id))).first()
     if db_room is None:
-        raise HTTPException(404, "Room not found")
+        raise RequestError(ErrorType.ROOM_NOT_FOUND)
     resp = await RoomModel.transform(db_room, includes=Room.SHOW_RESPONSE_INCLUDES, user=current_user)
     return resp
 
@@ -219,11 +220,11 @@ async def delete_room(
     current_user: ClientUser,
 ):
     if await current_user.is_restricted(db):
-        raise HTTPException(status_code=403, detail="Your account is restricted from multiplayer.")
+        raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
 
     db_room = (await db.exec(select(Room).where(Room.id == room_id))).first()
     if db_room is None:
-        raise HTTPException(404, "Room not found")
+        raise RequestError(ErrorType.ROOM_NOT_FOUND)
     else:
         db_room.ends_at = utcnow()
         await db.commit()
@@ -244,7 +245,7 @@ async def add_user_to_room(
     current_user: ClientUser,
 ):
     if await current_user.is_restricted(db):
-        raise HTTPException(status_code=403, detail="Your account is restricted from multiplayer.")
+        raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
 
     db_room = (await db.exec(select(Room).where(Room.id == room_id))).first()
     if db_room is not None:
@@ -254,7 +255,7 @@ async def add_user_to_room(
         resp = await RoomModel.transform(db_room, includes=Room.SHOW_RESPONSE_INCLUDES)
         return resp
     else:
-        raise HTTPException(404, "room not found")
+        raise RequestError(ErrorType.ROOM_NOT_FOUND)
 
 
 @router.delete(
@@ -271,7 +272,7 @@ async def remove_user_from_room(
     redis: Redis,
 ):
     if await current_user.is_restricted(db):
-        raise HTTPException(status_code=403, detail="Your account is restricted from multiplayer.")
+        raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
 
     db_room = (await db.exec(select(Room).where(Room.id == room_id))).first()
     if db_room is not None:
@@ -291,7 +292,7 @@ async def remove_user_from_room(
         await db.commit()
         return None
     else:
-        raise HTTPException(404, "Room not found")
+        raise RequestError(ErrorType.ROOM_NOT_FOUND)
 
 
 @router.get(
@@ -318,7 +319,7 @@ async def get_room_leaderboard(
 ):
     db_room = (await db.exec(select(Room).where(Room.id == room_id))).first()
     if db_room is None:
-        raise HTTPException(404, "Room not found")
+        raise RequestError(ErrorType.ROOM_NOT_FOUND)
     aggs = await db.exec(
         select(ItemAttemptsCount)
         .where(ItemAttemptsCount.room_id == room_id)
@@ -426,7 +427,7 @@ async def get_room_events(
 
     room = (await db.exec(select(Room).where(Room.id == room_id))).first()
     if room is None:
-        raise HTTPException(404, "Room not found")
+        raise RequestError(ErrorType.ROOM_NOT_FOUND)
     room_resp = await RoomModel.transform(room, includes=["current_playlist_item"])
     if room.category == RoomCategory.REALTIME:
         current_playlist_item_id = (await Room.current_playlist_item(db, room))["id"]

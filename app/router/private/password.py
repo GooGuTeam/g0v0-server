@@ -14,9 +14,10 @@ from app.dependencies.database import Database, Redis
 from app.dependencies.user import ClientUser
 from app.log import log
 
+from app.models.error import ErrorType, RequestError
 from .router import router
 
-from fastapi import Depends, Form, HTTPException
+from fastapi import Depends, Form
 from fastapi_limiter.depends import RateLimiter
 from sqlmodel import col, delete
 
@@ -50,7 +51,7 @@ async def change_password(
     """
     # 验证新密码格式
     if errors := validate_password(new_password):
-        raise HTTPException(status_code=400, detail="; ".join(errors))
+        raise RequestError(ErrorType.INVALID_PASSWORD, {"errors": errors}, status_code=400)
 
     # 检查用户是否启用了TOTP
     totp_key = await session.get(TotpKeys, current_user.id)
@@ -58,8 +59,9 @@ async def change_password(
     if totp_key:
         # 用户已启用TOTP，必须验证TOTP
         if not totp_code:
-            raise HTTPException(
-                status_code=400, detail="TOTP code is required. Please provide totp_code (6-digit code or backup code)."
+            raise RequestError(
+                ErrorType.INVALID_REQUEST,
+                {"required": ["totp_code"], "message": "TOTP code is required. Please provide 6-digit code or backup code."},
             )
 
         is_verified = False
@@ -72,27 +74,24 @@ async def change_password(
             if is_verified:
                 session.add(totp_key)
         else:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Invalid TOTP code format. Expected 6-digit code or {BACKUP_CODE_LENGTH}-character backup code."
-                ),
-            )
+            raise RequestError(ErrorType.INVALID_TOTP_FORMAT)
 
         if not is_verified:
-            raise HTTPException(status_code=403, detail="Invalid TOTP code or backup code")
+            raise RequestError(ErrorType.INVALID_TOTP_OR_BACKUP_CODE)
 
         logger.info(f"User {current_user.id} verified identity with TOTP for password change")
 
     else:
         # 用户未启用TOTP，必须验证当前密码
         if not current_password:
-            raise HTTPException(
-                status_code=400, detail="Current password is required. Please provide current_password."
+            raise RequestError(
+                ErrorType.PASSWORD_REQUIRED,
+                {"required": ["current_password"]},
+                status_code=400,
             )
 
         if not await authenticate_user(session, current_user.username, current_password):
-            raise HTTPException(status_code=403, detail="Current password is incorrect")
+            raise RequestError(ErrorType.PASSWORD_INCORRECT)
 
         logger.info(f"User {current_user.id} verified identity with password for password change")
 

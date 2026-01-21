@@ -23,6 +23,7 @@ from app.dependencies.database import Database, get_redis
 from app.dependencies.user import get_current_user, get_optional_user
 from app.helpers.asset_proxy_helper import asset_proxy_response
 from app.log import log
+from app.models.error import ErrorType, RequestError
 from app.models.mods import API_MODS
 from app.models.score import GameMode
 from app.models.user import BeatmapsetType
@@ -31,7 +32,7 @@ from app.utils import api_doc, utcnow
 
 from .router import router
 
-from fastapi import BackgroundTasks, HTTPException, Path, Query, Request, Security
+from fastapi import BackgroundTasks, Path, Query, Request, Security
 from sqlmodel import exists, select, tuple_
 from sqlmodel.sql.expression import col
 
@@ -148,7 +149,7 @@ async def get_user_events(
 ):
     db_user = await session.get(User, user_id)
     if db_user is None or not await visible_to_current_user(db_user, current_user, session):
-        raise HTTPException(404, "User Not found")
+        raise RequestError(ErrorType.USER_NOT_FOUND)
     if offset is None:
         offset = 0
     if limit > 100:
@@ -203,7 +204,7 @@ async def get_user_kudosu(
     # 验证用户是否存在
     db_user = await session.get(User, user_id)
     if db_user is None or not await visible_to_current_user(db_user, current_user, session):
-        raise HTTPException(404, "User not found")
+        raise RequestError(ErrorType.USER_NOT_FOUND)
 
     # TODO: 实现 kudosu 记录获取逻辑
     return []
@@ -241,18 +242,18 @@ async def get_user_beatmaps_passed(
     if not beatmapset_ids:
         return {"beatmaps_passed": []}
     if len(beatmapset_ids) > 50:
-        raise HTTPException(status_code=413, detail="beatmapset_ids cannot exceed 50 items")
+        raise RequestError(ErrorType.BEATMAPSET_IDS_TOO_MANY)
 
     user = await session.get(User, user_id)
     if user is None or not await visible_to_current_user(user, current_user, session):
-        raise HTTPException(404, detail="User not found")
+        raise RequestError(ErrorType.USER_NOT_FOUND)
 
     allowed_mode: GameMode | None = None
     if ruleset_id is not None:
         try:
             allowed_mode = GameMode.from_int_extra(ruleset_id)
         except KeyError as exc:
-            raise HTTPException(status_code=422, detail="Invalid ruleset_id") from exc
+            raise RequestError(ErrorType.INVALID_RULESET_ID) from exc
 
     score_query = (
         select(Score.beatmap_id, Score.mods, Score.gamemode, Beatmap.mode)
@@ -337,11 +338,11 @@ async def get_user_info_ruleset(
         )
     ).first()
     if not searched_user or searched_user.id == BANCHOBOT_ID:
-        raise HTTPException(404, detail="User not found")
+        raise RequestError(ErrorType.USER_NOT_FOUND)
     searched_is_self = current_user is not None and current_user.id == searched_user.id
     should_not_show = not searched_is_self and await searched_user.is_restricted(session)
     if should_not_show:
-        raise HTTPException(404, detail="User not found")
+        raise RequestError(ErrorType.USER_NOT_FOUND)
 
     user_resp = await UserModel.transform(
         searched_user,
@@ -390,11 +391,11 @@ async def get_user_info(
         )
     ).first()
     if not searched_user or searched_user.id == BANCHOBOT_ID:
-        raise HTTPException(404, detail="User not found")
+        raise RequestError(ErrorType.USER_NOT_FOUND)
     searched_is_self = current_user is not None and current_user.id == searched_user.id
     should_not_show = not searched_is_self and await searched_user.is_restricted(session)
     if should_not_show:
-        raise HTTPException(404, detail="User not found")
+        raise RequestError(ErrorType.USER_NOT_FOUND)
 
     user_resp = await UserModel.transform(
         searched_user,
@@ -440,7 +441,7 @@ async def get_user_beatmapsets(
 
     user = await session.get(User, user_id)
     if not user or user.id == BANCHOBOT_ID or not await visible_to_current_user(user, current_user, session):
-        raise HTTPException(404, detail="User not found")
+        raise RequestError(ErrorType.USER_NOT_FOUND)
 
     if type in {
         BeatmapsetType.GRAVEYARD,
@@ -513,7 +514,7 @@ async def get_user_beatmapsets(
             for most_played_beatmap in most_played
         ]
     else:
-        raise HTTPException(400, detail="Invalid beatmapset type")
+        raise RequestError(ErrorType.INVALID_BEATMAPSET_TYPE)
 
     # 异步缓存结果
     async def cache_beatmapsets():
@@ -568,7 +569,7 @@ async def get_user_scores(
 
     db_user = await session.get(User, user_id)
     if db_user is None or not await visible_to_current_user(db_user, current_user, session):
-        raise HTTPException(404, detail="User not found")
+        raise RequestError(ErrorType.USER_NOT_FOUND)
 
     gamemode = mode or db_user.playmode
     where_clause = (col(Score.user_id) == db_user.id) & (col(Score.gamemode) == gamemode)

@@ -1,8 +1,9 @@
 import urllib.parse
 
 from app.config import settings
+from app.models.error import ErrorType, RequestError
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 
 redirect_router = APIRouter(include_in_schema=False)
@@ -45,4 +46,4 @@ async def redirect_to_api_root(request: Request, path: str):
         "get_replay",
     }:
         return RedirectResponse(f"/api/v1/{path}?{request.url.query}", status_code=302)
-    raise HTTPException(404, detail="Not Found")
+    raise RequestError(ErrorType.NOT_FOUND)

@@ -18,7 +18,8 @@ from app.utils import api_doc, check_image, utcnow
 
 from .router import router
 
-from fastapi import File, Form, HTTPException, Path, Query, Request
+from app.models.error import ErrorType, RequestError
+from fastapi import File, Form, Path, Query, Request
 from sqlmodel import col, exists, select
 
 
@@ -42,18 +43,18 @@ async def create_team(
     支持的图片格式: PNG、JPEG、GIF
     """
     if await current_user.is_restricted(session):
-        raise HTTPException(status_code=403, detail="Your account is restricted and cannot perform this action.")
+        raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
 
     user_id = current_user.id
     if (await current_user.awaitable_attrs.team_membership) is not None:
-        raise HTTPException(status_code=403, detail="You are already in a team")
+        raise RequestError(ErrorType.ALREADY_IN_TEAM)
 
     is_existed = (await session.exec(select(exists()).where(Team.name == name))).first()
     if is_existed:
-        raise HTTPException(status_code=409, detail="Name already exists")
+        raise RequestError(ErrorType.NAME_ALREADY_EXISTS)
     is_existed = (await session.exec(select(exists()).where(Team.short_name == short_name))).first()
     if is_existed:
-        raise HTTPException(status_code=409, detail="Short name already exists")
+        raise RequestError(ErrorType.SHORT_NAME_ALREADY_EXISTS)
 
     flag_format = check_image(flag, 2 * 1024 * 1024, 240, 120)
     cover_format = check_image(cover, 10 * 1024 * 1024, 3000, 2000)
@@ -119,23 +120,23 @@ async def update_team(
     支持的图片格式: PNG、JPEG、GIF
     """
     if await current_user.is_restricted(session):
-        raise HTTPException(status_code=403, detail="Your account is restricted and cannot perform this action.")
+        raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
 
     team = await session.get(Team, team_id)
     user_id = current_user.id
     if not team:
-        raise HTTPException(status_code=404, detail="Team not found")
+        raise RequestError(ErrorType.TEAM_NOT_FOUND)
     if team.leader_id != user_id:
-        raise HTTPException(status_code=403, detail="You are not the team leader")
+        raise RequestError(ErrorType.NOT_TEAM_LEADER)
 
     if name is not None:
         if (await session.exec(select(exists()).where(Team.name == name))).first():
-            raise HTTPException(status_code=409, detail="Name already exists")
+            raise RequestError(ErrorType.NAME_ALREADY_EXISTS)
         else:
             team.name = name
     if short_name is not None:
         if (await session.exec(select(exists()).where(Team.short_name == short_name))).first():
-            raise HTTPException(status_code=409, detail="Short name already exists")
+            raise RequestError(ErrorType.SHORT_NAME_ALREADY_EXISTS)
         else:
             team.short_name = short_name
 
@@ -173,11 +174,11 @@ async def update_team(
 
     if leader_id is not None:
         if not (await session.exec(select(exists()).where(User.id == leader_id))).first():
-            raise HTTPException(status_code=404, detail="Leader not found")
+            raise RequestError(ErrorType.LEADER_NOT_FOUND)
         if not (
             await session.exec(select(TeamMember).where(TeamMember.user_id == leader_id, TeamMember.team_id == team.id))
         ).first():
-            raise HTTPException(status_code=404, detail="Leader is not a member of the team")
+            raise RequestError(ErrorType.LEADER_NOT_TEAM_MEMBER)
         team.leader_id = leader_id
 
     await session.commit()
@@ -193,14 +194,14 @@ async def delete_team(
     redis: Redis,
 ):
     if await current_user.is_restricted(session):
-        raise HTTPException(status_code=403, detail="Your account is restricted and cannot perform this action.")
+        raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
 
     team = await session.get(Team, team_id)
     if not team:
-        raise HTTPException(status_code=404, detail="Team not found")
+        raise RequestError(ErrorType.TEAM_NOT_FOUND)
 
     if team.leader_id != current_user.id:
-        raise HTTPException(status_code=403, detail="You are not the team leader")
+        raise RequestError(ErrorType.NOT_TEAM_LEADER)
 
     team_members = await session.exec(select(TeamMember).where(TeamMember.team_id == team_id))
     for member in team_members:
@@ -255,21 +256,21 @@ async def request_join_team(
     current_user: ClientUser,
 ):
     if await current_user.is_restricted(session):
-        raise HTTPException(status_code=403, detail="Your account is restricted and cannot perform this action.")
+        raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
 
     team = await session.get(Team, team_id)
     if not team:
-        raise HTTPException(status_code=404, detail="Team not found")
+        raise RequestError(ErrorType.TEAM_NOT_FOUND)
 
     if (await current_user.awaitable_attrs.team_membership) is not None:
-        raise HTTPException(status_code=403, detail="You are already in a team")
+        raise RequestError(ErrorType.ALREADY_IN_TEAM)
 
     if (
         await session.exec(
             select(exists()).where(TeamRequest.team_id == team_id, TeamRequest.user_id == current_user.id)
         )
     ).first():
-        raise HTTPException(status_code=409, detail="Join request already exists")
+        raise RequestError(ErrorType.JOIN_REQUEST_ALREADY_EXISTS)
     team_request = TeamRequest(user_id=current_user.id, team_id=team_id, requested_at=utcnow())
     session.add(team_request)
     await session.commit()
@@ -288,28 +289,28 @@ async def handle_request(
     redis: Redis,
 ):
     if await current_user.is_restricted(session):
-        raise HTTPException(status_code=403, detail="Your account is restricted and cannot perform this action.")
+        raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
 
     team = await session.get(Team, team_id)
     if not team:
-        raise HTTPException(status_code=404, detail="Team not found")
+        raise RequestError(ErrorType.TEAM_NOT_FOUND)
 
     if team.leader_id != current_user.id:
-        raise HTTPException(status_code=403, detail="You are not the team leader")
+        raise RequestError(ErrorType.NOT_TEAM_LEADER)
 
     team_request = (
         await session.exec(select(TeamRequest).where(TeamRequest.team_id == team_id, TeamRequest.user_id == user_id))
     ).first()
     if not team_request:
-        raise HTTPException(status_code=404, detail="Join request not found")
+        raise RequestError(ErrorType.JOIN_REQUEST_NOT_FOUND)
 
     user = await session.get(User, user_id)
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise RequestError(ErrorType.USER_NOT_FOUND)
 
     if req.method == "POST":
         if (await session.exec(select(exists()).where(TeamMember.user_id == user_id))).first():
-            raise HTTPException(status_code=409, detail="User is already a member of the team")
+            raise RequestError(ErrorType.USER_ALREADY_TEAM_MEMBER)
 
         session.add(TeamMember(user_id=user_id, team_id=team_id, joined_at=utcnow()))
 
@@ -332,23 +333,23 @@ async def kick_member(
     redis: Redis,
 ):
     if await current_user.is_restricted(session):
-        raise HTTPException(status_code=403, detail="Your account is restricted and cannot perform this action.")
+        raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
 
     team = await session.get(Team, team_id)
     if not team:
-        raise HTTPException(status_code=404, detail="Team not found")
+        raise RequestError(ErrorType.TEAM_NOT_FOUND)
 
     if team.leader_id != current_user.id and user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="You are not the team leader")
+        raise RequestError(ErrorType.NOT_TEAM_LEADER)
 
     team_member = (
         await session.exec(select(TeamMember).where(TeamMember.team_id == team_id, TeamMember.user_id == user_id))
     ).first()
     if not team_member:
-        raise HTTPException(status_code=404, detail="User is not a member of the team")
+        raise RequestError(ErrorType.USER_NOT_TEAM_MEMBER)
 
     if team.leader_id == current_user.id:
-        raise HTTPException(status_code=403, detail="You cannot leave because you are the team leader")
+        raise RequestError(ErrorType.CANNOT_LEAVE_AS_TEAM_LEADER)
 
     await session.delete(team_member)
     await session.commit()

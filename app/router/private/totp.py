@@ -15,7 +15,8 @@ from app.models.totp import FinishStatus, StartCreateTotpKeyResp
 
 from .router import router
 
-from fastapi import Body, HTTPException
+from app.models.error import ErrorType, RequestError
+from fastapi import Body
 from pydantic import BaseModel
 import pyotp
 
@@ -64,7 +65,7 @@ async def start_create_totp(
     current_user: ClientUser,
 ):
     if await current_user.awaitable_attrs.totp_key:
-        raise HTTPException(status_code=400, detail="TOTP is already enabled for this user")
+        raise RequestError(ErrorType.TOTP_ALREADY_ENABLED)
 
     previous = await redis.hgetall(totp_redis_key(current_user))  # pyright: ignore[reportGeneralTypeIssues]
     if previous:  # pyright: ignore[reportGeneralTypeIssues]
@@ -104,11 +105,11 @@ async def finish_create_totp(
     if status == FinishStatus.SUCCESS:
         return backup_codes
     elif status == FinishStatus.INVALID:
-        raise HTTPException(status_code=400, detail="No TOTP setup in progress or invalid data")
+        raise RequestError(ErrorType.NO_TOTP_SETUP_OR_INVALID_DATA)
     elif status == FinishStatus.TOO_MANY_ATTEMPTS:
-        raise HTTPException(status_code=400, detail="Too many failed attempts. Please start over.")
+        raise RequestError(ErrorType.TOO_MANY_FAILED_ATTEMPTS)
     else:
-        raise HTTPException(status_code=400, detail="Invalid TOTP code")
+        raise RequestError(ErrorType.INVALID_TOTP_CODE)
 
 
 @router.delete(
@@ -126,7 +127,7 @@ async def disable_totp(
 ):
     totp = await session.get(TotpKeys, current_user.id)
     if not totp:
-        raise HTTPException(status_code=400, detail="TOTP is not enabled for this user")
+        raise RequestError(ErrorType.TOTP_NOT_ENABLED)
 
     # 使用防重放保护的TOTP验证或备份码验证
     is_totp_valid = False
@@ -139,4 +140,4 @@ async def disable_totp(
         await session.delete(totp)
         await session.commit()
     else:
-        raise HTTPException(status_code=400, detail="Invalid TOTP code or backup code")
+        raise RequestError(ErrorType.INVALID_TOTP_OR_BACKUP_CODE)

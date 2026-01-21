@@ -1,7 +1,8 @@
 from app.dependencies.storage import StorageService as StorageServiceDep
+from app.models.error import ErrorType, RequestError
 from app.storage import LocalStorageService
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from fastapi.responses import FileResponse
 
 file_router = APIRouter(prefix="/file", include_in_schema=False)
@@ -10,9 +11,9 @@ file_router = APIRouter(prefix="/file", include_in_schema=False)
 @file_router.get("/{path:path}")
 async def get_file(path: str, storage: StorageServiceDep):
     if not isinstance(storage, LocalStorageService):
-        raise HTTPException(404, "Not Found")
+        raise RequestError(ErrorType.NOT_FOUND)
     if not await storage.is_exists(path):
-        raise HTTPException(404, "Not Found")
+        raise RequestError(ErrorType.NOT_FOUND)
 
     try:
         return FileResponse(
@@ -21,4 +22,4 @@ async def get_file(path: str, storage: StorageServiceDep):
             filename=path.split("/")[-1],
         )
     except FileNotFoundError:
-        raise HTTPException(404, "Not Found")
+        raise RequestError(ErrorType.NOT_FOUND)

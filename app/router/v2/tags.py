@@ -8,10 +8,11 @@ from app.dependencies.database import Database
 from app.dependencies.user import get_client_user
 from app.models.score import Rank
 from app.models.tags import BeatmapTags, get_all_tags, get_tag_by_id
+from app.models.error import ErrorType, RequestError
 
 from .router import router
 
-from fastapi import Depends, HTTPException, Path
+from fastapi import Depends, Path
 from pydantic import BaseModel
 from sqlmodel import col, exists, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -59,13 +60,13 @@ async def vote_beatmap_tags(
     current_user: Annotated[User, Depends(get_client_user)],
 ):
     if await current_user.is_restricted(session):
-        raise HTTPException(status_code=403, detail="Your account is restricted and cannot perform this action.")
+        raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
 
     try:
         get_tag_by_id(tag_id)
         beatmap = (await session.exec(select(exists()).where(Beatmap.id == beatmap_id))).first()
         if beatmap is None or (not beatmap):
-            raise HTTPException(404, "beatmap not found")
+            raise RequestError(ErrorType.BEATMAP_NOT_FOUND)
         previous_votes = (
             await session.exec(
                 select(BeatmapTagVote)
@@ -79,7 +80,7 @@ async def vote_beatmap_tags(
             session.add(new_vote)
         await session.commit()
     except ValueError:
-        raise HTTPException(400, "Tag is not found")
+        raise RequestError(ErrorType.TAG_NOT_FOUND)
 
 
 @router.delete(
@@ -102,14 +103,14 @@ async def devote_beatmap_tags(
     - **tag_id**: 标签ID
     """
     if await current_user.is_restricted(session):
-        raise HTTPException(status_code=403, detail="Your account is restricted and cannot perform this action.")
+        raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
 
     try:
         tag = get_tag_by_id(tag_id)
         assert tag is not None
         beatmap = await session.get(Beatmap, beatmap_id)
         if beatmap is None:
-            raise HTTPException(404, "beatmap not found")
+            raise RequestError(ErrorType.BEATMAP_NOT_FOUND)
         previous_votes = (
             await session.exec(
                 select(BeatmapTagVote)
@@ -122,4 +123,4 @@ async def devote_beatmap_tags(
             await session.delete(previous_votes)
         await session.commit()
     except ValueError:
-        raise HTTPException(400, "Tag is not found")
+        raise RequestError(ErrorType.TAG_NOT_FOUND)

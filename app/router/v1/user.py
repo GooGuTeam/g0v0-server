@@ -10,7 +10,8 @@ from app.service.user_cache_service import get_user_cache_service
 
 from .router import AllStrModel, router
 
-from fastapi import BackgroundTasks, HTTPException, Query
+from app.models.error import ErrorType, RequestError
+from fastapi import BackgroundTasks, Query
 from sqlmodel import col, select
 
 
@@ -146,10 +147,10 @@ async def get_user(
         return [v1_user]
 
     except KeyError:
-        raise HTTPException(400, "Invalid request")
+        raise RequestError(ErrorType.INVALID_REQUEST)
     except ValueError as e:
         logger.error(f"Error processing V1 user data: {e}")
-        raise HTTPException(500, "Internal server error")
+        raise RequestError(ErrorType.INTERNAL)
 
 
 # 以下为 get_player_info 接口相关的实现函数

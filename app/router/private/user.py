@@ -31,7 +31,8 @@ from app.utils import hex_to_hue, utcnow
 
 from .router import router
 
-from fastapi import Body, HTTPException
+from app.models.error import ErrorType, RequestError
+from fastapi import Body
 from pydantic import BaseModel, Field
 from sqlmodel import exists, select
 
@@ -56,14 +57,14 @@ async def user_rename(
     """
     if await current_user.is_restricted(session):
         # https://github.com/ppy/osu-web/blob/cae2fdf03cfb8c30c8e332cfb142e03188ceffef/app/Libraries/ChangeUsername.php#L48-L49
-        raise HTTPException(403, "Your account is restricted and cannot perform this action.")
+        raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
 
     samename_user = (await session.exec(select(exists()).where(User.username == new_name))).first()
     if samename_user:
-        raise HTTPException(409, "Username Exists")
+        raise RequestError(ErrorType.USERNAME_EXISTS)
     errors = validate_username(new_name)
     if errors:
-        raise HTTPException(403, "\n".join(errors))
+        raise RequestError(ErrorType.INVALID_REQUEST, {"errors": errors}, status_code=403)
     previous_username = []
     previous_username.extend(current_user.previous_usernames)
     previous_username.append(current_user.username)
@@ -102,7 +103,7 @@ async def update_userpage(
 ):
     """更新用户页面内容"""
     if await current_user.is_restricted(session):
-        raise HTTPException(403, "Your account is restricted and cannot perform this action.")
+        raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
 
     try:
         errors = bbcode_service.validate_bbcode(request.body)
@@ -126,9 +127,9 @@ async def update_userpage(
 
     except UserpageError as e:
         # 使用官方格式的错误响应：{'error': message}
-        raise HTTPException(status_code=422, detail={"error": e.message})
+        raise RequestError(ErrorType.INVALID_REQUEST, {"error": e.message})
     except Exception:
-        raise HTTPException(status_code=500, detail={"error": "Failed to update user page"})
+        raise RequestError(ErrorType.INTERNAL, {"error": "Failed to update user page"})
 
 
 @router.post(
@@ -157,7 +158,7 @@ async def validate_bbcode(
     except UserpageError as e:
         return ValidateBBCodeResponse(valid=False, errors=[e.message], preview={"raw": request.content, "html": ""})
     except Exception:
-        raise HTTPException(status_code=500, detail={"error": "Failed to validate BBCode"})
+        raise RequestError(ErrorType.INTERNAL, {"error": "Failed to validate BBCode"})
 
 
 class Preferences(BaseModel):
@@ -309,7 +310,7 @@ async def change_user_preference(
     cache_service: UserCacheService,
 ):
     if await current_user.is_restricted(session):
-        raise HTTPException(403, "Your account is restricted and cannot perform this action.")
+        raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
 
     await current_user.awaitable_attrs.user_preference
     user_pref: UserPreference | None = current_user.user_preference
@@ -322,7 +323,7 @@ async def change_user_preference(
 
     if request.profile_order is not None:
         if set(request.profile_order) != set(DEFAULT_ORDER):
-            raise HTTPException(400, "Invalid profile order")
+            raise RequestError(ErrorType.INVALID_PROFILE_ORDER)
         user_pref.extras_order = request.profile_order
 
     if request.extra is not None:
@@ -347,7 +348,7 @@ async def change_user_preference(
         try:
             current_user.profile_hue = hex_to_hue(request.profile_colour)
         except ValueError:
-            raise HTTPException(400, "Invalid profile colour hex value")
+            raise RequestError(ErrorType.INVALID_PROFILE_COLOUR_HEX)
 
     await cache_service.invalidate_user_cache(current_user.id)
     await session.commit()
@@ -367,7 +368,7 @@ async def overwrite_user_preference(
     cache_service: UserCacheService,
 ):
     if await current_user.is_restricted(session):
-        raise HTTPException(403, "Your account is restricted and cannot perform this action.")
+        raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
 
     await Preferences.clear(current_user, [])
     await change_user_preference(request, session, current_user, cache_service)
@@ -390,7 +391,7 @@ async def delete_user_preference(
     cache_service: UserCacheService,
 ):
     if await current_user.is_restricted(session):
-        raise HTTPException(403, "Your account is restricted and cannot perform this action.")
+        raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
 
     await Preferences.clear(current_user, fields)
 

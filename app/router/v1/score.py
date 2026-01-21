@@ -11,7 +11,8 @@ from app.utils import utcnow
 
 from .router import AllStrModel, router
 
-from fastapi import HTTPException, Query
+from app.models.error import ErrorType, RequestError
+from fastapi import Query
 from sqlalchemy.orm import joinedload
 from sqlmodel import col, exists, select
 
@@ -90,7 +91,7 @@ async def get_user_best(
         ).all()
         return [await V1Score.from_db(score) for score in scores]
     except KeyError:
-        raise HTTPException(400, "Invalid request")
+        raise RequestError(ErrorType.INVALID_REQUEST)
 
 
 @router.get(
@@ -123,7 +124,7 @@ async def get_user_recent(
         ).all()
         return [await V1Score.from_db(score) for score in scores]
     except KeyError:
-        raise HTTPException(400, "Invalid request")
+        raise RequestError(ErrorType.INVALID_REQUEST)
 
 
 @router.get(
@@ -167,4 +168,4 @@ async def get_scores(
             )
         return [await V1Score.from_db(score) for score in scores]
     except KeyError:
-        raise HTTPException(400, "Invalid request")
+        raise RequestError(ErrorType.INVALID_REQUEST)

@@ -7,7 +7,8 @@ from app.service.user_cache_service import refresh_user_cache_background
 
 from .router import router
 
-from fastapi import BackgroundTasks, HTTPException
+from app.models.error import ErrorType, RequestError
+from fastapi import BackgroundTasks
 
 if settings.allow_delete_scores:
 
@@ -37,11 +38,11 @@ if settings.allow_delete_scores:
         """
         if await current_user.is_restricted(session):
             # avoid deleting the evidence of cheating
-            raise HTTPException(status_code=403, detail="Your account is restricted and cannot perform this action.")
+            raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
 
         score = await session.get(Score, score_id)
         if not score or score.user_id != current_user.id:
-            raise HTTPException(status_code=404, detail="找不到指定成绩")
+            raise RequestError(ErrorType.SCORE_NOT_FOUND)
 
         gamemode = score.gamemode
         user_id = score.user_id

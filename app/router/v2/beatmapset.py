@@ -17,6 +17,7 @@ from app.dependencies.fetcher import Fetcher
 from app.dependencies.geoip import IPAddress, get_geoip_helper
 from app.dependencies.user import ClientUser, get_current_user
 from app.helpers.asset_proxy_helper import asset_proxy_response
+from app.models.error import ErrorType, RequestError
 from app.models.beatmap import SearchQueryModel
 from app.service.beatmapset_cache_service import generate_hash
 from app.utils import api_doc
@@ -110,7 +111,7 @@ async def search_beatmapset(
         await cache_service.cache_search_result(query_hash, cursor_hash, sets.model_dump())
         return sets
     except HTTPError as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        raise RequestError(ErrorType.INTERNAL, {"message": str(e)}) from e
 
 
 @router.get(
@@ -145,7 +146,7 @@ async def lookup_beatmapset(
         await cache_service.cache_beatmap_lookup(beatmap_id, resp)
         return resp
     except HTTPError as exc:
-        raise HTTPException(status_code=404, detail="Beatmap not found") from exc
+        raise RequestError(ErrorType.BEATMAP_NOT_FOUND) from exc
 
 
 @router.get(
@@ -178,7 +179,7 @@ async def get_beatmapset(
         await cache_service.cache_beatmapset(resp)
         return resp
     except HTTPError as exc:
-        raise HTTPException(status_code=404, detail="Beatmapset not found") from exc
+        raise RequestError(ErrorType.BEATMAPSET_NOT_FOUND) from exc
 
 
 @router.get(
