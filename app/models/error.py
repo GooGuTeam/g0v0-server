@@ -201,7 +201,7 @@ class RequestError(HTTPException):
 
     Args:
         error_type (ErrorType): The error type to initialize from.
-        extra (dict[str, Any] | None): Details to include in the response.
+        extra (Any | None): Details to include in the response.
         status_code (int): Overrides the default one given by the error type.
         headers (dict[str, str] | None): Will be attached to the response header.
     """
@@ -213,7 +213,7 @@ class RequestError(HTTPException):
     def __init__(
         self,
         error_type: ErrorType,
-        extra: dict[str, Any] | None = None,
+        extra: Any | None = None,
         *,
         status_code: int | None = None,
         headers: dict[str, str] | None = None,
@@ -225,7 +225,7 @@ class RequestError(HTTPException):
         # Optional details
         detail = {"key": self.msg_key}
         if extra:
-            detail.update(extra)
+            detail.update({"extra": extra})
 
         # Fallback message
         if self.fallback_msg:
