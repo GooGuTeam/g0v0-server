@@ -50,11 +50,7 @@ async def lookup_beatmap(
     filename: Annotated[str | None, Query(alias="filename", description="谱面文件名")] = None,
 ):
     if id is None and md5 is None and filename is None:
-        raise RequestError(
-            ErrorType.BEATMAP_LOOKUP_ARGS_MISSING,
-            {"missing": ["id", "checksum", "filename"]},
-            status_code=400,
-        )
+        raise RequestError(ErrorType.BEATMAP_LOOKUP_ARGS_MISSING)
     try:
         beatmap = await Beatmap.get_or_fetch(db, fetcher, bid=id, md5=md5)
     except HTTPError:
@@ -191,4 +187,4 @@ async def get_beatmap_attributes(
     except HTTPStatusError:
         raise RequestError(ErrorType.BEATMAP_NOT_FOUND)
     except ConvertError as e:
-        raise RequestError(ErrorType.INVALID_REQUEST, {"message": str(e)}, status_code=400)
+        raise RequestError(ErrorType.INVALID_REQUEST, {"error": str(e)}, status_code=400)

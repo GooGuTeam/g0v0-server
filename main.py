@@ -269,7 +269,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 @app.exception_handler(RequestError)
 async def request_error_handler(request: Request, exc: RequestError):  # noqa: ARG001
     content = {
-        "error": exc.message,
+        "error": exc.formatted_message,
         "msg_key": exc.msg_key,
     }
 

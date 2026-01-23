@@ -14,7 +14,7 @@ from app.dependencies.database import Database, Redis
 from app.dependencies.fetcher import Fetcher
 from app.dependencies.storage import StorageService
 from app.log import log
-from app.models.error import ErrorType, RequestError
+from app.models.error import ErrorType, RequestError, FieldMissingError
 from app.models.playlist import PlaylistItem
 from app.models.room import MatchType, QueueMode, RoomCategory, RoomStatus
 from app.models.score import RULESETS_VERSION_HASH, GameMode, VersionEntry
@@ -146,16 +146,15 @@ def _validate_playlist_items(items: list[dict[str, Any]]) -> None:
     for idx, item in enumerate(items):
         if item["beatmap_id"] is None:
             raise RequestError(
-                ErrorType.INVALID_REQUEST,
-                {"message": f"Playlist item at index {idx} missing beatmap_id"},
-                status_code=400,
+                ErrorType.MISSING_BEATMAP_ID_PLAYLIST,
+                {"error": f"Playlist item at index {idx} missing beatmap_id"},
             )
 
         ruleset_id = item["ruleset_id"]
         if not isinstance(ruleset_id, int):
             raise RequestError(
                 ErrorType.INVALID_RULESET_ID,
-                {"message": f"Playlist item at index {idx} has invalid ruleset_id {ruleset_id}"},
+                {"error": f"Playlist item at index {idx} has invalid ruleset_id {ruleset_id}"},
             )
 
 
@@ -167,7 +166,7 @@ async def _create_room(db: Database, room_data: dict[str, Any]) -> tuple[Room, i
     queue_mode = room_data.get("queue_mode", "HostOnly")
 
     if not host_user_id or not isinstance(host_user_id, int):
-        raise RequestError(ErrorType.INVALID_REQUEST, {"required": ["user_id"]}, status_code=400)
+        raise FieldMissingError(["user_id"])
 
     await _validate_user_exists(db, host_user_id)
 

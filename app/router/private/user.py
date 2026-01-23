@@ -64,7 +64,7 @@ async def user_rename(
         raise RequestError(ErrorType.USERNAME_EXISTS)
     errors = validate_username(new_name)
     if errors:
-        raise RequestError(ErrorType.INVALID_REQUEST, {"errors": errors}, status_code=403)
+        raise RequestError(ErrorType.INVALID_USERNAME, {"errors": errors})
     previous_username = []
     previous_username.extend(current_user.previous_usernames)
     previous_username.append(current_user.username)

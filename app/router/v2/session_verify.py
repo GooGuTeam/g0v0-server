@@ -255,7 +255,7 @@ async def fallback_email(
     current_user = user_and_token[0]
     token_id = user_and_token[1].id
     if not await LoginSessionService.get_login_method(current_user.id, token_id, redis):
-        raise RequestError(ErrorType.INVALID_REQUEST, {"message": "当前会话不需要回退"}, status_code=400)
+        raise RequestError(ErrorType.SESSION_FALLBACK_UNNEEDED)
 
     await LoginSessionService.set_login_method(current_user.id, token_id, "mail", redis)
     success, message, _ = await EmailVerificationService.resend_verification_code(

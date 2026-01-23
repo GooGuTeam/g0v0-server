@@ -13,7 +13,7 @@ from app.database.verification import LoginSession, TrustedDevice
 from app.dependencies.database import Database, Redis
 from app.dependencies.user import ClientUser
 from app.log import log
-from app.models.error import ErrorType, RequestError
+from app.models.error import ErrorType, RequestError, FieldMissingError
 
 from .router import router
 
@@ -59,13 +59,7 @@ async def change_password(
     if totp_key:
         # 用户已启用TOTP，必须验证TOTP
         if not totp_code:
-            raise RequestError(
-                ErrorType.INVALID_REQUEST,
-                {
-                    "required": ["totp_code"],
-                    "message": "TOTP code is required. Please provide 6-digit code or backup code.",
-                },
-            )
+            raise RequestError(ErrorType.TOTP_CODE_REQUIRED)
 
         is_verified = False
         if len(totp_code) == 6 and totp_code.isdigit():
@@ -77,7 +71,7 @@ async def change_password(
             if is_verified:
                 session.add(totp_key)
         else:
-            raise RequestError(ErrorType.INVALID_TOTP_FORMAT)
+            raise RequestError(ErrorType.INVALID_TOTP_FORMAT, {"args": BACKUP_CODE_LENGTH})
 
         if not is_verified:
             raise RequestError(ErrorType.INVALID_TOTP_OR_BACKUP_CODE)
@@ -87,11 +81,7 @@ async def change_password(
     else:
         # 用户未启用TOTP，必须验证当前密码
         if not current_password:
-            raise RequestError(
-                ErrorType.PASSWORD_REQUIRED,
-                {"required": ["current_password"]},
-                status_code=400,
-            )
+            raise FieldMissingError(["current_password"])
 
         if not await authenticate_user(session, current_user.username, current_password):
             raise RequestError(ErrorType.PASSWORD_INCORRECT)

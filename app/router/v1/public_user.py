@@ -4,7 +4,7 @@ from app.database.statistics import UserStatistics
 from app.database.user import User
 from app.dependencies.database import Database, get_redis
 from app.log import logger
-from app.models.error import ErrorType, RequestError
+from app.models.error import ErrorType, RequestError, FieldMissingError
 from app.models.score import GameMode
 from app.models.v1_user import (
     GetPlayerCountResponse,
@@ -194,7 +194,7 @@ async def api_get_player_info(
     """
     # 验证参数
     if not id and not name:
-        raise RequestError(ErrorType.INVALID_REQUEST, {"required": ["id", "name"]}, status_code=400)
+        raise FieldMissingError(["id", "name"])
 
     # 查询用户
     if id:

@@ -151,13 +151,10 @@ def check_image(content: bytes, size: int, width: int, height: int) -> str:
             if img.format not in ["PNG", "JPEG", "GIF"]:
                 raise RequestError(ErrorType.INVALID_IMAGE_FORMAT)
             if img.size[0] > width or img.size[1] > height:
-                raise RequestError(
-                    ErrorType.IMAGE_DIMENSIONS_EXCEED_LIMIT,
-                    {"limit_width": width, "limit_height": height},
-                )
+                raise RequestError(ErrorType.IMAGE_DIMENSIONS_EXCEED_LIMIT, {"args": f"{width}x{height}"})
             return img.format.lower()
     except Exception as e:
-        raise RequestError(ErrorType.ERROR_PROCESSING_IMAGE, {"reason": str(e)})
+        raise RequestError(ErrorType.ERROR_PROCESSING_IMAGE, {"args": str(e)})
 
 
 def extract_user_agent(user_agent: str | None) -> "UserAgentInfo":
@@ -326,10 +323,12 @@ def _get_type(typ: type, includes: tuple[str, ...]) -> Any:
         return list[_get_type(item_type, includes)]  # pyright: ignore[reportArgumentType, reportGeneralTypeIssues]
     elif origin is dict:
         key_type, value_type = typ.__args__
-        return dict[key_type, _get_type(value_type, includes)]  # pyright: ignore[reportArgumentType, reportGeneralTypeIssues]
+        return dict[
+            key_type, _get_type(value_type, includes)]  # pyright: ignore[reportArgumentType, reportGeneralTypeIssues]
     elif type_is_optional(typ):
         inner_type = next(arg for arg in get_args(typ) if arg is not NoneType)
-        return Union[_get_type(inner_type, includes), None]  # pyright: ignore[reportArgumentType, reportGeneralTypeIssues]  # noqa: UP007
+        return Union[_get_type(inner_type,
+                               includes), None]  # pyright: ignore[reportArgumentType, reportGeneralTypeIssues]  # noqa: UP007
     elif origin is UnionType or origin is Union:
         new_types = []
         for arg in get_args(typ):

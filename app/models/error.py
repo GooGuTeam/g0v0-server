@@ -28,6 +28,7 @@ class ErrorType(Enum):
     USER_NOT_VERIFIED = ("user_not_verified", 401, "User not verified")
     MISSING_API_KEY = ("missing_api_key", 401, "Missing API key")
     INVALID_API_KEY = ("invalid_api_key", 401, "Invalid API key")
+    SESSION_FALLBACK_UNNEEDED = ("session_fallback_unneeded", 400, "Fallback is unnecessary for the current session")
 
     # Not found
     NOT_FOUND = ("not_found", 404, "Not found")
@@ -61,7 +62,7 @@ class ErrorType(Enum):
 
     # Validation / bad request
     INVALID_REQUEST = ("invalid_request", 400, "Invalid request")
-    FIELDS_MISSING = ("fields_missing", 400, "The following fields are required: {}")
+    FIELDS_MISSING = ("fields_missing", 400, "The following fields are required: %(required)s")
     INVALID_RULESET_ID = ("invalid_ruleset_id", 422, "Invalid ruleset ID")
     INVALID_BEATMAPSET_TYPE = ("invalid_beatmapset_type", 400, "Invalid beatmapset type")
     BEATMAP_LOOKUP_ARGS_MISSING = (
@@ -91,6 +92,7 @@ class ErrorType(Enum):
         400,
         "At least one playlist item is required to create a room",
     )
+    MISSING_BEATMAP_ID_PLAYLIST = ("missing_beatmap_id_playlist", 400, "beatmap_id is missing for some playlist items")
     RULESET_MISMATCH_PLAYLIST_ITEM = ("ruleset_mismatch_playlist_item", 400, "Ruleset mismatch in playlist item")
     BEATMAP_ID_MISMATCH_PLAYLIST_ITEM = (
         "beatmap_id_mismatch_playlist_item",
@@ -108,13 +110,14 @@ class ErrorType(Enum):
     FILE_SIZE_EXCEEDS_LIMIT = ("file_size_exceeds_limit", 400, "File size exceeds 10MB limit")
     FILE_EMPTY = ("file_empty", 400, "File cannot be empty")
     INVALID_IMAGE_FORMAT = ("invalid_image_format", 400, "Invalid image format")
-    IMAGE_DIMENSIONS_EXCEED_LIMIT = ("image_dimensions_exceed_limit", 400, "Image size exceeds the limit")
-    ERROR_PROCESSING_IMAGE = ("error_processing_image", 400, "Error processing image")
+    IMAGE_DIMENSIONS_EXCEED_LIMIT = ("image_dimensions_exceed_limit", 400, "Image size exceeds the limit of %(args)s")
+    ERROR_PROCESSING_IMAGE = ("error_processing_image", 400, "Error processing image: %(args)s")
     AUDIO_FILE_TOO_LARGE = ("audio_file_too_large", 413, "Audio file too large")
 
     # Profile / user settings
     INVALID_PROFILE_ORDER = ("invalid_profile_order", 400, "Invalid profile order")
     INVALID_PROFILE_COLOUR_HEX = ("invalid_profile_colour_hex", 400, "Invalid profile colour hex value")
+    INVALID_USERNAME = ("invalid_username", 403, "Invalid username")
     USERNAME_EXISTS = ("username_exists", 409, "Username Exists")
     NAME_ALREADY_EXISTS = ("name_already_exists", 409, "Name already exists")
     SHORT_NAME_ALREADY_EXISTS = ("short_name_already_exists", 409, "Short name already exists")
@@ -143,13 +146,14 @@ class ErrorType(Enum):
 
     # TOTP
     TOTP_ALREADY_ENABLED = ("totp_already_enabled", 400, "TOTP is already enabled for this user")
+    TOTP_CODE_REQUIRED = ("totp_code_required", 400, "TOTP code is required. Please provide 6-digit code or backup code.")
     NO_TOTP_SETUP_OR_INVALID_DATA = ("no_totp_setup_or_invalid_data", 400, "No TOTP setup in progress or invalid data")
     TOO_MANY_FAILED_ATTEMPTS = ("too_many_failed_attempts", 400, "Too many failed attempts. Please start over.")
     INVALID_TOTP_CODE = ("invalid_totp_code", 400, "Invalid TOTP code")
     INVALID_TOTP_FORMAT = (
         "invalid_totp_format",
         400,
-        "Invalid TOTP code format. Expected 6-digit code or 10-character backup code.",
+        "Invalid TOTP code format. Expected 6-digit code or %(args)s-character backup code.",
     )
     TOTP_NOT_ENABLED = ("totp_not_enabled", 400, "TOTP is not enabled for this user")
     INVALID_TOTP_OR_BACKUP_CODE = ("invalid_totp_or_backup_code", 400, "Invalid TOTP code or backup code")
@@ -157,7 +161,7 @@ class ErrorType(Enum):
     # Forbidden
     FORBIDDEN = ("forbidden", 403, "You are not permitted to perform this action")
     PASSWORD_INCORRECT = ("password_incorrect", 403, "Current password is incorrect")
-    PASSWORD_REQUIRED = ("password_required", 403, "Password required")
+    PASSWORD_REQUIRED = ("password_required", 400, "Password required")
     INVALID_PASSWORD = ("invalid_password", 403, "Invalid password")
     ROOM_PASSWORD_REQUIRED = ("room_password_required", 403, "Password required")
     ROOM_INVALID_PASSWORD = ("room_invalid_password", 403, "Invalid password")
@@ -199,6 +203,9 @@ class RequestError(Exception):
     """
     A wrapper for major API errors to simplify response composition.
 
+    The message of the error can be formatted by declaring a list `args` in the `details` argument,
+    and can be accessed via `formatted_message`.
+
     Attributes:
         msg_key (str): The key of the error message for localization.
         status_code (int): The status code should be responded, defaults to 422 to match osu!api's behavior.
@@ -214,8 +221,19 @@ class RequestError(Exception):
     status_code: int
     msg_key: str
     message: str
-    details: dict[str, str]
+    details: dict[str, Any]
     headers: dict[str, str] | None = None
+
+    @property
+    def formatted_message(self) -> str:
+        try:
+            return self.message % self.details
+        # The argument list doesn't exist
+        except KeyError:
+            return self.message
+        except IndexError as e:
+            logger.error(f"Error while formatting error message: {e}")
+            return self.message
 
     def __init__(
         self,
@@ -235,21 +253,14 @@ class RequestError(Exception):
             self.details.update(details)
 
 
-@dataclass
-class FormattableError(RequestError):
+class FieldMissingError(RequestError):
     """
-    A subtype of RequestError with its message formattable using args.
+    Indicates that one or more required fields are missing in client's request.
 
     Args:
-        error_type (ErrorType): The error type to initialize from.
-        args (list[str]): Arguments to format the message with.
+        required (list[str]): Names of required fields.
     """
 
-    def __init__(self, error_type: ErrorType, args: list[str]):
-        super().__init__(error_type, {"args": args})
+    def __init__(self, required: list[str]):
+        super().__init__(ErrorType.FIELDS_MISSING, {"required": required})
 
-        try:
-            self.message = self.message.format(args)
-        # Chances are that args and format placeholders don't match
-        except IndexError as e:
-            logger.error(f"Error while formatting error message: {e}")

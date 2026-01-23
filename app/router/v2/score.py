@@ -968,7 +968,7 @@ async def reorder_score_pin(
     if (after_score_id is None) == (before_score_id is None):
         raise RequestError(
             ErrorType.INVALID_REQUEST,
-            {"reason": "Either after_score_id or before_score_id must be provided (but not both)"},
+            {"error": "Either after_score_id or before_score_id must be provided (but not both)"},
         )
 
     all_pinned_scores = (
@@ -988,8 +988,8 @@ async def reorder_score_pin(
 
     reference_score = next((s for s in all_pinned_scores if s.id == reference_score_id), None)
     if not reference_score:
-        detail = "after" if after_score_id else "before"
-        raise RequestError(ErrorType.SCORE_NOT_FOUND, {"reference": detail})
+        detail = "After score not found" if after_score_id else "Before score not found"
+        raise RequestError(ErrorType.SCORE_NOT_FOUND, {"error": detail})
 
     target_order = reference_score.pinned_order + 1 if after_score_id else reference_score.pinned_order
 
