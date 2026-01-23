@@ -9,7 +9,8 @@ class ErrorType(Enum):
     """
     All possible error types that could be passed to the client.
 
-    Each entry is a tuple of the message key, status code and fallback message, which should match the arguments of ErrorEntry.
+    Each entry is a tuple of the message key, status code and fallback message,
+    which should match the arguments of ErrorEntry.
 
     Remember to keep this enum in sync with frontend l10n implementation.
     """
@@ -155,6 +156,15 @@ class ErrorType(Enum):
     INVALID_TOTP_OR_BACKUP_CODE = ("invalid_totp_or_backup_code", 400, "Invalid TOTP code or backup code")
 
     # Password & OAuth
+    INCORRECT_SIGNIN = ("incorrect_signin", 400, "Username or password incorrect")
+    INVALID_SCOPE = ("invalid_scope", 400, "The requested scope is invalid, unknown, "
+                                           "or malformed. The client may not request "
+                                           "more than one scope at a time.")
+    SIGNIN_INFO_REQUIRED = ("signin_info_required", 400, "Username and password required")
+    CLIENT_OAUTH_FAILED = ("client_oauth_failed", 401, "Client authentication failed (e.g., unknown client, "
+                                                       "no client authentication included, "
+                                                       "or unsupported authentication method).")
+    INVALID_VERIFICATION_TOKEN = ("invalid_verification_token", 400, "Invalid or expired verification token")
     PASSWORD_INCORRECT = ("password_incorrect", 403, "Current password is incorrect")
     PASSWORD_REQUIRED = ("password_required", 403, "Password required")
     INVALID_PASSWORD = ("invalid_password", 403, "Invalid password")
@@ -188,7 +198,7 @@ class RequestError(HTTPException):
 
     msg_key: str
     status_code: int = 422
-    fallback_msg: str = None
+    fallback_msg: str | None = None
 
     def __init__(
         self,
@@ -198,7 +208,9 @@ class RequestError(HTTPException):
         status_code: int | None = None,
         headers: dict[str, str] | None = None,
     ):
-        self.msg_key, self.status_code, self.fallback_msg = error_type
+        self.msg_key = error_type.value[0]
+        self.status_code = status_code if status_code is not None else error_type.value[1]
+        self.fallback_msg = error_type.value[2]
 
         # Optional details
         detail = {"key": self.msg_key}
@@ -209,5 +221,4 @@ class RequestError(HTTPException):
         if self.fallback_msg:
             detail.update({"fallback": self.fallback_msg})
 
-        final_status = status_code if status_code is not None else self.status_code
-        super().__init__(final_status, detail=detail, headers=headers)
+        super().__init__(self.status_code, detail=detail, headers=headers)
