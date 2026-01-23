@@ -6,6 +6,7 @@ from app.log import log
 
 logger = log("Exception")
 
+
 class ErrorType(Enum):
     """
     All possible error types that could be passed to the client.
@@ -244,12 +245,7 @@ class FormattableError(RequestError):
         args (list[str]): Arguments to format the message with.
     """
 
-
-    def __init__(
-        self,
-        error_type: ErrorType,
-        args: list[str]
-    ):
+    def __init__(self, error_type: ErrorType, args: list[str]):
         super().__init__(error_type, {"args": args})
 
         try:
