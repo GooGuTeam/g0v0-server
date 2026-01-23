@@ -39,8 +39,7 @@ class UserCreate(BaseModel):
 class OAuthErrorResponse(BaseModel):
     error: str
     error_description: str
-    hint: str
-    message: str
+    hint: str | None
 
 
 class RegistrationErrorResponse(BaseModel):
