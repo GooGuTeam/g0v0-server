@@ -23,6 +23,7 @@ from app.dependencies.database import Database, Redis
 from app.dependencies.geoip import GeoIPService, IPAddress
 from app.dependencies.user_agent import UserAgentInfo
 from app.log import log
+from app.models.error import ErrorType, RequestError
 from app.models.extended_auth import ExtendedTokenResponse
 from app.models.oauth import (
     OAuthErrorResponse,
@@ -48,10 +49,19 @@ from sqlmodel import exists, select
 logger = log("Auth")
 
 
-def create_oauth_error_response(error: str, description: str, hint: str, status_code: int = 400):
-    """创建标准的 OAuth 错误响应"""
-    error_data = OAuthErrorResponse(error=error, error_description=description, hint=hint, message=description)
-    return JSONResponse(status_code=status_code, content=error_data.model_dump())
+def create_oauth_error_response(error: str, error_type: ErrorType, hint: str | None = None):
+    """
+    Creates an error response compatible with the RequestError implementation.
+
+    Args:
+        error (str): The error type in OAuth standards.
+        error_type (ErrorType): The error type template.
+        hint (str): Verbose detail that might be helpful.
+    """
+
+    # error_description -> Fallback message in ErrorType
+    error_data = OAuthErrorResponse(error=error, error_description=error_type.value[2], hint=hint)
+    raise RequestError(error_type, extra=error_data.model_dump())
 
 
 def validate_email(email: str) -> list[str]:
@@ -231,8 +241,8 @@ async def oauth_token(
         if not success:
             return create_oauth_error_response(
                 error="invalid_request",
-                description=f"Verification failed: {error_msg}",
-                hint="Invalid or expired verification token",
+                error_type=ErrorType.INVALID_VERIFICATION_TOKEN,
+                hint=f"Verification failed: {error_msg}",
             )
 
     scopes = scope.split(" ")
@@ -253,34 +263,29 @@ async def oauth_token(
     if client is None and not is_game_client:
         return create_oauth_error_response(
             error="invalid_client",
-            description=(
+            error_type=ErrorType.INVALID_AUTH_CLIENT,
+            hint=(
                 "Client authentication failed (e.g., unknown client, "
                 "no client authentication included, "
                 "or unsupported authentication method)."
             ),
-            hint="Invalid client credentials",
-            status_code=401,
         )
 
     if grant_type == "password":
         if not username or not password:
             return create_oauth_error_response(
                 error="invalid_request",
-                description=(
+                error_type=ErrorType.SIGNIN_INFO_REQUIRED,
+                hint=(
                     "The request is missing a required parameter, includes an "
                     "invalid parameter value, "
                     "includes a parameter more than once, or is otherwise malformed."
                 ),
-                hint="Username and password required",
             )
         if scopes != ["*"]:
             return create_oauth_error_response(
                 error="invalid_scope",
-                description=(
-                    "The requested scope is invalid, unknown, "
-                    "or malformed. The client may not request "
-                    "more than one scope at a time."
-                ),
+                error_type=ErrorType.INVALID_SCOPE,
                 hint="Only '*' scope is allowed for password grant type",
             )
 
@@ -298,14 +303,14 @@ async def oauth_token(
 
             return create_oauth_error_response(
                 error="invalid_grant",
-                description=(
+                error_type=ErrorType.INCORRECT_SIGNIN,
+                hint=(
                     "The provided authorization grant (e.g., authorization code, "
                     "resource owner credentials) "
                     "or refresh token is invalid, expired, revoked, "
                     "does not match the redirection URI used in "
                     "the authorization request, or was issued to another client."
                 ),
-                hint="Incorrect sign in",
             )
 
         # 确保用户对象与当前会话关联
@@ -422,12 +427,7 @@ async def oauth_token(
         if not refresh_token:
             return create_oauth_error_response(
                 error="invalid_request",
-                description=(
-                    "The request is missing a required parameter, "
-                    "includes an invalid parameter value, "
-                    "includes a parameter more than once, or is otherwise malformed."
-                ),
-                hint="Refresh token required",
+                error_type=ErrorType.REFRESH_TOKEN_REQUIRED,
             )
 
         # 验证刷新令牌
@@ -435,14 +435,7 @@ async def oauth_token(
         if not token_record:
             return create_oauth_error_response(
                 error="invalid_grant",
-                description=(
-                    "The provided authorization grant (e.g., authorization code, "
-                    "resource owner credentials) or refresh token is "
-                    "invalid, expired, revoked, "
-                    "does not match the redirection URI used "
-                    "in the authorization request, or was issued to another client."
-                ),
-                hint="Invalid refresh token",
+                error_type=ErrorType.INVALID_REFRESH_TOKEN,
             )
 
         # 生成新的访问令牌
@@ -473,37 +466,31 @@ async def oauth_token(
         if client is None:
             return create_oauth_error_response(
                 error="invalid_client",
-                description=(
+                error_type=ErrorType.INVALID_AUTH_CLIENT,
+                hint=(
                     "Client authentication failed (e.g., unknown client, "
                     "no client authentication included, "
                     "or unsupported authentication method)."
                 ),
-                hint="Invalid client credentials",
-                status_code=401,
             )
 
         if not code:
             return create_oauth_error_response(
                 error="invalid_request",
-                description=(
-                    "The request is missing a required parameter, "
-                    "includes an invalid parameter value, "
-                    "includes a parameter more than once, or is otherwise malformed."
-                ),
-                hint="Authorization code required",
+                error_type=ErrorType.AUTH_CODE_REQUIRED,
             )
 
         code_result = await get_user_by_authorization_code(db, redis, client_id, code)
         if not code_result:
             return create_oauth_error_response(
                 error="invalid_grant",
-                description=(
+                error_type=ErrorType.INVALID_AUTH_CODE,
+                hint=(
                     "The provided authorization grant (e.g., authorization code, "
                     "resource owner credentials) or refresh token is invalid, "
                     "expired, revoked, does not match the redirection URI used in "
                     "the authorization request, or was issued to another client."
                 ),
-                hint="Invalid authorization code",
             )
         user, scopes = code_result
 
@@ -543,20 +530,17 @@ async def oauth_token(
         if client is None:
             return create_oauth_error_response(
                 error="invalid_client",
-                description=(
+                error_type=ErrorType.INVALID_AUTH_CLIENT,
+                hint=(
                     "Client authentication failed (e.g., unknown client, "
                     "no client authentication included, "
                     "or unsupported authentication method)."
                 ),
-                hint="Invalid client credentials",
-                status_code=401,
             )
         elif scopes != ["public"]:
             return create_oauth_error_response(
                 error="invalid_scope",
-                description="The requested scope is invalid, unknown, or malformed.",
-                hint="Scope must be 'public'",
-                status_code=400,
+                error_type=ErrorType.SCOPE_NOT_PUBLIC,
             )
 
         # 生成令牌

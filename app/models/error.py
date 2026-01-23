@@ -156,7 +156,10 @@ class ErrorType(Enum):
     INVALID_TOTP_OR_BACKUP_CODE = ("invalid_totp_or_backup_code", 400, "Invalid TOTP code or backup code")
 
     # Password & OAuth
-    INCORRECT_SIGNIN = ("incorrect_signin", 400, "Username or password incorrect")
+    # General error for client not providing enough information or being malformed
+    INVALID_AUTH_CLIENT = ("invalid_auth_client", 401, "Invalid client credentials")
+
+    INCORRECT_SIGNIN = ("incorrect_signin", 400, "Incorrect sign-in")
     INVALID_SCOPE = (
         "invalid_scope",
         400,
@@ -165,14 +168,13 @@ class ErrorType(Enum):
         "more than one scope at a time.",
     )
     SIGNIN_INFO_REQUIRED = ("signin_info_required", 400, "Username and password required")
-    CLIENT_OAUTH_FAILED = (
-        "client_oauth_failed",
-        401,
-        "Client authentication failed (e.g., unknown client, "
-        "no client authentication included, "
-        "or unsupported authentication method).",
-    )
     INVALID_VERIFICATION_TOKEN = ("invalid_verification_token", 400, "Invalid or expired verification token")
+    REFRESH_TOKEN_REQUIRED = ("refresh_token_required", 400, "Refresh token required")
+    INVALID_REFRESH_TOKEN = ("invalid_refresh_token", 400, "Invalid refresh token")
+    AUTH_CODE_REQUIRED = ("auth_code_required", 400, "Authorization code required")
+    INVALID_AUTH_CODE = ("invalid_auth_code", 400, "Invalid authorization code")
+    SCOPE_NOT_PUBLIC = ("scope_not_public", 400, "Scope must be 'public'")
+
     PASSWORD_INCORRECT = ("password_incorrect", 403, "Current password is incorrect")
     PASSWORD_REQUIRED = ("password_required", 403, "Password required")
     INVALID_PASSWORD = ("invalid_password", 403, "Invalid password")
