@@ -3,6 +3,7 @@ from enum import Enum
 from typing import Any
 
 from fastapi import HTTPException
+from fastapi.logger import logger
 
 
 class ErrorType(Enum):
@@ -59,6 +60,7 @@ class ErrorType(Enum):
 
     # Validation / bad request
     INVALID_REQUEST = ("invalid_request", 400, "Invalid request")
+    FIELDS_MISSING = ("fields_missing", 400, "The following fields are required: {}")
     INVALID_RULESET_ID = ("invalid_ruleset_id", 422, "Invalid ruleset ID")
     INVALID_BEATMAPSET_TYPE = ("invalid_beatmapset_type", 400, "Invalid beatmapset type")
     BEATMAP_LOOKUP_ARGS_MISSING = (
@@ -192,45 +194,66 @@ class ErrorType(Enum):
 
 
 @dataclass
-class RequestError(HTTPException):
+class RequestError(Exception):
     """
     A wrapper for major API errors to simplify response composition.
 
     Attributes:
         msg_key (str): The key of the error message for localization.
         status_code (int): The status code should be responded, defaults to 422 to match osu!api's behavior.
-        fallback_msg (str): The fallback message for clients without localization support.
+        message (str): The fallback message for clients without localization support.
 
     Args:
         error_type (ErrorType): The error type to initialize from.
-        extra (Any | None): Details to include in the response.
+        details (Any | None): Details to include in the response.
         status_code (int): Overrides the default one given by the error type.
         headers (dict[str, str] | None): Will be attached to the response header.
     """
 
+    status_code: int
     msg_key: str
-    status_code: int = 422
-    fallback_msg: str | None = None
+    message: str
+    details: dict[str, str]
+    headers: dict[str, str] | None = None
 
     def __init__(
         self,
         error_type: ErrorType,
-        extra: Any | None = None,
+        details: dict[str, Any] | None = None,
         *,
         status_code: int | None = None,
         headers: dict[str, str] | None = None,
     ):
-        self.msg_key = error_type.value[0]
         self.status_code = status_code if status_code is not None else error_type.value[1]
-        self.fallback_msg = error_type.value[2]
+        self.msg_key = error_type.value[0]
+        self.message = error_type.value[2]
+        self.headers = headers
 
         # Optional details
-        detail = {"key": self.msg_key}
-        if extra:
-            detail.update({"extra": extra})
+        if details:
+            self.details.update(details)
 
-        # Fallback message
-        if self.fallback_msg:
-            detail.update({"fallback": self.fallback_msg})
 
-        super().__init__(self.status_code, detail=detail, headers=headers)
+@dataclass
+class FormattableError(RequestError):
+    """
+    A subtype of RequestError with its message formattable using args.
+
+    Args:
+        error_type (ErrorType): The error type to initialize from.
+        args (list[str]): Arguments to format the message with.
+    """
+
+
+    def __init__(
+        self,
+        error_type: ErrorType,
+        args: list[str]
+    ):
+        super().__init__(error_type, {"args": args})
+
+        try:
+            self.message = self.message.format(args)
+        # Chances are that args and format placeholders don't match
+        except IndexError as e:
+            logger.error(f"Error while formatting error message: {e}")

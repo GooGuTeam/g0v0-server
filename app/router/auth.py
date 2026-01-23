@@ -61,7 +61,7 @@ def create_oauth_error_response(error: str, error_type: ErrorType, hint: str | N
 
     # error_description -> Fallback message in ErrorType
     error_data = OAuthErrorResponse(error=error, error_description=error_type.value[2], hint=hint)
-    raise RequestError(error_type, extra=error_data.model_dump())
+    raise RequestError(error_type, details=error_data.model_dump())
 
 
 def validate_email(email: str) -> list[str]:
