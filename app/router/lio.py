@@ -14,7 +14,7 @@ from app.dependencies.database import Database, Redis
 from app.dependencies.fetcher import Fetcher
 from app.dependencies.storage import StorageService
 from app.log import log
-from app.models.error import ErrorType, RequestError, FieldMissingError
+from app.models.error import ErrorType, FieldMissingError, RequestError
 from app.models.playlist import PlaylistItem
 from app.models.room import MatchType, QueueMode, RoomCategory, RoomStatus
 from app.models.score import RULESETS_VERSION_HASH, GameMode, VersionEntry

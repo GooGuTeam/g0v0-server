@@ -13,7 +13,7 @@ from app.database.verification import LoginSession, TrustedDevice
 from app.dependencies.database import Database, Redis
 from app.dependencies.user import ClientUser
 from app.log import log
-from app.models.error import ErrorType, RequestError, FieldMissingError
+from app.models.error import ErrorType, FieldMissingError, RequestError
 
 from .router import router
 

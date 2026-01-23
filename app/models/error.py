@@ -146,7 +146,11 @@ class ErrorType(Enum):
 
     # TOTP
     TOTP_ALREADY_ENABLED = ("totp_already_enabled", 400, "TOTP is already enabled for this user")
-    TOTP_CODE_REQUIRED = ("totp_code_required", 400, "TOTP code is required. Please provide 6-digit code or backup code.")
+    TOTP_CODE_REQUIRED = (
+        "totp_code_required",
+        400,
+        "TOTP code is required. Please provide 6-digit code or backup code.",
+    )
     NO_TOTP_SETUP_OR_INVALID_DATA = ("no_totp_setup_or_invalid_data", 400, "No TOTP setup in progress or invalid data")
     TOO_MANY_FAILED_ATTEMPTS = ("too_many_failed_attempts", 400, "Too many failed attempts. Please start over.")
     INVALID_TOTP_CODE = ("invalid_totp_code", 400, "Invalid TOTP code")
@@ -263,4 +267,3 @@ class FieldMissingError(RequestError):
 
     def __init__(self, required: list[str]):
         super().__init__(ErrorType.FIELDS_MISSING, {"required": required})
-

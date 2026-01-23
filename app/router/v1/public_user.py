@@ -4,7 +4,7 @@ from app.database.statistics import UserStatistics
 from app.database.user import User
 from app.dependencies.database import Database, get_redis
 from app.log import logger
-from app.models.error import ErrorType, RequestError, FieldMissingError
+from app.models.error import ErrorType, FieldMissingError, RequestError
 from app.models.score import GameMode
 from app.models.v1_user import (
     GetPlayerCountResponse,

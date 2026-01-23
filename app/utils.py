@@ -323,12 +323,10 @@ def _get_type(typ: type, includes: tuple[str, ...]) -> Any:
         return list[_get_type(item_type, includes)]  # pyright: ignore[reportArgumentType, reportGeneralTypeIssues]
     elif origin is dict:
         key_type, value_type = typ.__args__
-        return dict[
-            key_type, _get_type(value_type, includes)]  # pyright: ignore[reportArgumentType, reportGeneralTypeIssues]
+        return dict[key_type, _get_type(value_type, includes)]  # pyright: ignore[reportArgumentType, reportGeneralTypeIssues]
     elif type_is_optional(typ):
         inner_type = next(arg for arg in get_args(typ) if arg is not NoneType)
-        return Union[_get_type(inner_type,
-                               includes), None]  # pyright: ignore[reportArgumentType, reportGeneralTypeIssues]  # noqa: UP007
+        return Union[_get_type(inner_type, includes), None]  # pyright: ignore[reportArgumentType, reportGeneralTypeIssues]
     elif origin is UnionType or origin is Union:
         new_types = []
         for arg in get_args(typ):
