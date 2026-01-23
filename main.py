@@ -17,6 +17,7 @@ from app.dependencies.fetcher import get_fetcher
 from app.dependencies.scheduler import start_scheduler, stop_scheduler
 from app.log import system_logger
 from app.middleware.verify_session import VerifySessionMiddleware
+from app.models.error import RequestError
 from app.models.mods import init_mods, init_ranked_mods
 from app.models.score import init_ruleset_version_hash
 from app.router import (
@@ -265,7 +266,18 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
-@app.exception_handler(HTTPException)
+@app.exception_handler(RequestError)
+async def request_error_handler(request: Request, exc: RequestError):  # noqa: ARG001
+    content = {
+        "error": exc.message,
+        "msg_key": exc.msg_key,
+    }
+
+    content.update(exc.details)
+    return JSONResponse(status_code=exc.status_code, content=content)
+
+
+@app.exception_handler(exc_class_or_status_code=HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):  # noqa: ARG001
     return JSONResponse(status_code=exc.status_code, content={"error": exc.detail})
 
