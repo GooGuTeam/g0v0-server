@@ -157,13 +157,21 @@ class ErrorType(Enum):
 
     # Password & OAuth
     INCORRECT_SIGNIN = ("incorrect_signin", 400, "Username or password incorrect")
-    INVALID_SCOPE = ("invalid_scope", 400, "The requested scope is invalid, unknown, "
-                                           "or malformed. The client may not request "
-                                           "more than one scope at a time.")
+    INVALID_SCOPE = (
+        "invalid_scope",
+        400,
+        "The requested scope is invalid, unknown, "
+        "or malformed. The client may not request "
+        "more than one scope at a time.",
+    )
     SIGNIN_INFO_REQUIRED = ("signin_info_required", 400, "Username and password required")
-    CLIENT_OAUTH_FAILED = ("client_oauth_failed", 401, "Client authentication failed (e.g., unknown client, "
-                                                       "no client authentication included, "
-                                                       "or unsupported authentication method).")
+    CLIENT_OAUTH_FAILED = (
+        "client_oauth_failed",
+        401,
+        "Client authentication failed (e.g., unknown client, "
+        "no client authentication included, "
+        "or unsupported authentication method).",
+    )
     INVALID_VERIFICATION_TOKEN = ("invalid_verification_token", 400, "Invalid or expired verification token")
     PASSWORD_INCORRECT = ("password_incorrect", 403, "Current password is incorrect")
     PASSWORD_REQUIRED = ("password_required", 403, "Password required")
