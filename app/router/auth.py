@@ -49,9 +49,9 @@ from sqlmodel import exists, select
 logger = log("Auth")
 
 
-def create_oauth_error_response(error: str, error_type: ErrorType, hint: str | None = None):
+def raise_oauth_error(error: str, error_type: ErrorType, hint: str | None = None):
     """
-    Creates an error response compatible with the RequestError implementation.
+    Raises an OAuth error compatible with the RequestError implementation.
 
     Args:
         error (str): The error type in OAuth standards.
@@ -239,7 +239,7 @@ async def oauth_token(
         success, error_msg = await turnstile_service.verify_token(cf_turnstile_response, ip_address)
         logger.info(f"Turnstile verification result: success={success}, error={error_msg}, ip={ip_address}")
         if not success:
-            return create_oauth_error_response(
+            return raise_oauth_error(
                 error="invalid_request",
                 error_type=ErrorType.INVALID_VERIFICATION_TOKEN,
                 hint=f"Verification failed: {error_msg}",
@@ -261,7 +261,7 @@ async def oauth_token(
     ]
 
     if client is None and not is_game_client:
-        return create_oauth_error_response(
+        return raise_oauth_error(
             error="invalid_client",
             error_type=ErrorType.INVALID_AUTH_CLIENT,
             hint=(
@@ -273,7 +273,7 @@ async def oauth_token(
 
     if grant_type == "password":
         if not username or not password:
-            return create_oauth_error_response(
+            return raise_oauth_error(
                 error="invalid_request",
                 error_type=ErrorType.SIGNIN_INFO_REQUIRED,
                 hint=(
@@ -283,7 +283,7 @@ async def oauth_token(
                 ),
             )
         if scopes != ["*"]:
-            return create_oauth_error_response(
+            return raise_oauth_error(
                 error="invalid_scope",
                 error_type=ErrorType.INVALID_SCOPE,
                 hint="Only '*' scope is allowed for password grant type",
@@ -301,7 +301,7 @@ async def oauth_token(
                 notes="Invalid credentials",
             )
 
-            return create_oauth_error_response(
+            return raise_oauth_error(
                 error="invalid_grant",
                 error_type=ErrorType.INCORRECT_SIGNIN,
                 hint=(
@@ -425,7 +425,7 @@ async def oauth_token(
     elif grant_type == "refresh_token":
         # 刷新令牌流程
         if not refresh_token:
-            return create_oauth_error_response(
+            return raise_oauth_error(
                 error="invalid_request",
                 error_type=ErrorType.REFRESH_TOKEN_REQUIRED,
             )
@@ -433,7 +433,7 @@ async def oauth_token(
         # 验证刷新令牌
         token_record = await get_token_by_refresh_token(db, refresh_token)
         if not token_record:
-            return create_oauth_error_response(
+            return raise_oauth_error(
                 error="invalid_grant",
                 error_type=ErrorType.INVALID_REFRESH_TOKEN,
             )
@@ -464,7 +464,7 @@ async def oauth_token(
         )
     elif grant_type == "authorization_code":
         if client is None:
-            return create_oauth_error_response(
+            return raise_oauth_error(
                 error="invalid_client",
                 error_type=ErrorType.INVALID_AUTH_CLIENT,
                 hint=(
@@ -475,14 +475,14 @@ async def oauth_token(
             )
 
         if not code:
-            return create_oauth_error_response(
+            return raise_oauth_error(
                 error="invalid_request",
                 error_type=ErrorType.AUTH_CODE_REQUIRED,
             )
 
         code_result = await get_user_by_authorization_code(db, redis, client_id, code)
         if not code_result:
-            return create_oauth_error_response(
+            return raise_oauth_error(
                 error="invalid_grant",
                 error_type=ErrorType.INVALID_AUTH_CODE,
                 hint=(
@@ -528,7 +528,7 @@ async def oauth_token(
         )
     elif grant_type == "client_credentials":
         if client is None:
-            return create_oauth_error_response(
+            return raise_oauth_error(
                 error="invalid_client",
                 error_type=ErrorType.INVALID_AUTH_CLIENT,
                 hint=(
@@ -538,7 +538,7 @@ async def oauth_token(
                 ),
             )
         elif scopes != ["public"]:
-            return create_oauth_error_response(
+            return raise_oauth_error(
                 error="invalid_scope",
                 error_type=ErrorType.SCOPE_NOT_PUBLIC,
             )

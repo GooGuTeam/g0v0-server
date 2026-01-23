@@ -2,9 +2,9 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-from fastapi import HTTPException
-from fastapi.logger import logger
+from app.log import log
 
+logger = log("Exception")
 
 class ErrorType(Enum):
     """
