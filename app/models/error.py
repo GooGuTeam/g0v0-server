@@ -27,10 +27,6 @@ class ErrorType(Enum):
     MISSING_API_KEY = ("missing_api_key", 401, "Missing API key")
     INVALID_API_KEY = ("invalid_api_key", 401, "Invalid API key")
 
-    # General restriction
-    ACCOUNT_RESTRICTED = ("account_restricted", 403, "Your account is restricted and cannot perform this action.")
-    MESSAGING_RESTRICTED = ("messaging_restricted", 403, "You are restricted from sending messages.")
-
     # Not found
     NOT_FOUND = ("not_found", 404, "Not found")
     USER_NOT_FOUND = ("user_not_found", 404, "User not found")
@@ -85,6 +81,13 @@ class ErrorType(Enum):
         410,
         "Room has ended and cannot accept new participants",
     )
+
+    # Playlists
+    PLAYLIST_EMPTY_ON_CREATION = (
+        "playlist_empty_on_creation",
+        400,
+        "At least one playlist item is required to create a room",
+    )
     RULESET_MISMATCH_PLAYLIST_ITEM = ("ruleset_mismatch_playlist_item", 400, "Ruleset mismatch in playlist item")
     BEATMAP_ID_MISMATCH_PLAYLIST_ITEM = (
         "beatmap_id_mismatch_playlist_item",
@@ -93,7 +96,9 @@ class ErrorType(Enum):
     )
     PLAYLIST_ITEM_EXPIRED = ("playlist_item_expired", 400, "Playlist item has expired")
     PLAYLIST_ITEM_ALREADY_PLAYED = ("playlist_item_already_played", 400, "Playlist item has already been played")
+
     SCORE_NOT_PINNED = ("score_not_pinned", 400, "Score is not pinned")
+    BEATMAPSET_RATING_FORBIDDEN = ("beatmapset_rating_forbidden", 403, "User Cannot Rate This Beatmapset")
     MAX_ATTEMPTS_REACHED = ("max_attempts_reached", 422, "You have reached the maximum attempts for this room")
 
     # File / IO
@@ -103,13 +108,6 @@ class ErrorType(Enum):
     IMAGE_DIMENSIONS_EXCEED_LIMIT = ("image_dimensions_exceed_limit", 400, "Image size exceeds the limit")
     ERROR_PROCESSING_IMAGE = ("error_processing_image", 400, "Error processing image")
     AUDIO_FILE_TOO_LARGE = ("audio_file_too_large", 413, "Audio file too large")
-
-    BEATMAPSET_RATING_FORBIDDEN = ("beatmapset_rating_forbidden", 403, "User Cannot Rate This Beatmapset")
-    PLAYLIST_EMPTY_ON_CREATION = (
-        "playlist_empty_on_creation",
-        400,
-        "At least one playlist item is required to create a room",
-    )
 
     # Profile / user settings
     INVALID_PROFILE_ORDER = ("invalid_profile_order", 400, "Invalid profile order")
@@ -132,8 +130,6 @@ class ErrorType(Enum):
         400,
         "Cannot delete the current trusted device",
     )
-
-    # Relationship
     CANNOT_CHECK_RELATIONSHIP_WITH_SELF = (
         "cannot_check_relationship_with_self",
         422,
@@ -155,6 +151,20 @@ class ErrorType(Enum):
     TOTP_NOT_ENABLED = ("totp_not_enabled", 400, "TOTP is not enabled for this user")
     INVALID_TOTP_OR_BACKUP_CODE = ("invalid_totp_or_backup_code", 400, "Invalid TOTP code or backup code")
 
+    # Forbidden
+    FORBIDDEN = ("forbidden", 403, "You are not permitted to perform this action")
+    PASSWORD_INCORRECT = ("password_incorrect", 403, "Current password is incorrect")
+    PASSWORD_REQUIRED = ("password_required", 403, "Password required")
+    INVALID_PASSWORD = ("invalid_password", 403, "Invalid password")
+    ROOM_PASSWORD_REQUIRED = ("room_password_required", 403, "Password required")
+    ROOM_INVALID_PASSWORD = ("room_invalid_password", 403, "Invalid password")
+    FORBIDDEN_NOT_OWNER = ("forbidden_not_owner", 403, "Forbidden: Not the owner of this app")
+    REDIRECT_URI_NOT_ALLOWED = ("redirect_uri_not_allowed", 403, "Redirect URI not allowed for this client")
+
+    # Account restriction
+    ACCOUNT_RESTRICTED = ("account_restricted", 403, "Your account is restricted and cannot perform this action.")
+    MESSAGING_RESTRICTED = ("messaging_restricted", 403, "You are restricted from sending messages.")
+
     # Password & OAuth
     # General error for client not providing enough information or being malformed
     INVALID_AUTH_CLIENT = ("invalid_auth_client", 401, "Invalid client credentials")
@@ -174,14 +184,6 @@ class ErrorType(Enum):
     AUTH_CODE_REQUIRED = ("auth_code_required", 400, "Authorization code required")
     INVALID_AUTH_CODE = ("invalid_auth_code", 400, "Invalid authorization code")
     SCOPE_NOT_PUBLIC = ("scope_not_public", 400, "Scope must be 'public'")
-
-    PASSWORD_INCORRECT = ("password_incorrect", 403, "Current password is incorrect")
-    PASSWORD_REQUIRED = ("password_required", 403, "Password required")
-    INVALID_PASSWORD = ("invalid_password", 403, "Invalid password")
-    ROOM_PASSWORD_REQUIRED = ("room_password_required", 403, "Password required")
-    ROOM_INVALID_PASSWORD = ("room_invalid_password", 403, "Invalid password")
-    FORBIDDEN_NOT_OWNER = ("forbidden_not_owner", 403, "Forbidden: Not the owner of this app")
-    REDIRECT_URI_NOT_ALLOWED = ("redirect_uri_not_allowed", 403, "Redirect URI not allowed for this client")
 
     # Beatmap / proxy services
     NO_DOWNLOAD_ENDPOINTS_AVAILABLE = ("no_download_endpoints_available", 503, "No download endpoints available")
