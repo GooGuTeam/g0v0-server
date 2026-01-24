@@ -1,18 +1,18 @@
 import asyncio
-import functools
-import inspect
-import json
-import re
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
+import functools
+import inspect
 from io import BytesIO
+import json
+import re
 from types import NoneType, UnionType
 from typing import TYPE_CHECKING, Any, ParamSpec, TypedDict, TypeVar, Union, get_args, get_origin
 
-from PIL import Image
-from fastapi.encoders import jsonable_encoder
-
 from app.models.error import ErrorType, RequestError
+
+from fastapi.encoders import jsonable_encoder
+from PIL import Image
 
 if TYPE_CHECKING:
     from app.models.model import UserAgentInfo
