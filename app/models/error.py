@@ -43,7 +43,7 @@ class ErrorType(Enum):
     PLAYLIST_ITEM_NOT_FOUND = ("playlist_item_not_found", 404, "Playlist item not found")
     REPLAY_FILE_NOT_FOUND = ("replay_file_not_found", 404, "Replay file not found")
     CHANNEL_NOT_FOUND = ("channel_not_found", 404, "Channel not found")
-    TAG_NOT_FOUND = ("tag_not_found", 400, "Tag not found")
+    TAG_NOT_FOUND = ("tag_not_found", 404, "Tag not found")
     RELATIONSHIP_NOT_FOUND = ("relationship_not_found", 404, "Relationship not found")
     TEAM_NOT_FOUND = ("team_not_found", 404, "Team not found")
     LEADER_NOT_FOUND = ("leader_not_found", 404, "Leader not found")
@@ -62,12 +62,12 @@ class ErrorType(Enum):
 
     # Validation / bad request
     INVALID_REQUEST = ("invalid_request", 400, "Invalid request")
-    FIELDS_MISSING = ("fields_missing", 400, "The following fields are required: {required}")
+    FIELDS_MISSING = ("fields_missing", 422, "The following fields are required: {required}")
     INVALID_RULESET_ID = ("invalid_ruleset_id", 422, "Invalid ruleset ID")
-    INVALID_BEATMAPSET_TYPE = ("invalid_beatmapset_type", 400, "Invalid beatmapset type")
+    INVALID_BEATMAPSET_TYPE = ("invalid_beatmapset_type", 422, "Invalid beatmapset type")
     BEATMAP_LOOKUP_ARGS_MISSING = (
         "beatmap_lookup_args_missing",
-        400,
+        422,
         "At least one of 'id', 'checksum', or 'filename' must be provided.",
     )
     BEATMAPSET_IDS_TOO_MANY = ("beatmapset_ids_too_many", 413, "beatmapset_ids cannot exceed 50 items")
@@ -89,14 +89,14 @@ class ErrorType(Enum):
     # Playlists
     PLAYLIST_EMPTY_ON_CREATION = (
         "playlist_empty_on_creation",
-        400,
+        422,
         "At least one playlist item is required to create a room",
     )
-    MISSING_BEATMAP_ID_PLAYLIST = ("missing_beatmap_id_playlist", 400, "beatmap_id is missing for some playlist items")
-    RULESET_MISMATCH_PLAYLIST_ITEM = ("ruleset_mismatch_playlist_item", 400, "Ruleset mismatch in playlist item")
+    MISSING_BEATMAP_ID_PLAYLIST = ("missing_beatmap_id_playlist", 422, "beatmap_id is missing for some playlist items")
+    RULESET_MISMATCH_PLAYLIST_ITEM = ("ruleset_mismatch_playlist_item", 422, "Ruleset mismatch in playlist item")
     BEATMAP_ID_MISMATCH_PLAYLIST_ITEM = (
         "beatmap_id_mismatch_playlist_item",
-        400,
+        422,
         "Beatmap ID mismatch in playlist item",
     )
     PLAYLIST_ITEM_EXPIRED = ("playlist_item_expired", 400, "Playlist item has expired")
@@ -107,16 +107,16 @@ class ErrorType(Enum):
     MAX_ATTEMPTS_REACHED = ("max_attempts_reached", 422, "You have reached the maximum attempts for this room")
 
     # File / IO
-    FILE_SIZE_EXCEEDS_LIMIT = ("file_size_exceeds_limit", 400, "File size exceeds 10MB limit")
-    FILE_EMPTY = ("file_empty", 400, "File cannot be empty")
-    INVALID_IMAGE_FORMAT = ("invalid_image_format", 400, "Invalid image format")
-    IMAGE_DIMENSIONS_EXCEED_LIMIT = ("image_dimensions_exceed_limit", 400, "Image size exceeds the limit of {args}")
-    ERROR_PROCESSING_IMAGE = ("error_processing_image", 400, "Error processing image: {args}")
+    FILE_SIZE_EXCEEDS_LIMIT = ("file_size_exceeds_limit", 422, "File size exceeds 10MB limit")
+    FILE_EMPTY = ("file_empty", 422, "File cannot be empty")
+    INVALID_IMAGE_FORMAT = ("invalid_image_format", 422, "Invalid image format")
+    IMAGE_DIMENSIONS_EXCEED_LIMIT = ("image_dimensions_exceed_limit", 422, "Image size exceeds the limit of {args}")
+    ERROR_PROCESSING_IMAGE = ("error_processing_image", 422, "Error processing image: {args}")
     AUDIO_FILE_TOO_LARGE = ("audio_file_too_large", 413, "Audio file too large")
 
     # Profile / user settings
-    INVALID_PROFILE_ORDER = ("invalid_profile_order", 400, "Invalid profile order")
-    INVALID_PROFILE_COLOUR_HEX = ("invalid_profile_colour_hex", 400, "Invalid profile colour hex value")
+    INVALID_PROFILE_ORDER = ("invalid_profile_order", 422, "Invalid profile order")
+    INVALID_PROFILE_COLOUR_HEX = ("invalid_profile_colour_hex", 422, "Invalid profile colour hex value")
     INVALID_USERNAME = ("invalid_username", 403, "Invalid username")
     USERNAME_EXISTS = ("username_exists", 409, "Username Exists")
     NAME_ALREADY_EXISTS = ("name_already_exists", 409, "Name already exists")
@@ -130,10 +130,10 @@ class ErrorType(Enum):
         403,
         "You cannot leave because you are the team leader",
     )
-    CANNOT_DELETE_CURRENT_SESSION = ("cannot_delete_current_session", 400, "Cannot delete the current session")
+    CANNOT_DELETE_CURRENT_SESSION = ("cannot_delete_current_session", 422, "Cannot delete the current session")
     CANNOT_DELETE_CURRENT_TRUSTED_DEVICE = (
         "cannot_delete_current_trusted_device",
-        400,
+        422,
         "Cannot delete the current trusted device",
     )
     CANNOT_CHECK_RELATIONSHIP_WITH_SELF = (
@@ -145,27 +145,27 @@ class ErrorType(Enum):
     RELATIONSHIP_TYPE_MISMATCH = ("relationship_type_mismatch", 422, "Relationship type mismatch")
 
     # TOTP
-    TOTP_ALREADY_ENABLED = ("totp_already_enabled", 400, "TOTP is already enabled for this user")
+    TOTP_ALREADY_ENABLED = ("totp_already_enabled", 422, "TOTP is already enabled for this user")
     TOTP_CODE_REQUIRED = (
         "totp_code_required",
-        400,
+        422,
         "TOTP code is required. Please provide 6-digit code or backup code.",
     )
-    NO_TOTP_SETUP_OR_INVALID_DATA = ("no_totp_setup_or_invalid_data", 400, "No TOTP setup in progress or invalid data")
-    TOO_MANY_FAILED_ATTEMPTS = ("too_many_failed_attempts", 400, "Too many failed attempts. Please start over.")
-    INVALID_TOTP_CODE = ("invalid_totp_code", 400, "Invalid TOTP code")
+    NO_TOTP_SETUP_OR_INVALID_DATA = ("no_totp_setup_or_invalid_data", 422, "No TOTP setup in progress or invalid data")
+    TOO_MANY_FAILED_ATTEMPTS = ("too_many_failed_attempts", 422, "Too many failed attempts. Please start over.")
+    INVALID_TOTP_CODE = ("invalid_totp_code", 403, "Invalid TOTP code")
     INVALID_TOTP_FORMAT = (
         "invalid_totp_format",
-        400,
+        422,
         "Invalid TOTP code format. Expected 6-digit code or {args}-character backup code.",
     )
-    TOTP_NOT_ENABLED = ("totp_not_enabled", 400, "TOTP is not enabled for this user")
-    INVALID_TOTP_OR_BACKUP_CODE = ("invalid_totp_or_backup_code", 400, "Invalid TOTP code or backup code")
+    TOTP_NOT_ENABLED = ("totp_not_enabled", 422, "TOTP is not enabled for this user")
+    INVALID_TOTP_OR_BACKUP_CODE = ("invalid_totp_or_backup_code", 403, "Invalid TOTP code or backup code")
 
     # Forbidden
     FORBIDDEN = ("forbidden", 403, "You are not permitted to perform this action")
     PASSWORD_INCORRECT = ("password_incorrect", 403, "Current password is incorrect")
-    PASSWORD_REQUIRED = ("password_required", 400, "Password required")
+    PASSWORD_REQUIRED = ("password_required", 422, "Password required")
     INVALID_PASSWORD = ("invalid_password", 403, "Invalid password")
     ROOM_PASSWORD_REQUIRED = ("room_password_required", 403, "Password required")
     ROOM_INVALID_PASSWORD = ("room_invalid_password", 403, "Invalid password")
@@ -180,21 +180,21 @@ class ErrorType(Enum):
     # General error for client not providing enough information or being malformed
     INVALID_AUTH_CLIENT = ("invalid_auth_client", 401, "Invalid client credentials")
 
-    INCORRECT_SIGNIN = ("incorrect_signin", 400, "Incorrect sign-in")
+    INCORRECT_SIGNIN = ("incorrect_signin", 403, "Incorrect sign-in")
     INVALID_SCOPE = (
         "invalid_scope",
-        400,
+        422,
         "The requested scope is invalid, unknown, "
         "or malformed. The client may not request "
         "more than one scope at a time.",
     )
-    SIGNIN_INFO_REQUIRED = ("signin_info_required", 400, "Username and password required")
-    INVALID_VERIFICATION_TOKEN = ("invalid_verification_token", 400, "Invalid or expired verification token")
-    REFRESH_TOKEN_REQUIRED = ("refresh_token_required", 400, "Refresh token required")
-    INVALID_REFRESH_TOKEN = ("invalid_refresh_token", 400, "Invalid refresh token")
-    AUTH_CODE_REQUIRED = ("auth_code_required", 400, "Authorization code required")
-    INVALID_AUTH_CODE = ("invalid_auth_code", 400, "Invalid authorization code")
-    SCOPE_NOT_PUBLIC = ("scope_not_public", 400, "Scope must be 'public'")
+    SIGNIN_INFO_REQUIRED = ("signin_info_required", 422, "Username and password required")
+    INVALID_VERIFICATION_TOKEN = ("invalid_verification_token", 422, "Invalid or expired verification token")
+    REFRESH_TOKEN_REQUIRED = ("refresh_token_required", 422, "Refresh token required")
+    INVALID_REFRESH_TOKEN = ("invalid_refresh_token", 403, "Invalid refresh token")
+    AUTH_CODE_REQUIRED = ("auth_code_required", 422, "Authorization code required")
+    INVALID_AUTH_CODE = ("invalid_auth_code", 403, "Invalid authorization code")
+    SCOPE_NOT_PUBLIC = ("scope_not_public", 422, "Scope must be 'public'")
 
     # Beatmap / proxy services
     NO_DOWNLOAD_ENDPOINTS_AVAILABLE = ("no_download_endpoints_available", 503, "No download endpoints available")
