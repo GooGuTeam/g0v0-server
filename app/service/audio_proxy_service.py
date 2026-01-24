@@ -3,11 +3,11 @@
 提供从osu!官方获取beatmapset音频预览并缓存的功能
 """
 
-from app.log import logger
-from app.models.error import ErrorType, RequestError
-
 import httpx
 import redis.asyncio as redis
+
+from app.log import logger
+from app.models.error import ErrorType, RequestError
 
 
 class AudioProxyService:
@@ -105,6 +105,8 @@ class AudioProxyService:
         except httpx.RequestError as e:
             logger.error(f"Request error fetching beatmapset audio for ID {beatmapset_id}: {e}")
             raise RequestError(ErrorType.FAILED_CONNECT_OSU_SERVERS) from e
+        except RequestError:
+            raise
         except Exception as e:
             logger.error(f"Unexpected error fetching beatmapset audio for ID {beatmapset_id}: {e}")
             raise RequestError(ErrorType.INTERNAL_ERROR_FETCHING_AUDIO) from e
