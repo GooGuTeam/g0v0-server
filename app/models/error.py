@@ -62,7 +62,7 @@ class ErrorType(Enum):
 
     # Validation / bad request
     INVALID_REQUEST = ("invalid_request", 400, "Invalid request")
-    FIELDS_MISSING = ("fields_missing", 400, "The following fields are required: %(required)s")
+    FIELDS_MISSING = ("fields_missing", 400, "The following fields are required: {required}")
     INVALID_RULESET_ID = ("invalid_ruleset_id", 422, "Invalid ruleset ID")
     INVALID_BEATMAPSET_TYPE = ("invalid_beatmapset_type", 400, "Invalid beatmapset type")
     BEATMAP_LOOKUP_ARGS_MISSING = (
@@ -110,8 +110,8 @@ class ErrorType(Enum):
     FILE_SIZE_EXCEEDS_LIMIT = ("file_size_exceeds_limit", 400, "File size exceeds 10MB limit")
     FILE_EMPTY = ("file_empty", 400, "File cannot be empty")
     INVALID_IMAGE_FORMAT = ("invalid_image_format", 400, "Invalid image format")
-    IMAGE_DIMENSIONS_EXCEED_LIMIT = ("image_dimensions_exceed_limit", 400, "Image size exceeds the limit of %(args)s")
-    ERROR_PROCESSING_IMAGE = ("error_processing_image", 400, "Error processing image: %(args)s")
+    IMAGE_DIMENSIONS_EXCEED_LIMIT = ("image_dimensions_exceed_limit", 400, "Image size exceeds the limit of {args}")
+    ERROR_PROCESSING_IMAGE = ("error_processing_image", 400, "Error processing image: {args}")
     AUDIO_FILE_TOO_LARGE = ("audio_file_too_large", 413, "Audio file too large")
 
     # Profile / user settings
@@ -157,7 +157,7 @@ class ErrorType(Enum):
     INVALID_TOTP_FORMAT = (
         "invalid_totp_format",
         400,
-        "Invalid TOTP code format. Expected 6-digit code or %(args)s-character backup code.",
+        "Invalid TOTP code format. Expected 6-digit code or {args}-character backup code.",
     )
     TOTP_NOT_ENABLED = ("totp_not_enabled", 400, "TOTP is not enabled for this user")
     INVALID_TOTP_OR_BACKUP_CODE = ("invalid_totp_or_backup_code", 400, "Invalid TOTP code or backup code")
@@ -231,7 +231,7 @@ class RequestError(Exception):
     @property
     def formatted_message(self) -> str:
         try:
-            return self.message % self.details
+            return self.message.format(**self.details)
         # The argument list doesn't exist
         except KeyError:
             return self.message
