@@ -454,10 +454,14 @@ async def create_solo_score(
             f"Ruleset version check failed for user {current_user.id} on beatmap {beatmap_id} "
             f"(ruleset: {ruleset_id}, hash: {ruleset_hash})"
         )
-        raise RequestError(
-            ErrorType.RULESET_VERSION_CHECK_FAILED,
-            {"ruleset_id": ruleset_id, "ruleset_hash": ruleset_hash},
-        )
+
+        details = {"ruleset_id": ruleset_id, "ruleset_hash": ruleset_hash}
+
+        # The result may have useful information in its own message
+        if result.error_msg:
+            details.update({"error": result.error_msg})
+
+        raise RequestError(ErrorType.RULESET_VERSION_CHECK_FAILED, details)
 
     background_task.add_task(_preload_beatmap_for_pp_calculation, beatmap_id)
     async with db:
@@ -543,10 +547,14 @@ async def create_playlist_score(
             f"Ruleset version check failed for user {current_user.id} on room {room_id}, playlist {playlist_id},"
             f" (ruleset: {ruleset_id}, hash: {ruleset_hash})"
         )
-        raise RequestError(
-            ErrorType.RULESET_VERSION_CHECK_FAILED,
-            {"ruleset_id": ruleset_id, "ruleset_hash": ruleset_hash},
-        )
+
+        details = {"ruleset_id": ruleset_id, "ruleset_hash": ruleset_hash}
+
+        # The result may have useful information in its own message
+        if result.error_msg:
+            details.update({"error": result.error_msg})
+
+        raise RequestError(ErrorType.RULESET_VERSION_CHECK_FAILED, details)
 
     if await current_user.is_restricted(session):
         raise RequestError(ErrorType.ACCOUNT_RESTRICTED)

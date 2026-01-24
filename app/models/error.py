@@ -71,8 +71,11 @@ class ErrorType(Enum):
         "At least one of 'id', 'checksum', or 'filename' must be provided.",
     )
     BEATMAPSET_IDS_TOO_MANY = ("beatmapset_ids_too_many", 413, "beatmapset_ids cannot exceed 50 items")
-    INVALID_CLIENT_HASH = ("invalid_client_hash", 422, "Invalid client hash")
-    INVALID_OR_MISSING_BEATMAP_HASH = ("invalid_or_missing_beatmap_hash", 422, "Invalid or missing beatmap_hash")
+
+    # Keeping the original message as the lazer client needs it
+    INVALID_CLIENT_HASH = ("invalid_client_hash", 422, "invalid client hash")
+    INVALID_OR_MISSING_BEATMAP_HASH = ("invalid_or_missing_beatmap_hash", 422, "invalid or missing beatmap_hash")
+
     RULESET_VERSION_CHECK_FAILED = ("ruleset_version_check_failed", 422, "Ruleset version check failed")
     CANNOT_CALCULATE_DIFFICULTY = (
         "cannot_calculate_difficulty",
