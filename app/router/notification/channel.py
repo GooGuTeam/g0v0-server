@@ -12,12 +12,13 @@ from app.database.user import User, UserModel
 from app.dependencies.database import Database, Redis
 from app.dependencies.param import BodyOrForm
 from app.dependencies.user import get_current_user
+from app.models.error import ErrorType, RequestError
 from app.router.v2 import api_v2_router as router
 from app.utils import api_doc
 
 from .server import server
 
-from fastapi import Depends, HTTPException, Path, Query, Security
+from fastapi import Depends, Path, Query, Security
 from pydantic import BaseModel, model_validator
 from sqlmodel import col, select
 
@@ -93,7 +94,7 @@ async def join_channel(
     current_user: Annotated[User, Security(get_current_user, scopes=["chat.write_manage"])],
 ):
     if await current_user.is_restricted(session):
-        raise HTTPException(status_code=403, detail="You are restricted from sending messages")
+        raise RequestError(ErrorType.MESSAGING_RESTRICTED)
 
     # 使用明确的查询避免延迟加载
     if channel.isdigit():
@@ -102,7 +103,7 @@ async def join_channel(
         db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.channel_name == channel))).first()
 
     if db_channel is None:
-        raise HTTPException(status_code=404, detail="Channel not found")
+        raise RequestError(ErrorType.CHANNEL_NOT_FOUND)
     return await server.join_channel(current_user, db_channel)
 
 
@@ -120,7 +121,7 @@ async def leave_channel(
     current_user: Annotated[User, Security(get_current_user, scopes=["chat.write_manage"])],
 ):
     if await current_user.is_restricted(session):
-        raise HTTPException(status_code=403, detail="You are restricted from sending messages")
+        raise RequestError(ErrorType.MESSAGING_RESTRICTED)
 
     # 使用明确的查询避免延迟加载
     if channel.isdigit():
@@ -129,7 +130,7 @@ async def leave_channel(
         db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.channel_name == channel))).first()
 
     if db_channel is None:
-        raise HTTPException(status_code=404, detail="Channel not found")
+        raise RequestError(ErrorType.CHANNEL_NOT_FOUND)
     await server.leave_channel(current_user, db_channel)
     return
 
@@ -185,7 +186,7 @@ async def get_channel(
         db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.channel_name == channel))).first()
 
     if db_channel is None:
-        raise HTTPException(status_code=404, detail="Channel not found")
+        raise RequestError(ErrorType.CHANNEL_NOT_FOUND)
 
     # 立即提取需要的属性
     channel_type = db_channel.type
@@ -195,13 +196,13 @@ async def get_channel(
     if channel_type == ChannelType.PM:
         user_ids = channel_name.split("_")[1:]
         if len(user_ids) != 2:
-            raise HTTPException(status_code=404, detail="Target user not found")
+            raise RequestError(ErrorType.TARGET_USER_NOT_FOUND)
         for id_ in user_ids:
             if int(id_) == current_user.id:
                 continue
             target_user = await session.get(User, int(id_))
             if target_user is None or await target_user.is_restricted(session):
-                raise HTTPException(status_code=404, detail="Target user not found")
+                raise RequestError(ErrorType.TARGET_USER_NOT_FOUND)
             users.extend([target_user, current_user])
             break
 
@@ -252,15 +253,15 @@ async def create_channel(
     redis: Redis,
 ):
     if await current_user.is_restricted(session):
-        raise HTTPException(status_code=403, detail="You are restricted from sending messages")
+        raise RequestError(ErrorType.MESSAGING_RESTRICTED)
 
     if req.type == "PM":
         target = await session.get(User, req.target_id)
         if not target or await target.is_restricted(session):
-            raise HTTPException(status_code=404, detail="Target user not found")
+            raise RequestError(ErrorType.TARGET_USER_NOT_FOUND)
         is_can_pm, block = await target.is_user_can_pm(current_user, session)
         if not is_can_pm:
-            raise HTTPException(status_code=403, detail=block)
+            raise RequestError(ErrorType.MESSAGING_RESTRICTED, {"reason": block})
 
         channel = await ChatChannel.get_pm_channel(
             current_user.id,

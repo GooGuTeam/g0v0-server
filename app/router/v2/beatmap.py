@@ -15,6 +15,7 @@ from app.dependencies.database import Database, Redis
 from app.dependencies.fetcher import Fetcher
 from app.dependencies.user import get_current_user
 from app.helpers.asset_proxy_helper import asset_proxy_response
+from app.models.error import ErrorType, RequestError
 from app.models.mods import APIMod, int_to_mods
 from app.models.performance import (
     DifficultyAttributes,
@@ -27,7 +28,7 @@ from app.utils import api_doc
 
 from .router import router
 
-from fastapi import HTTPException, Path, Query, Security
+from fastapi import Path, Query, Security
 from httpx import HTTPError, HTTPStatusError
 from sqlmodel import col, select
 
@@ -49,17 +50,14 @@ async def lookup_beatmap(
     filename: Annotated[str | None, Query(alias="filename", description="谱面文件名")] = None,
 ):
     if id is None and md5 is None and filename is None:
-        raise HTTPException(
-            status_code=400,
-            detail="At least one of 'id', 'checksum', or 'filename' must be provided.",
-        )
+        raise RequestError(ErrorType.BEATMAP_LOOKUP_ARGS_MISSING)
     try:
         beatmap = await Beatmap.get_or_fetch(db, fetcher, bid=id, md5=md5)
     except HTTPError:
-        raise HTTPException(status_code=404, detail="Beatmap not found")
+        raise RequestError(ErrorType.BEATMAP_NOT_FOUND)
 
     if beatmap is None:
-        raise HTTPException(status_code=404, detail="Beatmap not found")
+        raise RequestError(ErrorType.BEATMAP_NOT_FOUND)
     await db.refresh(current_user)
 
     return await BeatmapModel.transform(beatmap, user=current_user, includes=BeatmapModel.TRANSFORMER_INCLUDES)
@@ -88,7 +86,7 @@ async def get_beatmap(
             includes=BeatmapModel.TRANSFORMER_INCLUDES,
         )
     except HTTPError:
-        raise HTTPException(status_code=404, detail="Beatmap not found")
+        raise RequestError(ErrorType.BEATMAP_NOT_FOUND)
 
 
 @router.get(
@@ -182,11 +180,11 @@ async def get_beatmap_attributes(
         return DifficultyAttributes.model_validate_json(await redis.get(key))  # pyright: ignore[reportArgumentType]
 
     if await get_calculator().can_calculate_difficulty(ruleset) is False:
-        raise HTTPException(status_code=422, detail="Cannot calculate difficulty for the specified ruleset")
+        raise RequestError(ErrorType.CANNOT_CALCULATE_DIFFICULTY)
 
     try:
         return await calculate_beatmap_attributes(beatmap_id, ruleset, mods_, redis, fetcher)
     except HTTPStatusError:
-        raise HTTPException(status_code=404, detail="Beatmap not found")
+        raise RequestError(ErrorType.BEATMAP_NOT_FOUND)
     except ConvertError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise RequestError(ErrorType.INVALID_REQUEST, {"error": str(e)}, status_code=400)

@@ -6,11 +6,12 @@ from app.database.beatmapset_ratings import BeatmapRating
 from app.database.score import Score
 from app.dependencies.database import Database
 from app.dependencies.user import ClientUser
+from app.models.error import ErrorType, RequestError
 from app.service.beatmapset_update_service import get_beatmapset_update_service
 
 from .router import router
 
-from fastapi import Body, Depends, HTTPException, Path, Query
+from fastapi import Body, Depends, Path, Query
 from fastapi_limiter.depends import RateLimiter
 from sqlmodel import col, exists, select
 
@@ -77,15 +78,15 @@ async def rate_beatmaps(
     - 成功: None
     """
     if await current_user.is_restricted(session):
-        raise HTTPException(status_code=403, detail="Your account is restricted and cannot perform this action.")
+        raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
 
     user_id = current_user.id
     current_beatmapset = (await session.exec(select(exists()).where(Beatmapset.id == beatmapset_id))).first()
     if not current_beatmapset:
-        raise HTTPException(404, "Beatmapset Not Found")
+        raise RequestError(ErrorType.BEATMAPSET_NOT_FOUND)
     can_rating = await can_rate_beatmapset(beatmapset_id, session, current_user)
     if not can_rating:
-        raise HTTPException(403, "User Cannot Rate This Beatmapset")
+        raise RequestError(ErrorType.BEATMAPSET_RATING_FORBIDDEN)
     new_rating: BeatmapRating = BeatmapRating(beatmapset_id=beatmapset_id, user_id=user_id, rating=rating)
     session.add(new_rating)
     await session.commit()
@@ -123,5 +124,5 @@ async def sync_beatmapset(
     """
     current_beatmapset = (await session.exec(select(exists()).where(Beatmapset.id == beatmapset_id))).first()
     if not current_beatmapset:
-        raise HTTPException(404, "Beatmapset Not Found")
+        raise RequestError(ErrorType.BEATMAPSET_NOT_FOUND)
     await get_beatmapset_update_service().add_missing_beatmapset(beatmapset_id, immediate)

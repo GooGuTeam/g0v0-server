@@ -6,12 +6,13 @@ from app.database.counts import ReplayWatchedCount
 from app.database.score import Score
 from app.dependencies.database import Database
 from app.dependencies.storage import StorageService
+from app.models.error import ErrorType, RequestError
 from app.models.mods import int_to_mods
 from app.models.score import GameMode
 
 from .router import router
 
-from fastapi import Depends, HTTPException, Query
+from fastapi import Depends, Query
 from fastapi_limiter.depends import RateLimiter
 from pydantic import BaseModel
 from sqlmodel import col, select
@@ -50,7 +51,7 @@ async def download_replay(
     if score_id is not None:
         score_record = await session.get(Score, score_id)
         if score_record is None:
-            raise HTTPException(status_code=404, detail="Score not found")
+            raise RequestError(ErrorType.SCORE_NOT_FOUND)
     else:
         try:
             score_record = (
@@ -64,13 +65,13 @@ async def download_replay(
                 )
             ).first()
             if score_record is None:
-                raise HTTPException(status_code=404, detail="Score not found")
+                raise RequestError(ErrorType.SCORE_NOT_FOUND)
         except KeyError:
-            raise HTTPException(status_code=400, detail="Invalid request")
+            raise RequestError(ErrorType.INVALID_REQUEST)
 
     filepath = score_record.replay_filename
     if not await storage_service.is_exists(filepath):
-        raise HTTPException(status_code=404, detail="Replay file not found")
+        raise RequestError(ErrorType.REPLAY_FILE_NOT_FOUND)
 
     replay_watched_count = (
         await session.exec(

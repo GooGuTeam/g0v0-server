@@ -14,6 +14,7 @@ from app.dependencies.geoip import IPAddress
 from app.dependencies.user import UserAndToken, get_client_user_and_token
 from app.dependencies.user_agent import UserAgentInfo
 from app.log import log
+from app.models.error import ErrorType, RequestError
 from app.service.login_log_service import LoginLogService
 from app.service.verification_service import (
     EmailVerificationService,
@@ -22,7 +23,7 @@ from app.service.verification_service import (
 
 from .router import router
 
-from fastapi import Depends, Form, Header, HTTPException, Request, Security, status
+from fastapi import Depends, Form, Header, Request, Security, status
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
@@ -254,7 +255,7 @@ async def fallback_email(
     current_user = user_and_token[0]
     token_id = user_and_token[1].id
     if not await LoginSessionService.get_login_method(current_user.id, token_id, redis):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前会话不需要回退")
+        raise RequestError(ErrorType.SESSION_FALLBACK_UNNEEDED)
 
     await LoginSessionService.set_login_method(current_user.id, token_id, "mail", redis)
     success, message, _ = await EmailVerificationService.resend_verification_code(

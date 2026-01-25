@@ -6,11 +6,12 @@ from app.dependencies.cache import UserCacheService
 from app.dependencies.database import Database
 from app.dependencies.storage import StorageService
 from app.dependencies.user import ClientUser
+from app.models.error import ErrorType, RequestError
 from app.utils import check_image
 
 from .router import router
 
-from fastapi import File, HTTPException
+from fastapi import File
 
 
 @router.post("/cover/upload", name="上传头图", tags=["用户", "g0v0 API"])
@@ -34,7 +35,7 @@ async def upload_cover(
     - 头图 URL 和文件哈希值
     """
     if await current_user.is_restricted(session):
-        raise HTTPException(status_code=403, detail="Your account is restricted and cannot perform this action.")
+        raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
 
     # check file
     format_ = check_image(content, 10 * 1024 * 1024, 3000, 2000)

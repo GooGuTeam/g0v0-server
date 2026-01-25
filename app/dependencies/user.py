@@ -5,12 +5,13 @@ from app.config import settings
 from app.const import SUPPORT_TOTP_VERIFICATION_VER
 from app.database import User
 from app.database.auth import OAuthToken, V1APIKeys
+from app.models.error import ErrorType, RequestError
 from app.models.oauth import OAuth2ClientCredentialsBearer
 
 from .api_version import APIVersion
 from .database import Database, get_redis
 
-from fastapi import Depends, HTTPException, Security
+from fastapi import Depends, Security
 from fastapi.security import (
     APIKeyQuery,
     HTTPBearer,
@@ -72,11 +73,11 @@ async def v1_authorize(
 ):
     """V1 API Key 授权"""
     if not api_key:
-        raise HTTPException(status_code=401, detail="Missing API key")
+        raise RequestError(ErrorType.MISSING_API_KEY)
 
     api_key_record = (await db.exec(select(V1APIKeys).where(V1APIKeys.key == api_key))).first()
     if not api_key_record:
-        raise HTTPException(status_code=401, detail="Invalid API key")
+        raise RequestError(ErrorType.INVALID_API_KEY)
 
 
 async def get_client_user_and_token(
@@ -84,15 +85,15 @@ async def get_client_user_and_token(
     token: Annotated[str | None, Depends(oauth2_password)],
 ) -> tuple[User, OAuthToken]:
     if token is None:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+        raise RequestError(ErrorType.NOT_AUTHENTICATED)
 
     token_record = await get_token_by_access_token(db, token)
     if not token_record:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
+        raise RequestError(ErrorType.INVALID_OR_EXPIRED_TOKEN)
 
     user = (await db.exec(select(User).where(User.id == token_record.user_id))).first()
     if not user:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
+        raise RequestError(ErrorType.INVALID_OR_EXPIRED_TOKEN)
 
     return user, token_record
 
@@ -130,8 +131,7 @@ async def get_client_user(
                 await LoginSessionService.set_login_method(user.id, token.id, verify_method, redis)
 
         # 返回符合 osu! API 标准的错误响应
-        error_response = {"error": "User not verified", "method": verify_method}
-        raise HTTPException(status_code=401, detail=error_response)
+        raise RequestError(ErrorType.USER_NOT_VERIFIED, {"method": verify_method})
     return user
 
 
@@ -142,7 +142,7 @@ async def _validate_token(
 ) -> UserAndToken:
     token_record = await get_token_by_access_token(db, token)
     if not token_record:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
+        raise RequestError(ErrorType.INVALID_OR_EXPIRED_TOKEN)
 
     is_client = token_record.client_id in (
         settings.osu_client_id,
@@ -152,11 +152,11 @@ async def _validate_token(
     if not is_client:
         for scope in security_scopes.scopes:
             if scope not in token_record.scope.split(","):
-                raise HTTPException(status_code=403, detail=f"Insufficient scope: {scope}")
+                raise RequestError(ErrorType.INSUFFICIENT_SCOPE, {"scope": scope})
 
     user = (await db.exec(select(User).where(User.id == token_record.user_id))).first()
     if not user:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
+        raise RequestError(ErrorType.USER_NOT_FOUND)
     return user, token_record
 
 
@@ -170,7 +170,7 @@ async def get_current_user_and_token(
     """获取当前认证用户"""
     token = token_pw or token_code or token_client_credentials
     if not token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+        raise RequestError(ErrorType.NOT_AUTHENTICATED)
 
     return await _validate_token(db, token, security_scopes)
 

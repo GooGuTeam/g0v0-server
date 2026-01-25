@@ -9,7 +9,8 @@ import re
 from types import NoneType, UnionType
 from typing import TYPE_CHECKING, Any, ParamSpec, TypedDict, TypeVar, Union, get_args, get_origin
 
-from fastapi import HTTPException
+from app.models.error import ErrorType, RequestError
+
 from fastapi.encoders import jsonable_encoder
 from PIL import Image
 
@@ -142,21 +143,20 @@ def truncate(text: str, limit: int = 100, ellipsis: str = "...") -> str:
 
 def check_image(content: bytes, size: int, width: int, height: int) -> str:
     if len(content) > size:  # 10MB limit
-        raise HTTPException(status_code=400, detail="File size exceeds 10MB limit")
+        raise RequestError(ErrorType.FILE_SIZE_EXCEEDS_LIMIT)
     elif len(content) == 0:
-        raise HTTPException(status_code=400, detail="File cannot be empty")
+        raise RequestError(ErrorType.FILE_EMPTY)
     try:
         with Image.open(BytesIO(content)) as img:
             if img.format not in ["PNG", "JPEG", "GIF"]:
-                raise HTTPException(status_code=400, detail="Invalid image format")
+                raise RequestError(ErrorType.INVALID_IMAGE_FORMAT)
             if img.size[0] > width or img.size[1] > height:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Image size exceeds {width}x{height} pixels",
-                )
+                raise RequestError(ErrorType.IMAGE_DIMENSIONS_EXCEED_LIMIT, {"args": f"{width}x{height}"})
             return img.format.lower()
+    except RequestError:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error processing image: {e}")
+        raise RequestError(ErrorType.ERROR_PROCESSING_IMAGE, {"args": str(e)})
 
 
 def extract_user_agent(user_agent: str | None) -> "UserAgentInfo":
@@ -328,7 +328,7 @@ def _get_type(typ: type, includes: tuple[str, ...]) -> Any:
         return dict[key_type, _get_type(value_type, includes)]  # pyright: ignore[reportArgumentType, reportGeneralTypeIssues]
     elif type_is_optional(typ):
         inner_type = next(arg for arg in get_args(typ) if arg is not NoneType)
-        return Union[_get_type(inner_type, includes), None]  # pyright: ignore[reportArgumentType, reportGeneralTypeIssues]  # noqa: UP007
+        return _get_type(inner_type, includes) | None  # pyright: ignore[reportArgumentType, reportGeneralTypeIssues]
     elif origin is UnionType or origin is Union:
         new_types = []
         for arg in get_args(typ):

@@ -14,6 +14,7 @@ from app.dependencies.database import Database, Redis
 from app.dependencies.fetcher import Fetcher
 from app.dependencies.storage import StorageService
 from app.log import log
+from app.models.error import ErrorType, FieldMissingError, RequestError
 from app.models.playlist import PlaylistItem
 from app.models.room import MatchType, QueueMode, RoomCategory, RoomStatus
 from app.models.score import RULESETS_VERSION_HASH, GameMode, VersionEntry
@@ -21,7 +22,7 @@ from app.utils import camel_to_snake, utcnow
 
 from .notification.server import server
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from sqlalchemy import update
 from sqlmodel import col, select
@@ -85,7 +86,7 @@ async def _validate_user_exists(db: Database, user_id: int) -> User:
     user = user_result.scalar_one_or_none()
 
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"User with ID {user_id} not found")
+        raise RequestError(ErrorType.USER_NOT_FOUND, {"user_id": user_id})
 
     return user
 
@@ -140,21 +141,20 @@ def _coerce_playlist_item(item_data: dict[str, Any], default_order: int, host_us
 def _validate_playlist_items(items: list[dict[str, Any]]) -> None:
     """Validate playlist items data."""
     if not items:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="At least one playlist item is required to create a room"
-        )
+        raise RequestError(ErrorType.PLAYLIST_EMPTY_ON_CREATION)
 
     for idx, item in enumerate(items):
         if item["beatmap_id"] is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail=f"Playlist item at index {idx} missing beatmap_id"
+            raise RequestError(
+                ErrorType.MISSING_BEATMAP_ID_PLAYLIST,
+                {"error": f"Playlist item at index {idx} missing beatmap_id"},
             )
 
         ruleset_id = item["ruleset_id"]
         if not isinstance(ruleset_id, int):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Playlist item at index {idx} has invalid ruleset_id {ruleset_id}",
+            raise RequestError(
+                ErrorType.INVALID_RULESET_ID,
+                {"error": f"Playlist item at index {idx} has invalid ruleset_id {ruleset_id}"},
             )
 
 
@@ -166,7 +166,7 @@ async def _create_room(db: Database, room_data: dict[str, Any]) -> tuple[Room, i
     queue_mode = room_data.get("queue_mode", "HostOnly")
 
     if not host_user_id or not isinstance(host_user_id, int):
-        raise HTTPException(status_code=400, detail="Missing or invalid user_id")
+        raise FieldMissingError(["user_id"])
 
     await _validate_user_exists(db, host_user_id)
 
@@ -248,19 +248,19 @@ async def _verify_room_password(db: Database, room_id: int, provided_password: s
 
     if room is None:
         logger.debug(f"Room {room_id} not found")
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Room not found")
+        raise RequestError(ErrorType.ROOM_NOT_FOUND)
 
     logger.debug(f"Room {room_id} has password: {bool(room.password)}, provided: {bool(provided_password)}")
 
     # If room has password but none provided
     if room.password and not provided_password:
         logger.debug(f"Room {room_id} requires password but none provided")
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Password required")
+        raise RequestError(ErrorType.ROOM_PASSWORD_REQUIRED)
 
     # If room has password and provided password doesn't match
     if room.password and provided_password and provided_password != room.password:
         logger.debug(f"Room {room_id} password mismatch")
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid password")
+        raise RequestError(ErrorType.ROOM_INVALID_PASSWORD)
 
     logger.debug(f"Room {room_id} password verification passed")
 
@@ -457,13 +457,13 @@ async def create_multiplayer_room(
             await db.commit()
             return room_id
 
-        except HTTPException:
+        except RequestError:
             # Clean up room if playlist creation fails
             await db.delete(room)
             await db.commit()
             raise
 
-    except HTTPException:
+    except RequestError:
         raise
 
 
@@ -482,7 +482,7 @@ async def remove_user_from_room(
         room = room_result.scalar_one_or_none()
 
         if room is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Room not found")
+            raise RequestError(ErrorType.ROOM_NOT_FOUND)
 
         room_owner_id = room.host_id
         ends_at = room.ends_at
@@ -553,7 +553,7 @@ async def remove_user_from_room(
 
         return {"success": True, "room_ended": room_ended}
 
-    except HTTPException:
+    except RequestError:
         raise
     except Exception as e:
         await db.rollback()
@@ -586,12 +586,12 @@ async def add_user_to_room(
     room_result = await db.exec(select(Room.ends_at, Room.channel_id, Room.host_id).where(col(Room.id) == room_id))
     room_row = room_result.first()
     if not room_row:
-        raise HTTPException(status_code=404, detail="Room not found")
+        raise RequestError(ErrorType.ROOM_NOT_FOUND)
 
     ends_at, channel_id, host_user_id = room_row
     if ends_at is not None:
         logger.debug(f"User {user_id} attempted to join ended room {room_id}")
-        raise HTTPException(status_code=410, detail="Room has ended and cannot accept new participants")
+        raise RequestError(ErrorType.ROOM_ENDED_CANNOT_ACCEPT_NEW)
 
     # Verify room password
     provided_password = user_data.get("password") if user_data else None
@@ -613,7 +613,7 @@ async def add_user_to_room(
         if not channel_id:
             room = await db.get(Room, room_id)
             if room is None:
-                raise HTTPException(status_code=404, detail="Room not found")
+                raise RequestError(ErrorType.ROOM_NOT_FOUND)
             await _ensure_room_chat_channel(db, room, host_user_id)
             await db.refresh(room)
             channel_id = room.channel_id
@@ -657,7 +657,7 @@ async def ensure_beatmap_present(
         logger.debug(f"Ensure beatmap {beatmap_id} result: {result}")
         return result
 
-    except HTTPException:
+    except RequestError:
         raise
     except Exception as e:
         await db.rollback()

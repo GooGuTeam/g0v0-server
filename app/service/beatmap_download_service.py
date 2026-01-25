@@ -3,7 +3,8 @@ from dataclasses import dataclass
 from datetime import datetime
 import logging
 
-from fastapi import HTTPException
+from app.models.error import ErrorType, RequestError
+
 import httpx
 
 logger = logging.getLogger(__name__)
@@ -208,7 +209,7 @@ class BeatmapDownloadService:
             logger.error(f"No healthy endpoints available for is_china={is_china}")
             endpoints = self.china_endpoints if is_china else self.international_endpoints
             if not endpoints:
-                raise HTTPException(status_code=503, detail="No download endpoints available")
+                raise RequestError(ErrorType.NO_DOWNLOAD_ENDPOINTS_AVAILABLE)
             endpoint = min(endpoints, key=lambda x: x.priority)
         else:
             # 使用第一个健康的端点（已按优先级排序）

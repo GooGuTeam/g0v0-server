@@ -2,12 +2,13 @@
 from typing import Annotated, Any, cast
 from typing_extensions import Doc
 
-from fastapi import HTTPException, Request
+from app.models.error import ErrorType, RequestError
+
+from fastapi import Request
 from fastapi.openapi.models import OAuthFlows
 from fastapi.security import OAuth2
 from fastapi.security.utils import get_authorization_scheme_param
 from pydantic import BaseModel
-from starlette.status import HTTP_401_UNAUTHORIZED
 
 
 class TokenRequest(BaseModel):
@@ -38,8 +39,7 @@ class UserCreate(BaseModel):
 class OAuthErrorResponse(BaseModel):
     error: str
     error_description: str
-    hint: str
-    message: str
+    hint: str | None
 
 
 class RegistrationErrorResponse(BaseModel):
@@ -157,9 +157,8 @@ class OAuth2ClientCredentialsBearer(OAuth2):
         scheme, param = get_authorization_scheme_param(authorization)
         if not authorization or scheme.lower() != "bearer":
             if self.auto_error:
-                raise HTTPException(
-                    status_code=HTTP_401_UNAUTHORIZED,
-                    detail="Not authenticated",
+                raise RequestError(
+                    ErrorType.NOT_AUTHENTICATED,
                     headers={"WWW-Authenticate": "Bearer"},
                 )
             else:

@@ -4,8 +4,8 @@
 """
 
 from app.log import logger
+from app.models.error import ErrorType, RequestError
 
-from fastapi import HTTPException
 import httpx
 import redis.asyncio as redis
 
@@ -81,12 +81,13 @@ class AudioProxyService:
             # 检查文件大小限制（10MB，预览音频通常不会太大）
             max_size = 10 * 1024 * 1024  # 10MB
             if len(audio_data) > max_size:
-                raise HTTPException(
-                    status_code=413, detail=f"Audio file too large: {len(audio_data)} bytes (max: {max_size})"
+                raise RequestError(
+                    ErrorType.AUDIO_FILE_TOO_LARGE,
+                    {"size": len(audio_data), "max_size": max_size},
                 )
 
             if len(audio_data) == 0:
-                raise HTTPException(status_code=404, detail="Audio preview not available for this beatmapset")
+                raise RequestError(ErrorType.AUDIO_PREVIEW_NOT_AVAILABLE)
 
             logger.info(f"Successfully fetched beatmapset audio: {len(audio_data)} bytes, type: {content_type}")
             return audio_data, content_type
@@ -94,17 +95,21 @@ class AudioProxyService:
         except httpx.HTTPStatusError as e:
             logger.error(f"HTTP error fetching beatmapset audio for ID {beatmapset_id}: {e}")
             if e.response.status_code == 404:
-                raise HTTPException(status_code=404, detail="Audio preview not found for this beatmapset") from e
+                raise RequestError(ErrorType.AUDIO_PREVIEW_NOT_FOUND) from e
             else:
-                raise HTTPException(
-                    status_code=e.response.status_code, detail=f"Failed to fetch audio: {e.response.status_code}"
+                raise RequestError(
+                    ErrorType.INTERNAL_ERROR_FETCHING_AUDIO,
+                    {"status_code": e.response.status_code},
+                    status_code=e.response.status_code,
                 ) from e
         except httpx.RequestError as e:
             logger.error(f"Request error fetching beatmapset audio for ID {beatmapset_id}: {e}")
-            raise HTTPException(status_code=503, detail="Failed to connect to osu! servers") from e
+            raise RequestError(ErrorType.FAILED_CONNECT_OSU_SERVERS) from e
+        except RequestError:
+            raise
         except Exception as e:
             logger.error(f"Unexpected error fetching beatmapset audio for ID {beatmapset_id}: {e}")
-            raise HTTPException(status_code=500, detail="Internal server error while fetching audio") from e
+            raise RequestError(ErrorType.INTERNAL_ERROR_FETCHING_AUDIO) from e
 
     async def get_beatmapset_audio(self, beatmapset_id: int) -> tuple[bytes, str]:
         """根据 beatmapset_id 获取音频预览"""
