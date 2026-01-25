@@ -4,7 +4,8 @@ import re
 import subprocess
 import sys
 
-from datamodel_code_generator import DataModelType, generate
+from datamodel_code_generator import generate
+from datamodel_code_generator.enums import DataModelType
 from datamodel_code_generator.format import Formatter
 
 OUTPUT_FILE = Path("app/models/performance.py")
