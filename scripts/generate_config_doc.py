@@ -16,7 +16,12 @@ from pydantic_settings import BaseSettings
 
 commit = sys.argv[1] if len(sys.argv) > 1 else "unknown"
 
-doc = []
+doc: list = [
+    "---",
+    "editLink: false",
+    "lastUpdated: false",
+    "---",
+]
 uncategorized = []
 
 
