@@ -41,37 +41,13 @@ osu!catch (RX)|`7`|`fruitsrx`|✅|✅
 
 Go to [custom-rulesets](https://github.com/GooGuTeam/custom-rulesets) to download the custom rulesets modified for g0v0-server.
 
-## Quick Start
+## Documentation
 
-### Using Docker Compose (Recommended)
+View it at <https://docs.g0v0.top/>
 
-1.  Clone the project
-    ```bash
-    git clone https://github.com/GooGuTeam/g0v0-server.git
-    cd g0v0-server
-    ```
-2.  Create a `.env` file
+## Deploy
 
-    Please see [wiki](https://github.com/GooGuTeam/g0v0-server/wiki/Configuration) to modify the .env file.
-    ```bash
-    cp .env.example .env
-    ```
-3. (Optional) Download rulesets
-    Go to [custom-rulesets](https://github.com/GooGuTeam/custom-rulesets/releases/latest) to download the custom rulesets modified for g0v0-server. Place the downloaded DLLs into the `rulesets/` directory to enable custom ruleset support in the spectator server and performance calculator.
-4.  Start the service
-    ```bash
-    # Standard server
-    docker-compose -f docker-compose.yml up -d
-    # Enable osu!RX and osu!AP statistics (Gu pp algorithm based on ppy-sb pp algorithm)
-    docker-compose -f docker-compose-osurx.yml up -d
-    ```
-5.  Connect to the server from the game
-
-    Use a [custom osu!lazer client](https://github.com/GooGuTeam/osu), or use [LazerAuthlibInjection](https://github.com/MingxuanGame/LazerAuthlibInjection), and change the server settings to the server's address.
-
-### Updating the Database
-
-Refer to the [Database Migration Guide](https://github.com/GooGuTeam/g0v0-server/wiki/Migrate-Database)
+View the [documentation](https://docs.g0v0.top/en/lazer/deploy/deploy-with-docker.html)
 
 ## Security
 
@@ -80,10 +56,6 @@ Use `openssl rand -hex 32` to generate the JWT secret key to ensure the security
 Use `openssl rand -hex 40` to generate the frontend secret key.
 
 **If it is in a public network environment, please block external requests to the `/_lio` path.**
-
-## Documentation
-
-Visit the [wiki](https://github.com/GooGuTeam/g0v0-server/wiki) for more information.
 
 ## License
 

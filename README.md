@@ -42,43 +42,13 @@ osu!catch (RX)|`7`|`fruitsrx`|✅|✅
 
 前往 [custom-rulesets](https://github.com/GooGuTeam/custom-rulesets/releases/latest) 下载为 g0v0-server 修改的自定义 ruleset。
 
-## 快速开始
+## 文档
 
-### 使用 Docker Compose (推荐)
+前往 <https://docs.g0v0.top/> 查看。
 
-1. 克隆项目
-```bash
-git clone https://github.com/GooGuTeam/g0v0-server.git
-cd g0v0-server
-```
+## 部署
 
-2. 创建 `.env` 文件
-
-请参考 [wiki](https://github.com/GooGuTeam/g0v0-server/wiki/Configuration) 来修改 `.env` 文件
-
-```bash
-cp .env.example .env
-```
-
-3. （可选）下载 rulesets
-
-前往 [custom-rulesets](https://github.com/GooGuTeam/custom-rulesets/releases/latest) 下载为 g0v0-server 修改的自定义 ruleset。将下载的 DLL 放入 `rulesets/` 目录，以在旁观服务器和表现分计算器中启用自定义 ruleset 支持。
-
-4. 启动服务
-```bash
-# 标准服务器
-docker-compose -f docker-compose.yml up -d
-# 启用 osu!RX 和 osu!AP 模式 （基于偏偏要上班 pp 算法的 Gu pp 算法）
-docker-compose -f docker-compose-osurx.yml up -d
-```
-
-5. 通过游戏连接服务器
-
-使用[自定义的 osu!lazer 客户端](https://github.com/GooGuTeam/osu)，或者使用 [LazerAuthlibInjection](https://github.com/MingxuanGame/LazerAuthlibInjection)，修改服务器设置为服务器的 IP
-
-## 更新数据库
-
-参考[数据库迁移指南](https://github.com/GooGuTeam/g0v0-server/wiki/Migrate-Database)
+查看[文档](https://docs.g0v0.top/lazer/deploy/deploy-with-docker.html)。
 
 ## 安全
 
