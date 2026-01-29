@@ -21,6 +21,15 @@ doc: list = [
     "editLink: false",
     "lastUpdated: false",
     "---",
+    f"> 上次生成：{datetime.datetime.now(datetime.UTC).strftime('%Y-%m-%d %H:%M:%S %Z')} "
+    f"于提交 {f'[`{commit}`](https://github.com/GooGuTeam/g0v0-server/commit/{commit})' if commit != 'unknown' else 'unknown'}",  # noqa: E501
+    "",
+    "# 配置",
+    "本页面列出了所有在 `.env` 文件中可用的配置选项及其说明。",
+    "",
+    "::: warning 警告",
+    "在生产环境中，请务必更改默认的密钥和密码！",
+    ":::",
 ]
 uncategorized = []
 
@@ -30,6 +39,7 @@ def new_paragraph(name: str, has_sub_paragraph: bool) -> None:
     doc.append(f"## {name}")
     if desc := Settings.model_config["json_schema_extra"]["paragraphs_desc"].get(name):  # type: ignore
         doc.append(desc)
+        doc.append("")
     if not has_sub_paragraph:
         doc.append("| 变量名 | 描述 | 类型 | 默认值 |")
         doc.append("|------|------|--------|------|")
@@ -133,11 +143,6 @@ for name, field in Settings.model_fields.items():
 doc.extend(
     [
         SPECTATOR_DOC,
-        "",
-        f"> 上次生成：{datetime.datetime.now(datetime.UTC).strftime('%Y-%m-%d %H:%M:%S %Z')} "
-        f"于提交 {f'[`{commit}`](https://github.com/GooGuTeam/g0v0-server/commit/{commit})' if commit != 'unknown' else 'unknown'}",  # noqa: E501
-        "",
-        "> **注意: 在生产环境中，请务必更改默认的密钥和密码！**",
     ]
 )
 print("\n".join(doc))

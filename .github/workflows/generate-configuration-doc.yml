@@ -59,7 +59,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .
-          git commit -m "update configuration docs from Actions [skip ci]" || echo "No changes"
+          git commit -m "update configuration docs from commit https://github.com/GooGuTeam/g0v0-server/commit/${{ github.sha }} [skip ci]" || echo "No changes"
           git push origin main
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
