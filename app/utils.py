@@ -9,8 +9,6 @@ import re
 from types import NoneType, UnionType
 from typing import TYPE_CHECKING, Any, ParamSpec, TypedDict, TypeVar, Union, get_args, get_origin
 
-from app.models.error import ErrorType, RequestError
-
 from fastapi.encoders import jsonable_encoder
 from PIL import Image
 
@@ -142,6 +140,8 @@ def truncate(text: str, limit: int = 100, ellipsis: str = "...") -> str:
 
 
 def check_image(content: bytes, size: int, width: int, height: int) -> str:
+    from app.models.error import ErrorType, RequestError
+
     if len(content) > size:  # 10MB limit
         raise RequestError(ErrorType.FILE_SIZE_EXCEEDS_LIMIT)
     elif len(content) == 0:
