@@ -78,6 +78,8 @@ class PerformanceServerPerformanceCalculator(BasePerformanceCalculator):
                 return result
             except HTTPError as e:
                 raise CalculateError(f"Failed to get available modes: {e}") from e
+            except CalculateError:
+                raise
             except Exception as e:
                 raise CalculateError(f"Unknown error: {e}") from e
 
@@ -114,6 +116,8 @@ class PerformanceServerPerformanceCalculator(BasePerformanceCalculator):
                 return TypeAdapter(PerformanceAttributesUnion).validate_json(resp.text)
             except HTTPError as e:
                 raise PerformanceError(f"Failed to calculate performance: {e}") from e
+            except CalculateError:
+                raise
             except Exception as e:
                 raise CalculateError(f"Unknown error: {e}") from e
 
@@ -136,6 +140,8 @@ class PerformanceServerPerformanceCalculator(BasePerformanceCalculator):
                 return TypeAdapter(DifficultyAttributesUnion).validate_json(resp.text)
             except HTTPError as e:
                 raise DifficultyError(f"Failed to calculate difficulty: {e}") from e
+            except CalculateError:
+                raise
             except Exception as e:
                 raise DifficultyError(f"Unknown error: {e}") from e
 
