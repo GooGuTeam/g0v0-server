@@ -61,10 +61,10 @@ from fastapi import (
     Body,
     Depends,
     Form,
+    HTTPException,
     Path,
     Query,
     Security,
-    HTTPException,
 )
 from fastapi.responses import RedirectResponse
 from fastapi_limiter.depends import RateLimiter
@@ -897,7 +897,7 @@ async def show_playlist_score(
 
 
 @router.get(
-    "/rooms/{room_id}/playlist/{playlist_id}/scores/users/{user_id}", #there was a missing '/', fixing just in case!
+    "/rooms/{room_id}/playlist/{playlist_id}/scores/users/{user_id}",  # there was a missing '/', fixing just in case!
     responses={
         200: api_doc(
             "房间项目单个成绩详情。",
