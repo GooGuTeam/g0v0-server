@@ -815,7 +815,7 @@ async def show_playlist_score(
 
 
 @router.get(
-    "rooms/{room_id}/playlist/{playlist_id}/scores/users/{user_id}",
+    "/rooms/{room_id}/playlist/{playlist_id}/scores/users/{user_id}",
     responses={
         200: api_doc(
             "房间项目单个成绩详情。",
