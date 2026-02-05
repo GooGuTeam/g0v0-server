@@ -64,6 +64,15 @@
       "contributions": [
         "code"
       ]
+    },
+    {
+      "login": "ShikkesoraSIM",
+      "name": "Shikkesora",
+      "avatar_url": "https://avatars.githubusercontent.com/u/148418529?v=4",
+      "profile": "https://github.com/ShikkesoraSIM",
+      "contributions": [
+        "bug"
+      ]
     }
   ],
   "contributorsPerLine": 7,
