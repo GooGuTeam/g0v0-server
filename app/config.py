@@ -44,24 +44,6 @@ class OldScoreProcessingMode(str, Enum):
     NORMAL = "normal"
 
 
-SPECTATOR_DOC = """
-## 旁观服务器设置
-| 变量名 | 描述 | 类型 | 默认值 |
-|--------|------|--------|--------|
-| `SAVE_REPLAYS` | 是否保存回放，设置为 `1` 为启用 | boolean | `0` |
-| `REDIS_HOST` | Redis 服务器地址 | string | `localhost` |
-| `SHARED_INTEROP_DOMAIN` | API 服务器（即本服务）地址 | string (url) | `http://localhost:8000` |
-| `SERVER_PORT` | 旁观服务器端口 | integer | `8006` |
-| `SP_SENTRY_DSN` | 旁观服务器的 Sentry DSN | string | `null` |
-| `MATCHMAKING_ROOM_ROUNDS` | 匹配对战房间的回合数 | integer | 5 |
-| `MATCHMAKING_ALLOW_SKIP` | 是否允许用户跳过匹配阶段 | boolean | false |
-| `MATCHMAKING_LOBBY_UPDATE_RATE` | 更新匹配大厅的频率（以秒为单位） | integer | 5 |
-| `MATCHMAKING_QUEUE_UPDATE_RATE` | 更新匹配队列的频率（以秒为单位） | integer | 1 |
-| `MATCHMAKING_QUEUE_BAN_DURATION` | 玩家拒绝邀请后暂时禁止进入匹配队列的时间（以秒为单位） | integer | 60 |
-| `MATCHMAKING_POOL_SIZE` | 每个匹配房间的谱面数量 | integer | 50 |
-"""
-
-
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -9,7 +9,7 @@ from typing import Any, Literal, Union, get_origin
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from app.config import SPECTATOR_DOC, Settings
+from app.config import Settings
 
 from pydantic import AliasChoices, BaseModel, HttpUrl
 from pydantic_settings import BaseSettings
@@ -142,9 +142,9 @@ for name, field in Settings.model_fields.items():
         f"| {mapping_type(field.annotation)} | `{serialize_default(field.default)}` |"  # pyright: ignore[reportArgumentType]
     )
 
-doc.extend(
-    [
-        SPECTATOR_DOC,
-    ]
-)
+# doc.extend(
+#    [
+#        SPECTATOR_DOC,
+#    ]
+# )
 print("\n".join(doc))
