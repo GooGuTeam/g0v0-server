@@ -1,9 +1,9 @@
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel
 
 
-class RoomCategory(str, Enum):
+class RoomCategory(StrEnum):
     NORMAL = "normal"
     SPOTLIGHT = "spotlight"
     FEATURED_ARTIST = "featured_artist"
@@ -11,38 +11,38 @@ class RoomCategory(str, Enum):
     REALTIME = "realtime"  # INTERNAL USE ONLY, DO NOT USE IN API
 
 
-class MatchType(str, Enum):
+class MatchType(StrEnum):
     PLAYLISTS = "playlists"
     HEAD_TO_HEAD = "head_to_head"
     TEAM_VERSUS = "team_versus"
     MATCHMAKING = "matchmaking"
 
 
-class QueueMode(str, Enum):
+class QueueMode(StrEnum):
     HOST_ONLY = "host_only"
     ALL_PLAYERS = "all_players"
     ALL_PLAYERS_ROUND_ROBIN = "all_players_round_robin"
 
 
-class RoomAvailability(str, Enum):
+class RoomAvailability(StrEnum):
     PUBLIC = "public"
     FRIENDS_ONLY = "friends_only"
     INVITE_ONLY = "invite_only"
 
 
-class RoomStatus(str, Enum):
+class RoomStatus(StrEnum):
     IDLE = "idle"
     PLAYING = "playing"
 
 
-class MultiplayerRoomState(str, Enum):
+class MultiplayerRoomState(StrEnum):
     OPEN = "open"
     WAITING_FOR_LOAD = "waiting_for_load"
     PLAYING = "playing"
     CLOSED = "closed"
 
 
-class MultiplayerUserState(str, Enum):
+class MultiplayerUserState(StrEnum):
     IDLE = "idle"
     READY = "ready"
     WAITING_FOR_LOAD = "waiting_for_load"
@@ -63,7 +63,7 @@ class MultiplayerUserState(str, Enum):
         }
 
 
-class DownloadState(str, Enum):
+class DownloadState(StrEnum):
     UNKNOWN = "unknown"
     NOT_DOWNLOADED = "not_downloaded"
     DOWNLOADING = "downloading"

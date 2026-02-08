@@ -888,7 +888,7 @@ class BBCodeService:
                     tag_stack.pop()
             else:
                 # Self-closing tags
-                if tag_name not in ["*"]:
+                if tag_name != "*":
                     tag_stack.append(tag_name)
 
         # check for any unclosed tags

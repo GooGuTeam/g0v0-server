@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from app.models.model import UTCBaseModel
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from .user import User
 
 
-class EventType(str, Enum):
+class EventType(StrEnum):
     ACHIEVEMENT = "achievement"
     BEATMAP_PLAYCOUNT = "beatmap_playcount"
     BEATMAPSET_APPROVE = "beatmapset_approve"
