@@ -1,4 +1,4 @@
-from enum import StrEnum
+from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 from sqlmodel import JSON, BigInteger, Column, Field, ForeignKey, Relationship, SQLModel
@@ -17,35 +17,35 @@ DEFAULT_ORDER = [
 ]
 
 
-class BeatmapCardSize(StrEnum):
+class BeatmapCardSize(str, Enum):
     NORMAL = "normal"
     EXTRA = "extra"
 
 
-class BeatmapDownload(StrEnum):
+class BeatmapDownload(str, Enum):
     ALL = "all"
     NO_VIDEO = "no_video"
     direct = "direct"
 
 
-class ScoringMode(StrEnum):
+class ScoringMode(str, Enum):
     STANDARDISED = "standardised"
     CLASSIC = "classic"
 
 
-class UserListFilter(StrEnum):
+class UserListFilter(str, Enum):
     ALL = "all"
     ONLINE = "online"
     OFFLINE = "offline"
 
 
-class UserListSort(StrEnum):
+class UserListSort(str, Enum):
     LAST_VISIT = "last_visit"
     RANK = "rank"
     USERNAME = "username"
 
 
-class UserListView(StrEnum):
+class UserListView(str, Enum):
     CARD = "card"
     LIST = "list"
     BRICK = "brick"

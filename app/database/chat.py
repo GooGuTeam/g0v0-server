@@ -1,5 +1,5 @@
 from datetime import datetime
-from enum import StrEnum
+from enum import Enum
 from typing import TYPE_CHECKING, ClassVar, NotRequired, TypedDict
 
 from app.models.model import UTCBaseModel
@@ -34,7 +34,7 @@ class ChatUserAttributes(BaseModel):
     last_read_id: int
 
 
-class ChannelType(StrEnum):
+class ChannelType(str, Enum):
     PUBLIC = "PUBLIC"
     PRIVATE = "PRIVATE"
     MULTIPLAYER = "MULTIPLAYER"
@@ -47,7 +47,7 @@ class ChannelType(StrEnum):
     TEAM = "TEAM"
 
 
-class MessageType(StrEnum):
+class MessageType(str, Enum):
     ACTION = "action"
     MARKDOWN = "markdown"
     PLAIN = "plain"

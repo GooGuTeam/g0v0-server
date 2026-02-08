@@ -1,4 +1,4 @@
-from enum import StrEnum
+from enum import Enum
 from typing import Annotated, Any, Literal
 
 from app.models.scoring_mode import ScoringMode
@@ -33,13 +33,13 @@ class LocalStorageSettings(BaseSettings):
     local_storage_path: str = "./storage"
 
 
-class StorageServiceType(StrEnum):
+class StorageServiceType(str, Enum):
     LOCAL = "local"
     CLOUDFLARE_R2 = "r2"
     AWS_S3 = "s3"
 
 
-class OldScoreProcessingMode(StrEnum):
+class OldScoreProcessingMode(str, Enum):
     STRICT = "strict"
     NORMAL = "normal"
 

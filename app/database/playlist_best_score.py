@@ -103,4 +103,4 @@ async def get_position(
     stmt = select(subq.c.row_number).where(subq.c.score_id == score_id)
     result = await session.exec(stmt)
     s = result.one_or_none()
-    return s or 0
+    return s if s else 0

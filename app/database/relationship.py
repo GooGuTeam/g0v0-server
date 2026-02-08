@@ -1,4 +1,4 @@
-from enum import StrEnum
+from enum import Enum
 from typing import TYPE_CHECKING, NotRequired, TypedDict
 
 from app.models.score import GameMode
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from .user import User, UserDict
 
 
-class RelationshipType(StrEnum):
+class RelationshipType(str, Enum):
     FOLLOW = "friend"
     BLOCK = "block"
 

@@ -1,5 +1,5 @@
 from datetime import datetime
-from enum import StrEnum
+from enum import Enum
 from typing import TYPE_CHECKING
 
 from app.models.model import UTCBaseModel
@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from .user import User
 
 
-class UserAccountHistoryType(StrEnum):
+class UserAccountHistoryType(str, Enum):
     NOTE = "note"
     RESTRICTION = "restriction"
     SLIENCE = "silence"

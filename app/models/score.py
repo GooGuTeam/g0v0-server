@@ -1,4 +1,4 @@
-from enum import Enum, StrEnum
+from enum import Enum
 import json
 from typing import NamedTuple, TypedDict, cast
 
@@ -34,7 +34,7 @@ class RulesetCheckResult(NamedTuple):
         return msg
 
 
-class GameMode(StrEnum):
+class GameMode(str, Enum):
     OSU = "osu"
     TAIKO = "taiko"
     FRUITS = "fruits"
@@ -184,7 +184,7 @@ class GameMode(StrEnum):
             return None
 
 
-class Rank(StrEnum):
+class Rank(str, Enum):
     X = "X"
     XH = "XH"
     S = "S"
@@ -207,7 +207,7 @@ class Rank(StrEnum):
 
 
 # https://github.com/ppy/osu/blob/master/osu.Game/Rulesets/Scoring/HitResult.cs
-class HitResult(StrEnum):
+class HitResult(str, Enum):
     NONE = "none"  # [Order(15)]
 
     MISS = "miss"  # [Order(5)]

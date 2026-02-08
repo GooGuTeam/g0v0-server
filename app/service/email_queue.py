@@ -81,7 +81,7 @@ class EmailQueue:
             "to_email": to_email,
             "subject": subject,
             "content": content,
-            "html_content": html_content or "",
+            "html_content": html_content if html_content else "",
             "metadata": json.dumps(metadata) if metadata else "{}",
             "created_at": datetime.now().isoformat(),
             "status": "pending",  # pending, sending, sent, failed
@@ -302,7 +302,7 @@ class EmailQueue:
                 to_email=to_email,
                 subject=subject,
                 content=content,
-                html_content=html_content or None,
+                html_content=html_content if html_content else None,
                 metadata=metadata,
             )
 

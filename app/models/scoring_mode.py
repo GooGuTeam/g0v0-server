@@ -1,7 +1,7 @@
-from enum import StrEnum
+from enum import Enum
 
 
-class ScoringMode(StrEnum):
+class ScoringMode(str, Enum):
     """
     Scoring mode for calculating scores.
 
