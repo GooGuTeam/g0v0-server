@@ -48,7 +48,7 @@ rosu = [
 
 [tool.ruff]
 line-length = 120
-target-version = "py313"
+target-version = "py312"
 
 [tool.ruff.format]
 line-ending = "lf"
