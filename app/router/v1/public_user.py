@@ -64,20 +64,20 @@ async def _create_player_mode_stats(
     return PlayerModeStats(
         id=user.id,
         mode=int(mode),
-        tscore=statistics.total_score if statistics.total_score else 0,
-        rscore=statistics.ranked_score if statistics.ranked_score else 0,
+        tscore=statistics.total_score or 0,
+        rscore=statistics.ranked_score or 0,
         pp=float(statistics.pp) if statistics.pp else 0.0,
-        plays=statistics.play_count if statistics.play_count else 0,
-        playtime=statistics.play_time if statistics.play_time else 0,
+        plays=statistics.play_count or 0,
+        playtime=statistics.play_time or 0,
         acc=float(statistics.hit_accuracy) if statistics.hit_accuracy else 0.0,
-        max_combo=statistics.maximum_combo if statistics.maximum_combo else 0,
-        total_hits=statistics.total_hits if statistics.total_hits else 0,
-        replay_views=statistics.replays_watched_by_others if statistics.replays_watched_by_others else 0,
-        xh_count=statistics.grade_ssh if statistics.grade_ssh else 0,
-        x_count=statistics.grade_ss if statistics.grade_ss else 0,
-        sh_count=statistics.grade_sh if statistics.grade_sh else 0,
-        s_count=statistics.grade_s if statistics.grade_s else 0,
-        a_count=statistics.grade_a if statistics.grade_a else 0,
+        max_combo=statistics.maximum_combo or 0,
+        total_hits=statistics.total_hits or 0,
+        replay_views=statistics.replays_watched_by_others or 0,
+        xh_count=statistics.grade_ssh or 0,
+        x_count=statistics.grade_ss or 0,
+        sh_count=statistics.grade_sh or 0,
+        s_count=statistics.grade_s or 0,
+        a_count=statistics.grade_a or 0,
         level=int(statistics.level_current) if statistics.level_current else 1,
         level_progress=0,  # TODO: 计算等级进度
         rank=0,  # global_rank需要从RankHistory获取
@@ -94,8 +94,8 @@ async def _create_player_info(user: User):
         id=user.id,
         name=user.username,
         safe_name=user.username,  # 使用 username 作为 safe_name
-        priv=user.priv if user.priv else 1,
-        country=user.country_code if user.country_code else "",
+        priv=user.priv or 1,
+        country=user.country_code or "",
         silence_end=int(user.silence_end_at.timestamp()) if user.silence_end_at else 0,
         donor_end=int(user.donor_end_at.timestamp()) if user.donor_end_at else 0,
         creation_time=int(user.join_date.timestamp()) if user.join_date else 0,
@@ -117,7 +117,7 @@ async def _create_player_info(user: User):
         social_twitch=None,
         social_github=None,
         social_osu=None,
-        username_history=user.previous_usernames if user.previous_usernames else [],
+        username_history=user.previous_usernames or [],
     )
 
 

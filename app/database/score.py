@@ -756,7 +756,7 @@ async def get_score_position_by_user(
     stmt = select(subq.c.row_number).where(subq.c.user_id == user.id)
     result = await session.exec(stmt)
     s = result.first()
-    return s if s else 0
+    return s or 0
 
 
 async def get_score_position_by_id(
@@ -786,7 +786,7 @@ async def get_score_position_by_id(
     stmt = select(subq.c.row_number).where(subq.c.score_id == score_id)
     result = await session.exec(stmt)
     s = result.one_or_none()
-    return s if s else 0
+    return s or 0
 
 
 async def get_user_best_score_in_beatmap(

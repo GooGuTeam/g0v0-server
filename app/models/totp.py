@@ -1,4 +1,4 @@
-from enum import Enum
+from enum import StrEnum
 from typing import TypedDict
 
 
@@ -7,7 +7,7 @@ class StartCreateTotpKeyResp(TypedDict):
     uri: str
 
 
-class FinishStatus(str, Enum):
+class FinishStatus(StrEnum):
     INVALID = "invalid"
     SUCCESS = "success"
     FAILED = "failed"
