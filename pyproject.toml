@@ -3,7 +3,7 @@ name = "g0v0-server"
 version = "0.1.0"
 description = "3rd-party osu!lazer private server which supports the latest osu!lazer."
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = [
     "aioboto3>=15.0.0",
     "aiofiles>=24.1.0",
@@ -136,6 +136,6 @@ dev = [
     "datamodel-code-generator>=0.35.0",
     "pre-commit>=4.2.0",
     "pyright>=1.1.404",
-    "ruff>=0.12.4",
+    "ruff>=0.15.0",
     "types-aioboto3[aioboto3,essential]>=15.0.0",
 ]
