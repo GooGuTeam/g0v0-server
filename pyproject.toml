@@ -5,46 +5,44 @@ description = "3rd-party osu!lazer private server which supports the latest osu!
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "aioboto3>=15.0.0",
-    "aiofiles>=24.1.0",
-    "aiomysql>=0.2.0",
-    "alembic>=1.12.1",
-    "apscheduler>=3.11.0",
-    "bcrypt>=4.1.2",
-    "bleach>=6.1.0",
-    "cryptography>=41.0.7",
-    "fastapi>=0.104.1",
-    "fastapi-limiter>=0.1.6",
-    "g0v0-migrations",
-    "httpx>=0.28.1",
-    "jinja2>=3.1.0",
-    "loguru>=0.7.3",
-    "mailersend>=2.0.0",
-    "maxminddb>=2.8.2",
-    "newrelic>=10.1.0",
-    "osupyparser>=1.0.7",
-    "passlib[bcrypt]>=1.7.4",
-    "pillow>=11.3.0",
-    "pydantic-settings>=2.10.1",
-    "pydantic[email]>=2.5.0",
-    "pyotp>=2.9.0",
-    "python-dotenv>=1.0.0",
-    "python-jose[cryptography]>=3.3.0",
-    "python-multipart>=0.0.6",
-    "redis>=5.0.1",
-    "regex>=2025.11.3",
-    "sentry-sdk[fastapi,httpx,loguru,sqlalchemy]>=2.34.1",
-    "sqlalchemy>=2.0.23",
-    "sqlmodel>=0.0.24",
-    "tinycss2>=1.4.0",
-    "uvicorn[standard]>=0.24.0",
+  "aioboto3>=15.0.0",
+  "aiofiles>=24.1.0",
+  "aiomysql>=0.2.0",
+  "alembic>=1.12.1",
+  "apscheduler>=3.11.0",
+  "bcrypt>=4.1.2",
+  "bleach>=6.1.0",
+  "cryptography>=41.0.7",
+  "fastapi>=0.104.1",
+  "fastapi-limiter>=0.1.6",
+  "g0v0-migrations",
+  "httpx>=0.28.1",
+  "jinja2>=3.1.0",
+  "loguru>=0.7.3",
+  "mailersend>=2.0.0",
+  "maxminddb>=2.8.2",
+  "newrelic>=10.1.0",
+  "osupyparser>=1.0.7",
+  "passlib[bcrypt]>=1.7.4",
+  "pillow>=11.3.0",
+  "pydantic-settings>=2.10.1",
+  "pydantic[email]>=2.5.0",
+  "pyotp>=2.9.0",
+  "python-dotenv>=1.0.0",
+  "python-jose[cryptography]>=3.3.0",
+  "python-multipart>=0.0.6",
+  "redis>=5.0.1",
+  "regex>=2025.11.3",
+  "sentry-sdk[fastapi,httpx,loguru,sqlalchemy]>=2.34.1",
+  "sqlalchemy>=2.0.23",
+  "sqlmodel>=0.0.24",
+  "tinycss2>=1.4.0",
+  "uvicorn[standard]>=0.24.0",
 ]
 authors = [{ name = "GooGuTeam" }]
 
 [project.optional-dependencies]
-rosu = [
-    "rosu-pp-py>=3.1.0",
-]
+rosu = ["rosu-pp-py>=3.1.0"]
 
 [tool.ruff]
 line-length = 120
@@ -76,7 +74,7 @@ select = [
   "ARG",   # flake8-unused-arguments
   "PTH",   # flake8-use-pathlib
   "N",     # pep8-naming
-  "FURB"   # refurb
+  "FURB",  # refurb
 ]
 ignore = [
   "E402",   # module-import-not-at-top-of-file
@@ -89,7 +87,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.extend-per-file-ignores]
-"tools/*.py" = ["PTH", "INP001"]
+"tools/*.py" = ["PTH", "INP001", "ASYNC250"]
 "scripts/*.py" = ["PTH", "INP001"]
 "migrations/**/*.py" = ["INP001"]
 "app/achievements/*.py" = ["INP001", "ARG"]
@@ -102,7 +100,13 @@ combine-as-imports = true
 order-by-type = true
 relative-imports-order = "closest-to-furthest"
 extra-standard-library = ["typing_extensions"]
-section-order = ["future", "standard-library", "first-party", "local-folder", "third-party"]
+section-order = [
+  "future",
+  "standard-library",
+  "first-party",
+  "local-folder",
+  "third-party",
+]
 
 [tool.ruff.lint.flake8-pytest-style]
 fixture-parentheses = false
@@ -122,10 +126,7 @@ reportIncompatibleVariableOverride = false
 exclude = ["migrations/", ".venv/", "venv/"]
 
 [tool.uv.workspace]
-members = [
-    "packages/osupyparser",
-    "packages/g0v0-migrations",
-]
+members = ["packages/osupyparser", "packages/g0v0-migrations"]
 
 [tool.uv.sources]
 osupyparser = { git = "https://github.com/MingxuanGame/osupyparser.git" }
@@ -133,9 +134,9 @@ g0v0-migrations = { workspace = true }
 
 [dependency-groups]
 dev = [
-    "datamodel-code-generator>=0.35.0",
-    "pre-commit>=4.2.0",
-    "pyright>=1.1.404",
-    "ruff>=0.15.0",
-    "types-aioboto3[aioboto3,essential]>=15.0.0",
+  "datamodel-code-generator>=0.35.0",
+  "pre-commit>=4.2.0",
+  "pyright>=1.1.404",
+  "ruff>=0.15.0",
+  "types-aioboto3[aioboto3,essential]>=15.0.0",
 ]
