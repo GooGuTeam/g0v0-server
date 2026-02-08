@@ -90,10 +90,21 @@ def _get_annotations(class_dict: dict[str, Any]) -> dict[str, Any]:
 
 
 # https://github.com/pydantic/pydantic/blob/main/pydantic/v1/typing.py#L58-L77
-def evaluate_forwardref(type_: ForwardRef, globalns: Any, localns: Any) -> Any:
-    # Pydantic 1.x will not support PEP 695 syntax, but provide `type_params` to avoid
-    # warnings:
-    return cast(Any, type_)._evaluate(globalns, localns, type_params=(), recursive_guard=set())
+if sys.version_info < (3, 12, 4):
+
+    def evaluate_forwardref(type_: ForwardRef, globalns: Any, localns: Any) -> Any:
+        # Even though it is the right signature for python 3.9, mypy complains with
+        # `error: Too many arguments for "_evaluate" of "ForwardRef"` hence the cast...
+        # Python 3.13/3.12.4+ made `recursive_guard` a kwarg, so name it explicitly to avoid:
+        # TypeError: ForwardRef._evaluate() missing 1 required keyword-only argument: 'recursive_guard'
+        return cast(Any, type_)._evaluate(globalns, localns, recursive_guard=set())
+
+else:
+
+    def evaluate_forwardref(type_: ForwardRef, globalns: Any, localns: Any) -> Any:
+        # Pydantic 1.x will not support PEP 695 syntax, but provide `type_params` to avoid
+        # warnings:
+        return cast(Any, type_)._evaluate(globalns, localns, type_params=(), recursive_guard=set())
 
 
 class DatabaseModelMetaclass(SQLModelMetaclass):
