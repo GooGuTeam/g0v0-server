@@ -177,7 +177,7 @@ async def _create_room(db: Database, room_data: dict[str, Any]) -> tuple[Room, i
         name=room_name,
         category=RoomCategory.REALTIME,
         host_id=host_user_id,
-        password=password if password else None,
+        password=password or None,
         type=match_type_enum,
         queue_mode=queue_mode_enum,
         status=RoomStatus.IDLE,
