@@ -22,3 +22,5 @@ jobs:
 
       - name: Run Ruff Lint
         uses: astral-sh/ruff-action@v3
+        with:
+          version-file: "pyproject.toml"
