@@ -89,7 +89,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.extend-per-file-ignores]
-"tools/*.py" = ["PTH", "INP001"]
+"tools/*.py" = ["PTH", "INP001","ASYNC250"]
 "scripts/*.py" = ["PTH", "INP001"]
 "migrations/**/*.py" = ["INP001"]
 "app/achievements/*.py" = ["INP001", "ARG"]
