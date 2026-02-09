@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, Path
 from fastapi.responses import Response
 from fastapi_limiter.depends import RateLimiter
 from loguru import logger
+from pyrate_limiter import Duration, Limiter, Rate
 import redis.asyncio as redis
 
 router = APIRouter(prefix="/audio", tags=["Audio Proxy"])
@@ -29,8 +30,8 @@ async def get_audio_proxy_dependency(
 @router.get(
     "/beatmapset/{beatmapset_id}",
     dependencies=[
-        Depends(RateLimiter(times=30, minutes=1)),  # 每分钟最多30次请求
-        Depends(RateLimiter(times=5, seconds=10)),  # 每10秒最多5次请求
+        Depends(RateLimiter(limiter=Limiter(Rate(30, Duration.MINUTE)))),  # 每分钟最多30次请求
+        Depends(RateLimiter(limiter=Limiter(Rate(5, Duration.SECOND * 10)))),  # 每10秒最多5次请求
     ],
 )
 async def get_beatmapset_audio(
