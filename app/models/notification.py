@@ -1,7 +1,7 @@
 # ruff: noqa: ARG002
 
 from abc import abstractmethod
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING, ClassVar, Self
 
 from app.utils import truncate
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 
 # https://github.com/ppy/osu-web/blob/master/app/Models/Notification.php
-class NotificationName(str, Enum):
+class NotificationName(StrEnum):
     BEATMAP_OWNER_CHANGE = "beatmap_owner_change"
     BEATMAPSET_DISCUSSION_LOCK = "beatmapset_discussion_lock"
     BEATMAPSET_DISCUSSION_POST_NEW = "beatmapset_discussion_post_new"

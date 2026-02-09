@@ -13,6 +13,7 @@ from .router import router
 
 from fastapi import Body, Depends, Path, Query
 from fastapi_limiter.depends import RateLimiter
+from pyrate_limiter import Duration, Limiter, Rate
 from sqlmodel import col, exists, select
 
 
@@ -97,7 +98,7 @@ async def rate_beatmaps(
     name="请求同步谱面集",
     status_code=202,
     tags=["谱面集", "g0v0 API"],
-    dependencies=[Depends(RateLimiter(times=50, hours=1))],
+    dependencies=[Depends(RateLimiter(limiter=Limiter(Rate(50, Duration.HOUR))))],
 )
 async def sync_beatmapset(
     beatmapset_id: Annotated[int, Path(..., description="谱面集ID")],

@@ -11,7 +11,6 @@ from app.dependencies.database import (
     redis_binary_client,
     redis_client,
     redis_message_client,
-    redis_rate_limit_client,
 )
 from app.dependencies.fetcher import get_fetcher
 from app.dependencies.scheduler import start_scheduler, stop_scheduler
@@ -56,7 +55,6 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
-from fastapi_limiter import FastAPILimiter
 import sentry_sdk
 
 
@@ -72,9 +70,6 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
 
     if settings.check_client_version:
         await init_client_verification_service()
-
-    # init rate limiter
-    await FastAPILimiter.init(redis_rate_limit_client)
 
     # init fetcher
     fetcher = await get_fetcher()
@@ -117,7 +112,6 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
     await redis_client.aclose()
     await redis_binary_client.aclose()
     await redis_message_client.aclose()
-    await redis_rate_limit_client.aclose()
 
 
 desc = f"""osu! API 模拟服务器，支持 osu! API v1, v2 和 osu!lazer 的绝大部分功能。

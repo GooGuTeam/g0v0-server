@@ -15,6 +15,7 @@ from .router import router
 from fastapi import Depends, Query
 from fastapi_limiter.depends import RateLimiter
 from pydantic import BaseModel
+from pyrate_limiter import Duration, Limiter, Rate
 from sqlmodel import col, select
 
 
@@ -28,7 +29,7 @@ class ReplayModel(BaseModel):
     response_model=ReplayModel,
     name="获取回放文件",
     description="获取指定谱面的回放文件。",
-    dependencies=[Depends(RateLimiter(times=10, minutes=1))],
+    dependencies=[Depends(RateLimiter(limiter=Limiter(Rate(10, Duration.MINUTE))))],
 )
 async def download_replay(
     session: Database,

@@ -69,6 +69,7 @@ from fastapi.responses import RedirectResponse
 from fastapi_limiter.depends import RateLimiter
 from httpx import HTTPError
 from pydantic import BaseModel
+from pyrate_limiter import Duration, Limiter, Rate
 from sqlalchemy.orm import joinedload
 from sqlmodel import col, exists, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -1038,7 +1039,7 @@ async def reorder_score_pin(
     name="下载成绩回放",
     description="下载指定成绩的回放文件。",
     tags=["成绩"],
-    dependencies=[Depends(RateLimiter(times=10, minutes=1))],
+    dependencies=[Depends(RateLimiter(limiter=Limiter(Rate(10, Duration.MINUTE))))],
 )
 async def download_score_replay(
     score_id: int,

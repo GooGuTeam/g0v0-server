@@ -1,5 +1,5 @@
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import NotRequired, TypedDict
 
 from .model import UTCBaseModel
@@ -7,7 +7,7 @@ from .model import UTCBaseModel
 from pydantic import BaseModel
 
 
-class PlayStyle(str, Enum):
+class PlayStyle(StrEnum):
     MOUSE = "mouse"
     KEYBOARD = "keyboard"
     TABLET = "tablet"
@@ -87,7 +87,7 @@ class Page(TypedDict):
     raw: NotRequired[str]
 
 
-class BeatmapsetType(str, Enum):
+class BeatmapsetType(StrEnum):
     FAVOURITE = "favourite"
     GRAVEYARD = "graveyard"
     GUEST = "guest"

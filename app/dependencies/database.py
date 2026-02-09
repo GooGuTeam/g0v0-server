@@ -43,9 +43,6 @@ redis_message_client = redis.from_url(settings.redis_url, decode_responses=True,
 # Redis 二进制数据连接 (不自动解码响应，用于存储音频等二进制数据，db2)
 redis_binary_client = redis.from_url(settings.redis_url, decode_responses=False, db=2)
 
-# Redis 限流连接 (db3)
-redis_rate_limit_client = redis.from_url(settings.redis_url, decode_responses=True, db=3)
-
 
 # 数据库依赖
 db_session_context: ContextVar[AsyncSession | None] = ContextVar("db_session_context", default=None)

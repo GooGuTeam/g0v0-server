@@ -19,6 +19,7 @@ from .router import router
 
 from fastapi import Depends, Form
 from fastapi_limiter.depends import RateLimiter
+from pyrate_limiter import Duration, Limiter, Rate
 from sqlmodel import col, delete
 
 logger = log("Auth")
@@ -29,7 +30,7 @@ logger = log("Auth")
     name="更改密码",
     tags=["验证", "g0v0 API"],
     status_code=204,
-    dependencies=[Depends(RateLimiter(times=3, minutes=5))],
+    dependencies=[Depends(RateLimiter(limiter=Limiter(Rate(3, Duration.MINUTE * 5))))],
 )
 async def change_password(
     current_user: ClientUser,
