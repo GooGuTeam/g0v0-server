@@ -1010,7 +1010,7 @@ async def process_score(
         playlist_item_id=score_token.playlist_item_id,
         room_id=score_token.room_id,
         maximum_statistics=info.maximum_statistics,
-        processed=True,
+        processed=False,
         ranked=ranked,
     )
     session.add(score)
@@ -1433,7 +1433,7 @@ async def process_user(
         beatmap_length,
         beatmap_status,
     )
-    await redis.publish("osu-channel:score:processed", f'{{"ScoreId": {score_id}}}')
+    score.processed = True
     await session.commit()
 
     score_ = (await session.exec(select(Score).where(Score.id == score_id).options(joinedload(Score.beatmap)))).first()
