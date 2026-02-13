@@ -6,7 +6,7 @@ from . import (  # noqa: F401
     avatar,
     beatmapset,
     cover,
-    gamemode,
+    gamemodes,
     oauth,
     password,
     relationship,
