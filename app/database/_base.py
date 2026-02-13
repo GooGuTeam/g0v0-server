@@ -1,7 +1,10 @@
 from collections.abc import Awaitable, Callable, Sequence
 from functools import lru_cache, wraps
 import inspect
+import json
+from pathlib import Path
 import sys
+import tomllib
 from types import NoneType, get_original_bases
 from typing import (
     TYPE_CHECKING,
@@ -17,7 +20,9 @@ from typing import (
     overload,
 )
 
+from app.log import log
 from app.models.model import UTCBaseModel
+from app.models.plugin import META_FILENAME
 from app.utils import type_is_optional
 
 from sqlalchemy.ext.asyncio import async_object_session
@@ -25,6 +30,7 @@ from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel.main import SQLModelMetaclass
 
+logger = log("Database")
 _dict_to_model: dict[type, type["DatabaseModel"]] = {}
 
 
@@ -284,6 +290,9 @@ async def call_awaitable_with_context(
     return await func(session, instance, **call_params)
 
 
+_META_CACHE: dict[str, str] = {}
+
+
 class DatabaseModel[TDict](SQLModel, UTCBaseModel, metaclass=DatabaseModelMetaclass):
     _CALCULATED_FIELDS: ClassVar[dict[str, type]] = {}
 
@@ -291,6 +300,42 @@ class DatabaseModel[TDict](SQLModel, UTCBaseModel, metaclass=DatabaseModelMetacl
     _ONDEMAND_CALCULATED_FIELDS: ClassVar[dict[str, type]] = {}
 
     _EXCLUDED_DATABASE_FIELDS: ClassVar[list[str]] = []
+
+    @classmethod
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        # get plugin metadata from file
+        file_path = inspect.getfile(cls)
+        plugin_id = _META_CACHE.get(file_path)
+        if plugin_id is None:
+            for path in [Path(file_path), *list(Path(file_path).parents)]:
+                if (meta_file := path / META_FILENAME).exists():
+                    try:
+                        meta_content = meta_file.read_text(encoding="utf-8")
+                        plugin_id = json.loads(meta_content).get("id")
+                        if plugin_id:
+                            _META_CACHE[file_path] = plugin_id
+                            break
+                    except Exception:
+                        logger.warning(f"Failed to read plugin metadata from {meta_file}: {sys.exc_info()[1]}")
+                        continue
+                elif (meta_file := path / "pyproject.toml").exists():
+                    try:
+                        content = tomllib.loads(meta_file.read_text(encoding="utf-8"))
+                        if "project" in content and content["project"].get("name") == "g0v0-server":
+                            plugin_id = None
+                            break
+                    except Exception:
+                        logger.warning(f"Failed to read plugin metadata from {meta_file}: {sys.exc_info()[1]}")
+
+        if "__tablename__" not in cls.__dict__:
+            if plugin_id is not None:
+                cls.__tablename__ = f"plugin_{plugin_id}_{cls.__name__.lower()}"
+            else:
+                cls.__tablename__ = cls.__name__.lower()
+        else:
+            if plugin_id is not None and not getattr(cls, "__tablename__", "").startswith(f"plugin_{plugin_id}_"):
+                cls.__tablename__ = f"plugin_{plugin_id}_{getattr(cls, '__tablename__', cls.__name__.lower())}"
 
     @overload
     @classmethod
