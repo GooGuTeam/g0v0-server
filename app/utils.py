@@ -318,9 +318,7 @@ def _get_type(typ: type, includes: tuple[str, ...]) -> Any:
     from app.database._base import DatabaseModel
 
     origin = get_origin(typ)
-    if issubclass(typ, DatabaseModel):
-        return typ.generate_typeddict(includes)
-    elif origin is list:
+    if origin is list:
         item_type = typ.__args__[0]
         return list[_get_type(item_type, includes)]  # pyright: ignore[reportArgumentType, reportGeneralTypeIssues]
     elif origin is dict:
@@ -334,6 +332,8 @@ def _get_type(typ: type, includes: tuple[str, ...]) -> Any:
         for arg in get_args(typ):
             new_types.append(_get_type(arg, includes))  # pyright: ignore[reportArgumentType, reportGeneralTypeIssues]
         return Union[tuple(new_types)]  # pyright: ignore[reportArgumentType, reportGeneralTypeIssues]  # noqa: UP007
+    elif issubclass(typ, DatabaseModel):
+        return typ.generate_typeddict(includes)
     else:
         return typ
 
