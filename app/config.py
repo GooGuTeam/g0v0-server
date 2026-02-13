@@ -715,6 +715,12 @@ CALCULATOR_CONFIG='{}'
         "存储服务设置",
     ]
 
+    plugin_dirs: Annotated[
+        list[str],
+        Field(default=["./plugins"], description="插件目录列表"),
+        "插件设置",
+    ]
+
     @field_validator("storage_settings", mode="after")
     @classmethod
     def validate_storage_settings(

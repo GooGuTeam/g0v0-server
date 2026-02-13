@@ -19,6 +19,7 @@ from app.middleware.verify_session import VerifySessionMiddleware
 from app.models.error import RequestError
 from app.models.mods import init_mods, init_ranked_mods
 from app.models.score import init_ruleset_version_hash
+from app.plugins import plugin_manager
 from app.router import (
     api_v1_router,
     api_v2_router,
@@ -62,6 +63,8 @@ import sentry_sdk
 async def lifespan(app: FastAPI):  # noqa: ARG001
     # === on startup ===
     # init mods, achievements and performance calculator
+    plugin_manager.load_all_plugins()
+
     init_mods()
     init_ranked_mods()
     init_ruleset_version_hash()
