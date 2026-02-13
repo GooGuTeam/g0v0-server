@@ -676,6 +676,19 @@ wheels = [
 ]
 
 [[package]]
+name = "fast-depends"
+version = "3.0.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/07/f3/41e955f5f0811de6ef9f00f8462f2ade7bc4a99b93714c9b134646baa831/fast_depends-3.0.5.tar.gz", hash = "sha256:c915a54d6e0d0f0393686d37c14d54d9ec7c43d7b9def3f3fc4f7b4d52f67f2a", size = 18235, upload-time = "2025-11-30T20:26:12.92Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0a/dd/76697228ae63dcbaf0a0a1b20fc996433a33f184ac4f578382b681dcf5ea/fast_depends-3.0.5-py3-none-any.whl", hash = "sha256:38a3d7044d3d6d0b1bed703691275c870316426e8a9bfa6b1c89e979b15659e2", size = 25362, upload-time = "2025-11-30T20:26:10.96Z" },
+]
+
+[[package]]
 name = "fastapi"
 version = "0.128.5"
 source = { registry = "https://pypi.org/simple" }
@@ -836,6 +849,7 @@ dependencies = [
     { name = "bcrypt" },
     { name = "bleach" },
     { name = "cryptography" },
+    { name = "fast-depends" },
     { name = "fastapi" },
     { name = "fastapi-limiter" },
     { name = "g0v0-migrations" },
@@ -887,6 +901,7 @@ requires-dist = [
     { name = "bcrypt", specifier = ">=4.1.2" },
     { name = "bleach", specifier = ">=6.1.0" },
     { name = "cryptography", specifier = ">=41.0.7" },
+    { name = "fast-depends", specifier = ">=3.0.5" },
     { name = "fastapi", specifier = ">=0.104.1" },
     { name = "fastapi-limiter", specifier = ">=0.1.6" },
     { name = "g0v0-migrations", editable = "packages/g0v0-migrations" },
