@@ -1,3 +1,5 @@
+from typing import Any
+
 from .manager import plugin_manager
 
 from fastapi import APIRouter
@@ -6,8 +8,8 @@ plugin_routers: dict[str, APIRouter] = {}
 plugin_router = APIRouter(prefix="/api/plugins")
 
 
-def register_api() -> APIRouter:
-    router = APIRouter()
+def register_api(**kwargs: Any) -> APIRouter:
+    router = APIRouter(**kwargs)
     plugin = plugin_manager.get_plugin_from_frame()
     if plugin is None:
         raise RuntimeError("Failed to get plugin from frame when registering API route")
