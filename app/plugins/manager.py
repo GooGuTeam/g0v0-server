@@ -1,4 +1,6 @@
+from dataclasses import dataclass
 import importlib
+import inspect
 from pathlib import Path
 from types import ModuleType
 
@@ -17,10 +19,17 @@ def path_to_module_name(path: Path) -> str:
         return ".".join((*rel_path.parts[:-1], rel_path.stem))
 
 
+@dataclass
+class ManagedPlugin:
+    meta: PluginMeta
+    path: Path
+    module_name: str
+    module: ModuleType | None = None
+
+
 class PluginManager:
     def __init__(self):
-        self.plugins: list[tuple[PluginMeta, ModuleType]] = []
-        self.detected_plugins: set[tuple[PluginMeta, Path]] = set()
+        self.plugins: list[ManagedPlugin] = []
 
     def detect_plugins(self):
         for plugin_dir in settings.plugin_dirs:
@@ -33,13 +42,15 @@ class PluginManager:
                     continue
                 try:
                     meta = PluginMeta.model_validate_json(meta_files.read_text())
-                    self.detected_plugins.add((meta, Path(plugin)))
+                    self.plugins.append(
+                        ManagedPlugin(meta=meta, path=Path(plugin), module_name=path_to_module_name(Path(plugin)))
+                    )
                     logger.debug(f"Detected plugin: {meta.name} (ID: {meta.id}, Version: {meta.version})")
                 except Exception as e:
                     logger.exception(f"Failed to load plugin metadata from '{meta_files}': {e}")
 
-    def _determine_load_order(self) -> list[tuple[PluginMeta, Path]]:
-        plugin_map = {m.id: m for m, _ in self.detected_plugins}
+    def _determine_load_order(self) -> list[ManagedPlugin]:
+        plugin_map = {m.meta.id: m for m in self.plugins}
         visited = set()
         rec_stack = set()
         order = {}
@@ -54,9 +65,9 @@ class PluginManager:
             max_dep_order = 0
 
             for dep in meta.dependencies:
-                dep_meta = plugin_map.get(dep)
-                if dep_meta:
-                    max_dep_order = max(max_dep_order, dfs(dep_meta, depth + 1))
+                dep = plugin_map.get(dep)
+                if dep:
+                    max_dep_order = max(max_dep_order, dfs(dep.meta, depth + 1))
                 else:
                     raise RuntimeError(f"Plugin '{meta.id}' depends on '{dep}' which is not detected.")
 
@@ -65,24 +76,58 @@ class PluginManager:
             order[meta.id] = max_dep_order + 1
             return order[meta.id]
 
-        for meta, _ in self.detected_plugins:
-            if meta.id not in visited:
-                dfs(meta)
+        for managed_plugin in self.plugins:
+            if managed_plugin.meta.id not in visited:
+                dfs(managed_plugin.meta)
 
-        return sorted(self.detected_plugins, key=lambda t: order[t[0].id])
+        return sorted(self.plugins, key=lambda t: order[t.meta.id])
 
     def load_all_plugins(self):
         self.detect_plugins()
         load_order = self._determine_load_order()
-        for meta, path in load_order:
-            logger.opt(colors=True).info(f"Loading plugin: <y>{meta.name}</y> (ID: {meta.id}, Version: {meta.version})")
-
+        for managed_plugin in load_order:
             try:
-                module = importlib.import_module(path_to_module_name(path))
-                self.plugins.append((meta, module))
+                module = importlib.import_module(managed_plugin.module_name)
+                managed_plugin.module = module
+                logger.opt(colors=True).info(
+                    f"Loaded plugin: <y>{managed_plugin.meta.name}</y> "
+                    f"(ID: {managed_plugin.meta.id}, Version: {managed_plugin.meta.version})"
+                )
             except Exception:
-                logger.exception(f"Failed to load plugins module for '{meta.id}'")
+                logger.exception(f"Failed to load plugins module for '{managed_plugin.meta.id}'")
                 continue
+
+        # process plugin router
+        from .api_router import plugin_router, plugin_routers
+
+        for plugin_id, router in plugin_routers.items():
+            plugin_router.include_router(router, prefix=f"/plugins/{plugin_id}")
+            logger.debug(f"Registered API router for plugin '{plugin_id}' at '/api/plugins/{plugin_id}'")
+
+    def get_plugin_by_module_name(self, module_name: str) -> ManagedPlugin | None:
+        for plugin in self.plugins:
+            if plugin.module_name == module_name:
+                return plugin
+        return None
+
+    def get_plugin_from_frame(self) -> ManagedPlugin | None:
+        current_frame = inspect.currentframe()
+        if current_frame is None:
+            return None
+        frame = current_frame
+        while frame := frame.f_back:
+            module_name = (module := inspect.getmodule(frame)) and module.__name__
+            if module_name is None:
+                return None
+
+            if module_name.startswith("app"):
+                continue
+
+            plugin = self.get_plugin_by_module_name(module_name)
+            if plugin:
+                return plugin
+
+        return None
 
 
 plugin_manager = PluginManager()
