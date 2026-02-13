@@ -256,8 +256,7 @@ class RequestError(Exception):
         self.headers = headers
 
         # Optional details
-        if details:
-            self.details.update(details)
+        self.details = details if details else {}
 
 
 class FieldMissingError(RequestError):
