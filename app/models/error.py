@@ -258,6 +258,9 @@ class RequestError(Exception):
         # Optional details
         self.details = details if details else {}
 
+    def __repr__(self):
+        return f"<request error '{self.msg_key}', code {self.status_code}>"
+
 
 class FieldMissingError(RequestError):
     """
@@ -269,3 +272,6 @@ class FieldMissingError(RequestError):
 
     def __init__(self, required: list[str]):
         super().__init__(ErrorType.FIELDS_MISSING, {"required": required})
+
+    def __repr__(self):
+        return f"<field missing error, requires {self.details['required']}>"
