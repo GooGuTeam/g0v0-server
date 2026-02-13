@@ -10,6 +10,7 @@ from app.service.user_cache_service import (
     get_user_cache_service,
 )
 
+from fast_depends import Depends as DIDepends
 from fastapi import Depends
 
 
@@ -22,5 +23,9 @@ def get_user_cache_dependency(redis: Redis) -> OriginUserCacheService:
     return get_user_cache_service(redis)
 
 
-BeatmapsetCacheService = Annotated[OriginBeatmapsetCacheService, Depends(get_beatmapset_cache_dependency)]
-UserCacheService = Annotated[OriginUserCacheService, Depends(get_user_cache_dependency)]
+BeatmapsetCacheService = Annotated[
+    OriginBeatmapsetCacheService, Depends(get_beatmapset_cache_dependency), DIDepends(get_beatmapset_cache_dependency)
+]
+UserCacheService = Annotated[
+    OriginUserCacheService, Depends(get_user_cache_dependency), DIDepends(get_user_cache_dependency)
+]

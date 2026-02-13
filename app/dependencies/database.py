@@ -7,6 +7,7 @@ from typing import Annotated
 
 from app.config import settings
 
+from fast_depends import Depends as DIDepends
 from fastapi import Depends
 from pydantic import BaseModel
 import redis.asyncio as redis
@@ -72,7 +73,7 @@ async def with_db():
 
 
 DBFactory = Callable[[], AsyncIterator[AsyncSession]]
-Database = Annotated[AsyncSession, Depends(get_db)]
+Database = Annotated[AsyncSession, Depends(get_db), DIDepends(get_db)]
 
 
 async def get_db_factory() -> DBFactory:
@@ -88,7 +89,7 @@ def get_redis():
     return redis_client
 
 
-Redis = Annotated[redis.Redis, Depends(get_redis)]
+Redis = Annotated[redis.Redis, Depends(get_redis), DIDepends(get_redis)]
 
 
 def get_redis_binary():
