@@ -256,7 +256,7 @@ class RequestError(Exception):
         self.headers = headers
 
         # Optional details
-        self.details = details if details else {}
+        self.details = details or {}
 
     def __repr__(self):
         return f"<request error '{self.msg_key}', code {self.status_code}>"
