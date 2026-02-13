@@ -98,6 +98,7 @@ async def _process_user(score_id: int, user_id: int, redis: Redis, fetcher: Fetc
                 "Score {score_id} not found when processing user {user_id}", score_id=score_id, user_id=user_id
             )
             return
+        gamemode = score.gamemode
         score_token = (await session.exec(select(ScoreToken.id).where(ScoreToken.score_id == score_id))).first()
         if not score_token:
             logger.warning(
@@ -120,6 +121,8 @@ async def _process_user(score_id: int, user_id: int, redis: Redis, fetcher: Fetc
             )
             return
         await process_user(session, redis, fetcher, user, score, score_token, beatmap[0], BeatmapRankStatus(beatmap[1]))
+        await refresh_user_cache_background(redis, user_id, gamemode)
+        await redis.publish("osu-channel:score:processed", f'{{"ScoreId": {score_id}}}')
 
 
 async def submit_score(
@@ -179,16 +182,12 @@ async def submit_score(
         await db.commit()
         await db.refresh(score)
 
-        background_task.add_task(_process_user, score_id, user_id, redis, fetcher)
     resp = await ScoreModel.transform(
         score,
     )
-    score_gamemode = score.gamemode
-
     await db.commit()
-    if user_id is not None:
-        background_task.add_task(refresh_user_cache_background, redis, user_id, score_gamemode)
     background_task.add_task(_process_user_achievement, resp["id"])
+    background_task.add_task(_process_user, resp["id"], user_id, redis, fetcher)
     return resp
 
 
