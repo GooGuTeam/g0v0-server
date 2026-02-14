@@ -14,7 +14,7 @@ from io import BytesIO
 import json
 import re
 from types import NoneType, UnionType
-from typing import TYPE_CHECKING, Any, ParamSpec, TypedDict, TypeVar, Union, get_args, get_origin
+from typing import TYPE_CHECKING, Any, TypedDict, TypeVar, Union, get_args, get_origin
 
 from fastapi.encoders import jsonable_encoder
 from PIL import Image
@@ -327,10 +327,7 @@ def is_async_callable(obj: Any) -> bool:
     return inspect.iscoroutinefunction(obj)
 
 
-P = ParamSpec("P")
-
-
-async def run_in_threadpool(func: Callable[P, T], *args: P.args, **kwargs: P.kwargs) -> T:
+async def run_in_threadpool[**P, T](func: Callable[P, T], *args: P.args, **kwargs: P.kwargs) -> T:
     """Run a synchronous function in a thread pool.
 
     Args:
@@ -359,7 +356,7 @@ class BackgroundTasks:
         """
         self.tasks = set(tasks) if tasks else set()
 
-    def add_task(self, func: Callable[P, Any], *args: P.args, **kwargs: P.kwargs) -> None:
+    def add_task[**P](self, func: Callable[P, Any], *args: P.args, **kwargs: P.kwargs) -> None:
         """Add a function to run as a background task.
 
         Args:
