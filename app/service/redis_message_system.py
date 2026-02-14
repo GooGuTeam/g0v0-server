@@ -14,8 +14,8 @@ from app.database import ChatMessageDict
 from app.database.chat import ChatMessage, ChatMessageModel, MessageType
 from app.database.user import User, UserModel
 from app.dependencies.database import get_redis_message, with_db
+from app.helpers import bg_tasks, safe_json_dumps
 from app.log import logger
-from app.utils import bg_tasks, safe_json_dumps
 
 
 class RedisMessageSystem:

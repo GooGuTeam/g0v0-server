@@ -10,8 +10,8 @@ from app.database.chat import ChannelType, ChatChannel
 from app.database.playlists import Playlist
 from app.database.room import APIUploadedRoom, Room
 from app.dependencies.fetcher import get_fetcher
+from app.helpers import utcnow
 from app.models.room import MatchType, QueueMode, RoomCategory, RoomStatus
-from app.utils import utcnow
 
 from sqlalchemy import exists
 from sqlmodel import col, select

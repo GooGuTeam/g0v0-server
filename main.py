@@ -14,6 +14,7 @@ from app.dependencies.database import (
 )
 from app.dependencies.fetcher import get_fetcher
 from app.dependencies.scheduler import start_scheduler, stop_scheduler
+from app.helpers import bg_tasks, utcnow
 from app.log import system_logger
 from app.middleware.verify_session import VerifySessionMiddleware
 from app.models.error import RequestError
@@ -50,7 +51,6 @@ from app.tasks import (
     start_cache_tasks,
     stop_cache_tasks,
 )
-from app.utils import bg_tasks, utcnow
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError

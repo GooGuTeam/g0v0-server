@@ -10,9 +10,9 @@ from app.database import RankHistory, UserStatistics
 from app.database.rank_history import RankTop
 from app.dependencies.database import with_db
 from app.dependencies.scheduler import get_scheduler
+from app.helpers import utcnow
 from app.log import logger
 from app.models.score import GameMode
-from app.utils import utcnow
 
 from sqlmodel import col, exists, select, update
 

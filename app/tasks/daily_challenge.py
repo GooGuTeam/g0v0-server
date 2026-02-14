@@ -17,11 +17,11 @@ from app.database.score import Score
 from app.database.user import User
 from app.dependencies.database import get_redis, with_db
 from app.dependencies.scheduler import get_scheduler
+from app.helpers import are_same_weeks, utcnow
 from app.log import logger
 from app.models.mods import APIMod, get_available_mods
 from app.models.room import RoomCategory
 from app.service.room import create_playlist_room
-from app.utils import are_same_weeks, utcnow
 
 from sqlmodel import col, select
 

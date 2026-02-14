@@ -10,8 +10,8 @@ from app.dependencies.cache import UserCacheService
 from app.dependencies.database import Database
 from app.dependencies.storage import StorageService
 from app.dependencies.user import ClientUser
+from app.helpers import check_image
 from app.models.error import ErrorType, RequestError
-from app.utils import check_image
 
 from .router import router
 

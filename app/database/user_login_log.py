@@ -6,7 +6,7 @@ geolocation data, and login status.
 
 from datetime import datetime
 
-from app.utils import utcnow
+from app.helpers import utcnow
 
 from sqlmodel import Field, SQLModel
 

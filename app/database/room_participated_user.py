@@ -6,7 +6,7 @@ This module tracks users who have joined/left multiplayer rooms.
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from app.utils import utcnow
+from app.helpers import utcnow
 
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import (

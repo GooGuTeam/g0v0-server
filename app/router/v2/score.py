@@ -46,6 +46,7 @@ from app.dependencies.database import Database, Redis, get_redis, with_db
 from app.dependencies.fetcher import Fetcher, get_fetcher
 from app.dependencies.storage import StorageService
 from app.dependencies.user import ClientUser, get_current_user
+from app.helpers import api_doc, utcnow
 from app.log import log
 from app.models.beatmap import BeatmapRankStatus
 from app.models.error import ErrorType, RequestError
@@ -58,7 +59,6 @@ from app.models.score import (
 )
 from app.service.beatmap_cache_service import get_beatmap_cache_service
 from app.service.user_cache_service import refresh_user_cache_background
-from app.utils import api_doc, utcnow
 
 from .router import router
 

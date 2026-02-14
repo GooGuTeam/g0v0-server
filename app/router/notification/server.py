@@ -19,11 +19,11 @@ from app.dependencies.database import (
     with_db,
 )
 from app.dependencies.user import get_current_user_and_token
+from app.helpers import bg_tasks, safe_json_dumps
 from app.log import log
 from app.models.chat import ChatEvent
 from app.models.notification import NotificationDetail
 from app.service.subscribers.chat import ChatSubscriber
-from app.utils import bg_tasks, safe_json_dumps
 
 from fastapi import APIRouter, Depends, Header, Query, WebSocket, WebSocketDisconnect
 from fastapi.security import SecurityScopes

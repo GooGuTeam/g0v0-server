@@ -20,7 +20,7 @@ from app.database.beatmap import calculate_beatmap_attributes
 from app.dependencies.database import Database, Redis
 from app.dependencies.fetcher import Fetcher
 from app.dependencies.user import get_current_user
-from app.helpers.asset_proxy_helper import asset_proxy_response
+from app.helpers import api_doc, asset_proxy_response
 from app.models.error import ErrorType, RequestError
 from app.models.mods import APIMod, int_to_mods
 from app.models.performance import (
@@ -30,7 +30,6 @@ from app.models.performance import (
 from app.models.score import (
     GameMode,
 )
-from app.utils import api_doc
 
 from .router import router
 

@@ -8,8 +8,8 @@ from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from app.config import settings
+from app.helpers import utcnow
 from app.log import logger
-from app.utils import utcnow
 
 from redis.asyncio import Redis
 from sqlmodel import col, func, select

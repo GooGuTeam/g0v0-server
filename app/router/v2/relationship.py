@@ -12,8 +12,8 @@ from app.database.user import UserModel
 from app.dependencies.api_version import APIVersion
 from app.dependencies.database import Database
 from app.dependencies.user import ClientUser, get_current_user
+from app.helpers import api_doc
 from app.models.error import ErrorType, RequestError
-from app.utils import api_doc
 
 from .router import router
 

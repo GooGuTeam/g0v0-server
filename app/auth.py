@@ -28,9 +28,9 @@ from app.database import (
     User,
 )
 from app.database.auth import TotpKeys
+from app.helpers import utcnow
 from app.log import log
 from app.models.totp import FinishStatus, StartCreateTotpKeyResp
-from app.utils import utcnow
 
 import bcrypt
 from jose import JWTError, jwt

@@ -8,8 +8,8 @@ from datetime import datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING, ClassVar, NotRequired, TypedDict
 
+from app.helpers import utcnow
 from app.models.model import UTCBaseModel
-from app.utils import utcnow
 
 from ._base import DatabaseModel, included, ondemand
 from .user import User, UserDict, UserModel

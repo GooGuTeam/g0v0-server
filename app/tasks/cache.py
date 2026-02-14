@@ -14,10 +14,10 @@ from app.database.user import User
 from app.dependencies.database import get_redis, with_db
 from app.dependencies.fetcher import get_fetcher
 from app.dependencies.scheduler import get_scheduler
+from app.helpers import utcnow
 from app.log import logger
 from app.service.ranking_cache_service import schedule_ranking_refresh_task
 from app.service.user_cache_service import get_user_cache_service
-from app.utils import utcnow
 
 from apscheduler.jobstores.base import JobLookupError
 from apscheduler.triggers.interval import IntervalTrigger

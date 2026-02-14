@@ -22,6 +22,7 @@ from app.calculator import (
 )
 from app.config import settings
 from app.dependencies.database import get_redis
+from app.helpers import utcnow
 from app.log import log
 from app.models.beatmap import BeatmapRankStatus
 from app.models.model import (
@@ -41,7 +42,6 @@ from app.models.score import (
 )
 from app.models.scoring_mode import ScoringMode
 from app.storage import StorageService
-from app.utils import utcnow
 
 from ._base import DatabaseModel, OnDemand, included, ondemand
 from .beatmap import Beatmap, BeatmapDict, BeatmapModel

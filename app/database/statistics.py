@@ -8,8 +8,8 @@ from datetime import timedelta
 import math
 from typing import TYPE_CHECKING, ClassVar, NotRequired, TypedDict
 
+from app.helpers import utcnow
 from app.models.score import GameMode
-from app.utils import utcnow
 
 from ._base import DatabaseModel, included, ondemand
 from .rank_history import RankHistory

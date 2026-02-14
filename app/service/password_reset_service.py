@@ -11,10 +11,10 @@ import string
 from app.auth import get_password_hash, invalidate_user_tokens
 from app.database import User
 from app.dependencies.database import with_db
+from app.helpers import utcnow
 from app.log import logger
 from app.service.email_queue import email_queue  # Import email queue
 from app.service.email_service import EmailService
-from app.utils import utcnow
 
 from redis.asyncio import Redis
 from sqlmodel import select

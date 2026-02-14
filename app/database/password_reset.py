@@ -5,7 +5,7 @@ This module handles password reset requests and verification codes.
 
 from datetime import datetime
 
-from app.utils import utcnow
+from app.helpers import utcnow
 
 from sqlalchemy import BigInteger, Column, ForeignKey
 from sqlmodel import Field, SQLModel

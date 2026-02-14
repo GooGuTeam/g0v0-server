@@ -8,10 +8,10 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from app.config import settings
+from app.helpers import utcnow
 from app.models.achievement import MEDALS, Achievement
 from app.models.model import UTCBaseModel
 from app.models.notification import UserAchievementUnlock
-from app.utils import utcnow
 
 from .events import Event, EventType
 

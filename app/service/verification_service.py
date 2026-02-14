@@ -11,10 +11,10 @@ from typing import Literal
 from app.config import settings
 from app.database.auth import OAuthToken
 from app.database.verification import EmailVerification, LoginSession, TrustedDevice
+from app.helpers import utcnow
 from app.log import logger
 from app.models.model import UserAgentInfo
 from app.service.email_queue import email_queue
-from app.utils import utcnow
 
 from redis.asyncio import Redis
 from sqlmodel import col, exists, select

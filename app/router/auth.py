@@ -32,6 +32,7 @@ from app.dependencies.api_version import APIVersion
 from app.dependencies.database import Database, Redis
 from app.dependencies.geoip import GeoIPService, IPAddress
 from app.dependencies.user_agent import UserAgentInfo
+from app.helpers import utcnow
 from app.log import log
 from app.models.error import ErrorType, RequestError
 from app.models.extended_auth import ExtendedTokenResponse
@@ -49,7 +50,6 @@ from app.service.verification_service import (
     EmailVerificationService,
     LoginSessionService,
 )
-from app.utils import utcnow
 
 from fastapi import APIRouter, Form, Header, Request
 from fastapi.responses import JSONResponse

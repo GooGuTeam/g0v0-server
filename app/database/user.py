@@ -9,11 +9,11 @@ import json
 from typing import TYPE_CHECKING, ClassVar, Literal, NotRequired, TypedDict, overload
 
 from app.config import settings
+from app.helpers import utcnow
 from app.models.notification import NotificationName
 from app.models.score import GameMode
 from app.models.user import Country, Page
 from app.path import STATIC_DIR
-from app.utils import utcnow
 
 from ._base import DatabaseModel, OnDemand, included, ondemand
 from .achievement import UserAchievement, UserAchievementResp

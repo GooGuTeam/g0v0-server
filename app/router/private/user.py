@@ -22,6 +22,7 @@ from app.database.user_preference import (
 from app.dependencies.cache import UserCacheService
 from app.dependencies.database import Database
 from app.dependencies.user import ClientUser
+from app.helpers import hex_to_hue, utcnow
 from app.models.error import ErrorType, RequestError
 from app.models.score import GameMode
 from app.models.user import Page
@@ -33,7 +34,6 @@ from app.models.userpage import (
     ValidateBBCodeResponse,
 )
 from app.service.bbcode_service import bbcode_service
-from app.utils import hex_to_hue, utcnow
 
 from .router import router
 

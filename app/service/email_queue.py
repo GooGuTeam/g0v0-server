@@ -14,8 +14,8 @@ from typing import Any
 import uuid
 
 from app.config import settings
+from app.helpers import bg_tasks
 from app.log import logger
-from app.utils import bg_tasks
 
 import redis as sync_redis
 

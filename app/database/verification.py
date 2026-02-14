@@ -7,9 +7,8 @@ for user authentication and security.
 from datetime import datetime
 from typing import TYPE_CHECKING, Literal, Optional
 
-from app.helpers.geoip_helper import GeoIPHelper
+from app.helpers import GeoIPHelper, extract_user_agent, utcnow
 from app.models.model import UserAgentInfo, UTCBaseModel
-from app.utils import extract_user_agent, utcnow
 
 from pydantic import BaseModel
 from sqlalchemy import BigInteger, Column, ForeignKey

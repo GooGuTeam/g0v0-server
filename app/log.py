@@ -14,7 +14,6 @@ from types import FunctionType
 from typing import TYPE_CHECKING
 
 from app.config import settings
-from app.utils import snake_to_pascal
 
 import loguru
 
@@ -265,6 +264,8 @@ def dynamic_format(record):
     Returns:
         The format string for this record.
     """
+    from app.helpers import snake_to_pascal
+
     name = ""
 
     uvicorn = record["extra"].get("uvicorn")

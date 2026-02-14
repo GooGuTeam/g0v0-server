@@ -7,8 +7,8 @@ import asyncio
 
 from app.database.user_login_log import UserLoginLog
 from app.dependencies.geoip import get_client_ip, get_geoip_helper, normalize_ip
+from app.helpers import utcnow
 from app.log import logger
-from app.utils import utcnow
 
 from fastapi import Request
 from sqlmodel.ext.asyncio.session import AsyncSession

@@ -8,8 +8,8 @@ from datetime import datetime, timedelta
 
 from app.config import settings
 from app.dependencies.scheduler import get_scheduler
+from app.helpers import bg_tasks
 from app.service.beatmapset_update_service import get_beatmapset_update_service
-from app.utils import bg_tasks
 
 if settings.enable_auto_beatmap_sync:
 

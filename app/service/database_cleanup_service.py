@@ -7,8 +7,8 @@ from datetime import timedelta
 
 from app.database.auth import OAuthToken
 from app.database.verification import EmailVerification, LoginSession, TrustedDevice
+from app.helpers import utcnow
 from app.log import logger
-from app.utils import utcnow
 
 from sqlmodel import col, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession

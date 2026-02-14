@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING
 
 from app.config import settings
 from app.database import BeatmapsetDict
+from app.helpers import safe_json_dumps
 from app.log import logger
-from app.utils import safe_json_dumps
 
 from redis.asyncio import Redis
 

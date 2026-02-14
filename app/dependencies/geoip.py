@@ -3,7 +3,7 @@ import ipaddress
 from typing import Annotated
 
 from app.config import settings
-from app.helpers.geoip_helper import GeoIPHelper
+from app.helpers import GeoIPHelper
 
 from fast_depends import Depends as DIDepends
 from fastapi import Depends, Request

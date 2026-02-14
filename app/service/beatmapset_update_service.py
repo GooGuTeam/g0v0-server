@@ -18,9 +18,9 @@ from app.database.beatmapset import Beatmapset, BeatmapsetDict
 from app.database.score import Score
 from app.dependencies.database import get_redis, with_db
 from app.dependencies.storage import get_storage_service
+from app.helpers import bg_tasks, utcnow
 from app.log import logger
 from app.models.beatmap import BeatmapRankStatus
-from app.utils import bg_tasks, utcnow
 
 from .beatmapset_cache_service import get_beatmapset_cache_service
 

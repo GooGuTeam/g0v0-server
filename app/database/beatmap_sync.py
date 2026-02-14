@@ -7,8 +7,8 @@ official osu! servers, including sync timing and change detection.
 from datetime import datetime
 from typing import TypedDict
 
+from app.helpers import utcnow
 from app.models.beatmap import BeatmapRankStatus
-from app.utils import utcnow
 
 from sqlmodel import JSON, Column, DateTime, Field, SQLModel
 

@@ -7,8 +7,8 @@ delivery tracking, and read status.
 from datetime import datetime
 from typing import Any
 
+from app.helpers import utcnow
 from app.models.notification import NotificationDetail, NotificationName
-from app.utils import utcnow
 
 from sqlmodel import (
     JSON,

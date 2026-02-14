@@ -27,14 +27,13 @@ from app.dependencies.api_version import APIVersion
 from app.dependencies.cache import UserCacheService
 from app.dependencies.database import Database, get_redis
 from app.dependencies.user import get_current_user, get_optional_user
-from app.helpers.asset_proxy_helper import asset_proxy_response
+from app.helpers import api_doc, asset_proxy_response, utcnow
 from app.log import log
 from app.models.error import ErrorType, RequestError
 from app.models.mods import API_MODS
 from app.models.score import GameMode
 from app.models.user import BeatmapsetType
 from app.service.user_cache_service import get_user_cache_service
-from app.utils import api_doc, utcnow
 
 from .router import router
 

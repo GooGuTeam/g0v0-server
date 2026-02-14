@@ -11,9 +11,9 @@ from app.database import Team, TeamMember, User, UserStatistics
 from app.database.statistics import UserStatisticsModel
 from app.dependencies.database import Database, get_redis
 from app.dependencies.user import get_current_user
+from app.helpers import api_doc
 from app.models.score import GameMode
 from app.service.ranking_cache_service import get_ranking_cache_service
-from app.utils import api_doc
 
 from .router import router
 

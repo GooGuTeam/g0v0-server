@@ -1,7 +1,7 @@
 from typing import Annotated
 
+from app.helpers import extract_user_agent
 from app.models.model import UserAgentInfo as UserAgentInfoModel
-from app.utils import extract_user_agent
 
 from fast_depends import Depends as DIDepends
 from fastapi import Depends, Header

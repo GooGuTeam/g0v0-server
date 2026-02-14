@@ -14,10 +14,10 @@ import hashlib
 import json
 
 from app.database import BeatmapsetDict, BeatmapsetModel, SearchBeatmapsetsResp
+from app.helpers import bg_tasks
 from app.log import fetcher_logger
 from app.models.beatmap import SearchQueryModel
 from app.models.model import Cursor
-from app.utils import bg_tasks
 
 from ._base import BaseFetcher
 

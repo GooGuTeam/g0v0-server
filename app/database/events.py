@@ -8,8 +8,8 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
+from app.helpers import utcnow
 from app.models.model import UTCBaseModel
-from app.utils import utcnow
 
 from pydantic import model_serializer
 from sqlmodel import (

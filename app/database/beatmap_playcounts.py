@@ -7,7 +7,7 @@ and generates events for playcount milestones.
 from typing import TYPE_CHECKING, NotRequired, TypedDict
 
 from app.config import settings
-from app.utils import utcnow
+from app.helpers import utcnow
 
 from ._base import DatabaseModel, included
 from .events import Event, EventType

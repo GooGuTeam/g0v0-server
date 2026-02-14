@@ -9,9 +9,9 @@ from app.database.notification import Notification, UserNotification
 from app.database.user import User
 from app.dependencies.database import Database
 from app.dependencies.user import get_client_user
+from app.helpers import utcnow
 from app.models.chat import ChatEvent
 from app.router.v2 import api_v2_router as router
-from app.utils import utcnow
 
 from . import channel, message  # noqa: F401
 from .server import (

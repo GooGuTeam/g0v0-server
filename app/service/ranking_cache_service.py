@@ -9,10 +9,9 @@ from typing import TYPE_CHECKING, Literal
 
 from app.config import settings
 from app.database.statistics import UserStatistics, UserStatisticsModel
-from app.helpers.asset_proxy_helper import replace_asset_urls
+from app.helpers import replace_asset_urls, safe_json_dumps, utcnow
 from app.log import logger
 from app.models.score import GameMode
-from app.utils import safe_json_dumps, utcnow
 
 from redis.asyncio import Redis
 from sqlmodel import col, select

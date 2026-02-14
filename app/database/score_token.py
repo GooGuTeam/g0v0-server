@@ -6,9 +6,9 @@ and track score submissions in progress.
 
 from datetime import datetime
 
+from app.helpers import utcnow
 from app.models.model import UTCBaseModel
 from app.models.score import GameMode
-from app.utils import utcnow
 
 from .beatmap import Beatmap
 from .user import User

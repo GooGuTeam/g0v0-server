@@ -8,8 +8,8 @@ from datetime import (
 )
 from typing import TYPE_CHECKING, Optional
 
+from app.helpers import utcnow
 from app.models.score import GameMode
-from app.utils import utcnow
 
 from pydantic import BaseModel
 from sqlmodel import (

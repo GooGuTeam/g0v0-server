@@ -7,6 +7,7 @@ participants, and room configuration.
 from datetime import datetime
 from typing import ClassVar, NotRequired, TypedDict
 
+from app.helpers import utcnow
 from app.models.room import (
     MatchType,
     QueueMode,
@@ -15,7 +16,6 @@ from app.models.room import (
     RoomPlaylistItemStats,
     RoomStatus,
 )
-from app.utils import utcnow
 
 from ._base import DatabaseModel, included, ondemand
 from .item_attempts_count import ItemAttemptsCount, ItemAttemptsCountDict, ItemAttemptsCountModel

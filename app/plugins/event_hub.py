@@ -21,8 +21,8 @@ import contextlib
 import inspect
 from typing import Annotated, Any
 
+from app.helpers import bg_tasks
 from app.models.events import PluginEvent
-from app.utils import bg_tasks
 
 from fast_depends import Depends, ValidationError, inject
 

@@ -10,8 +10,8 @@ from app.database import FavouriteBeatmapset, User
 from app.database.user import UserModel
 from app.dependencies.database import Database
 from app.dependencies.user import UserAndToken, get_current_user, get_current_user_and_token
+from app.helpers import api_doc
 from app.models.score import GameMode
-from app.utils import api_doc
 
 from .router import router
 

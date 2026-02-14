@@ -7,8 +7,8 @@ such as player joins, game starts, and score submissions.
 from datetime import datetime
 from typing import Any
 
+from app.helpers import utcnow
 from app.models.model import UTCBaseModel
-from app.utils import utcnow
 
 from sqlmodel import (
     JSON,

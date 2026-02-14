@@ -12,10 +12,9 @@ from app.database import User
 from app.database.score import LegacyScoreResp
 from app.database.user import UserDict, UserModel
 from app.dependencies.database import with_db
-from app.helpers.asset_proxy_helper import replace_asset_urls
+from app.helpers import replace_asset_urls, safe_json_dumps
 from app.log import logger
 from app.models.score import GameMode
-from app.utils import safe_json_dumps
 
 from redis.asyncio import Redis
 from sqlmodel import col, select

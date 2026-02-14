@@ -29,10 +29,10 @@ from typing import (
     overload,
 )
 
+from app.helpers import type_is_optional
 from app.log import log
 from app.models.model import UTCBaseModel
 from app.models.plugin import META_FILENAME
-from app.utils import type_is_optional
 
 from sqlalchemy.ext.asyncio import async_object_session
 from sqlmodel import SQLModel

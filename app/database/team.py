@@ -7,9 +7,9 @@ and team join requests.
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from app.helpers import utcnow
 from app.models.model import UTCBaseModel
 from app.models.score import GameMode
-from app.utils import utcnow
 
 from sqlalchemy import Column, DateTime
 from sqlmodel import BigInteger, Field, ForeignKey, Relationship, SQLModel, Text, col, func, select

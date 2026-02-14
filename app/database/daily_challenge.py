@@ -6,8 +6,8 @@ This module tracks user participation and streaks in daily challenges.
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
+from app.helpers import are_adjacent_weeks, utcnow
 from app.models.model import UTCBaseModel
-from app.utils import are_adjacent_weeks, utcnow
 
 from sqlmodel import (
     BigInteger,
