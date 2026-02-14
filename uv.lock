@@ -903,7 +903,7 @@ requires-dist = [
     { name = "cryptography", specifier = ">=41.0.7" },
     { name = "fast-depends", specifier = ">=3.0.5" },
     { name = "fastapi", specifier = ">=0.104.1" },
-    { name = "fastapi-limiter", specifier = ">=0.1.6" },
+    { name = "fastapi-limiter", specifier = ">=0.2.0" },
     { name = "g0v0-migrations", editable = "packages/g0v0-migrations" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "jinja2", specifier = ">=3.1.0" },
