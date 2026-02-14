@@ -1,3 +1,14 @@
+"""Raw beatmap file fetcher.
+
+This module provides functionality to fetch raw beatmap files (.osu) from
+multiple sources including the official osu! server and mirror servers.
+It implements request deduplication and caching for improved performance.
+
+Classes:
+    NoBeatmapError: Exception raised when a beatmap cannot be found.
+    BeatmapRawFetcher: Fetcher for retrieving raw beatmap file content.
+"""
+
 import asyncio
 
 from app.log import fetcher_logger
@@ -17,79 +28,119 @@ logger = fetcher_logger("BeatmapRawFetcher")
 
 
 class NoBeatmapError(Exception):
-    """Beatmap 不存在异常"""
+    """Exception raised when a beatmap does not exist."""
 
     pass
 
 
 class BeatmapRawFetcher(BaseFetcher):
+    """Fetcher for retrieving raw beatmap file content (.osu files).
+
+    This fetcher does not require OAuth authentication and implements
+    request deduplication to avoid redundant requests for the same beatmap.
+
+    Attributes:
+        _client: Shared HTTP client for connection pooling.
+        _pending_requests: Dictionary of pending requests for deduplication.
+        _request_lock: Lock for thread-safe access to pending requests.
+    """
+
     def __init__(self, client_id: str = "", client_secret: str = "", **kwargs):
-        # BeatmapRawFetcher 不需要 OAuth，传递空值给父类
+        """Initialize the raw beatmap fetcher.
+
+        BeatmapRawFetcher does not require OAuth credentials, so empty values
+        are passed to the parent class.
+
+        Args:
+            client_id: OAuth client ID (not required). Defaults to "".
+            client_secret: OAuth client secret (not required). Defaults to "".
+            **kwargs: Additional arguments passed to BaseFetcher.
+        """
         super().__init__(client_id, client_secret, **kwargs)
-        # 使用共享的 HTTP 客户端和连接池
+        # Shared HTTP client with connection pooling
         self._client: AsyncClient | None = None
-        # 用于并发请求去重
+        # Dictionary for concurrent request deduplication
         self._pending_requests: dict[int, asyncio.Future[str]] = {}
         self._request_lock = asyncio.Lock()
 
     async def _get_client(self) -> AsyncClient:
-        """获取或创建共享的 HTTP 客户端"""
+        """Get or create the shared HTTP client.
+
+        Returns:
+            The shared AsyncClient instance with configured connection pooling.
+        """
         if self._client is None:
-            # 配置连接池限制
+            # Configure connection pool limits
             limits = Limits(
                 max_keepalive_connections=20,
                 max_connections=50,
                 keepalive_expiry=30.0,
             )
             self._client = AsyncClient(
-                timeout=10.0,  # 单个请求超时 10 秒
+                timeout=10.0,  # 10 second timeout per request
                 limits=limits,
                 follow_redirects=True,
             )
         return self._client
 
     async def close(self):
-        """关闭 HTTP 客户端"""
+        """Close the HTTP client and release resources."""
         if self._client is not None:
             await self._client.aclose()
             self._client = None
 
     async def get_beatmap_raw(self, beatmap_id: int) -> str:
+        """Fetch the raw beatmap file content with request deduplication.
+
+        If a request for the same beatmap is already in progress, this method
+        will wait for that request to complete instead of making a duplicate
+        request.
+
+        Args:
+            beatmap_id: The ID of the beatmap to fetch.
+
+        Returns:
+            The raw beatmap file content as a string.
+
+        Raises:
+            NoBeatmapError: If the beatmap cannot be found on any source.
+            HTTPError: If all fetch attempts fail.
+        """
         future: asyncio.Future[str] | None = None
 
-        # 检查是否已有正在进行的请求
+        # Check if there is an in-progress request
         async with self._request_lock:
             if beatmap_id in self._pending_requests:
                 logger.debug(f"Beatmap {beatmap_id} request already in progress, waiting...")
                 future = self._pending_requests[beatmap_id]
 
-        # 如果有正在进行的请求，等待它
+        # If there is an in-progress request, wait for it
         if future is not None:
             try:
                 return await future
             except Exception as e:
                 logger.warning(f"Waiting for beatmap {beatmap_id} failed: {e}")
-                # 如果等待失败，继续自己发起请求
+                # If waiting fails, continue to make our own request
                 future = None
 
-        # 创建新的请求 Future
+        # Create a new request Future
         async with self._request_lock:
             if beatmap_id in self._pending_requests:
-                # 双重检查，可能在等待锁时已经有其他协程创建了
+                # Double-check: another coroutine may have created it while waiting for lock
                 future = self._pending_requests[beatmap_id]
                 if future is not None:
                     try:
                         return await future
                     except Exception as e:
                         logger.debug(f"Concurrent request for beatmap {beatmap_id} failed: {e}")
-                        # 继续创建新请求
+                        # Continue to create new request
 
-            # 创建新的 Future
+            # Create new Future
             future = asyncio.get_event_loop().create_future()
             self._pending_requests[beatmap_id] = future
 
         try:
-            # 实际执行请求
+            # Execute the actual request
             result = await self._fetch_beatmap_raw(beatmap_id)
             if not future.done():
                 future.set_result(result)
@@ -103,11 +154,25 @@ class BeatmapRawFetcher(BaseFetcher):
                 future.set_exception(e)
             return await future
         finally:
-            # 清理
+            # Cleanup
             async with self._request_lock:
                 self._pending_requests.pop(beatmap_id, None)
 
     async def _fetch_beatmap_raw(self, beatmap_id: int) -> str:
+        """Internal method to fetch beatmap from multiple sources.
+
+        Tries each URL in the urls list until successful.
+
+        Args:
+            beatmap_id: The ID of the beatmap to fetch.
+
+        Returns:
+            The raw beatmap file content as a string.
+
+        Raises:
+            NoBeatmapError: If the beatmap cannot be found.
+            HTTPError: If all sources fail.
+        """
         client = await self._get_client()
         last_error = None
 
@@ -135,27 +200,39 @@ class BeatmapRawFetcher(BaseFetcher):
                 last_error = e
                 continue
 
-        # 所有 URL 都失败了
+        # All URLs failed
         error_msg = f"Failed to fetch beatmap {beatmap_id} from all sources"
         if last_error and isinstance(last_error, NoBeatmapError):
             raise last_error
         raise HTTPError(error_msg) from last_error
 
     async def get_or_fetch_beatmap_raw(self, redis: redis.Redis, beatmap_id: int) -> str:
+        """Fetch a beatmap with Redis caching.
+
+        Checks the Redis cache first and returns cached content if available.
+        If not cached, fetches from the sources and stores in cache.
+
+        Args:
+            redis: The Redis client instance.
+            beatmap_id: The ID of the beatmap to fetch.
+
+        Returns:
+            The raw beatmap file content as a string.
+        """
         from app.config import settings
 
         cache_key = f"beatmap:{beatmap_id}:raw"
         cache_expire = settings.beatmap_cache_expire_hours * 60 * 60
 
-        # 检查缓存
+        # Check cache
         if await redis.exists(cache_key):
             content = await redis.get(cache_key)
             if content:
-                # 延长缓存时间
+                # Extend cache TTL
                 await redis.expire(cache_key, cache_expire)
                 return content
 
-        # 获取并缓存
+        # Fetch and cache
         raw = await self.get_beatmap_raw(beatmap_id)
         await redis.set(cache_key, raw, ex=cache_expire)
         return raw

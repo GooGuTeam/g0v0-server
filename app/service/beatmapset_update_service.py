@@ -1,3 +1,9 @@
+"""Beatmapset update service.
+
+Handles synchronization of beatmapset data with official osu! API,
+including tracking map changes, status updates, and scheduled syncs.
+"""
+
 import datetime
 from datetime import timedelta
 from enum import Enum
@@ -468,7 +474,5 @@ def init_beatmapset_update_service(fetcher: "Fetcher") -> BeatmapsetUpdateServic
 
 
 def get_beatmapset_update_service() -> BeatmapsetUpdateService:
-    if service is None:
-        raise ValueError("BeatmapsetUpdateService is not initialized")
     assert service is not None, "BeatmapsetUpdateService is not initialized"
     return service

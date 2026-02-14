@@ -1,7 +1,3 @@
-"""
-GeoIP dependency for FastAPI
-"""
-
 from functools import lru_cache
 import ipaddress
 from typing import Annotated
@@ -16,8 +12,7 @@ from fastapi import Depends, Request
 @lru_cache
 def get_geoip_helper() -> GeoIPHelper:
     """
-    获取 GeoIP 帮助类实例
-    使用 lru_cache 确保单例模式
+    Get GeoIP helper instance with LRU cache to ensure singleton pattern
     """
     return GeoIPHelper(
         dest_dir=settings.geoip_dest_dir,
@@ -30,12 +25,12 @@ def get_geoip_helper() -> GeoIPHelper:
 
 def get_client_ip(request: Request) -> str:
     """
-    获取客户端真实 IP 地址
-    支持 IPv4 和 IPv6，考虑代理、负载均衡器等情况
+    Get the client's real IP address
+    Supports IPv4 and IPv6, considering proxies, load balancers, etc.
     """
     headers = request.headers
 
-    # 1. Cloudflare 专用头部
+    # 1. Cloudflare specific headers
     cf_ip = headers.get("CF-Connecting-IP")
     if cf_ip:
         ip = cf_ip.strip()
@@ -48,10 +43,10 @@ def get_client_ip(request: Request) -> str:
         if is_valid_ip(ip):
             return ip
 
-    # 2. 标准代理头部
+    # 2. Standard proxy headers
     forwarded_for = headers.get("X-Forwarded-For")
     if forwarded_for:
-        # X-Forwarded-For 可能包含多个 IP，取第一个有效的
+        # X-Forwarded-For may contain multiple IPs, take the first valid one
         for ip_str in forwarded_for.split(","):
             ip = ip_str.strip()
             if is_valid_ip(ip) and not is_private_ip(ip):
@@ -63,7 +58,7 @@ def get_client_ip(request: Request) -> str:
         if is_valid_ip(ip):
             return ip
 
-    # 3. 回退到客户端 IP
+    # 3. Fallback to request.client.host, but validate it first
     client_ip = request.client.host if request.client else "127.0.0.1"
     return client_ip if is_valid_ip(client_ip) else "127.0.0.1"
 
@@ -74,7 +69,7 @@ GeoIPService = Annotated[GeoIPHelper, Depends(get_geoip_helper), DIDepends(get_g
 
 def is_valid_ip(ip_str: str) -> bool:
     """
-    验证 IP 地址是否有效（支持 IPv4 和 IPv6）
+    Validate if the IP address is valid (supports IPv4 and IPv6)
     """
     try:
         ipaddress.ip_address(ip_str)
@@ -85,7 +80,7 @@ def is_valid_ip(ip_str: str) -> bool:
 
 def is_private_ip(ip_str: str) -> bool:
     """
-    判断是否为私有 IP 地址
+    Check if the IP address is private
     """
     try:
         ip = ipaddress.ip_address(ip_str)
@@ -96,8 +91,8 @@ def is_private_ip(ip_str: str) -> bool:
 
 def normalize_ip(ip_str: str) -> str:
     """
-    标准化 IP 地址格式
-    对于 IPv6，转换为压缩格式
+    Normalize IP address format
+    For IPv6, convert to compressed format
     """
     try:
         ip = ipaddress.ip_address(ip_str)

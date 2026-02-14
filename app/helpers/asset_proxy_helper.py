@@ -1,4 +1,12 @@
-"""资源代理辅助方法与路由装饰器。"""
+"""Asset proxy helper functions and route decorators.
+
+This module provides utilities for replacing osu! asset URLs with custom
+proxied URLs to support asset proxying functionality.
+
+Functions:
+    replace_asset_urls: Replace osu! asset URLs in data structures.
+    asset_proxy_response: Decorator for replacing asset URLs in responses.
+"""
 
 from collections.abc import Awaitable, Callable
 from functools import wraps
@@ -14,6 +22,14 @@ Handler = Callable[..., Awaitable[Any]]
 
 
 def _replace_asset_urls_in_string(value: str) -> str:
+    """Replace osu! asset URLs in a string with proxied URLs.
+
+    Args:
+        value: The string to process.
+
+    Returns:
+        The string with replaced URLs.
+    """
     result = value
     custom_domain = settings.custom_asset_domain
     asset_prefix = settings.asset_proxy_prefix
@@ -54,6 +70,14 @@ def _replace_asset_urls_in_string(value: str) -> str:
 
 
 def _replace_asset_urls_in_data(data: Any) -> Any:
+    """Recursively replace osu! asset URLs in data structures.
+
+    Args:
+        data: The data structure to process (str, list, tuple, dict, etc.).
+
+    Returns:
+        The data with replaced URLs.
+    """
     if isinstance(data, str):
         return _replace_asset_urls_in_string(data)
     if isinstance(data, list):
@@ -66,7 +90,18 @@ def _replace_asset_urls_in_data(data: Any) -> Any:
 
 
 async def replace_asset_urls(data: Any) -> Any:
-    """替换数据中的 osu! 资源 URL。"""
+    """Replace osu! asset URLs in data structures.
+
+    Processes the data and replaces all osu! asset URLs with custom
+    proxied URLs based on the application settings.
+
+    Args:
+        data: The data to process. Can be a dict, list, tuple, string,
+            or Pydantic model.
+
+    Returns:
+        The data with all asset URLs replaced.
+    """
 
     if not settings.enable_asset_proxy:
         return data
@@ -86,7 +121,17 @@ async def replace_asset_urls(data: Any) -> Any:
 
 
 def asset_proxy_response(func: Handler) -> Handler:
-    """装饰器：在返回响应前替换资源 URL。"""
+    """Decorator to replace asset URLs in responses.
+
+    This decorator wraps an async handler function and replaces all
+    osu! asset URLs in the response with proxied URLs.
+
+    Args:
+        func: The async handler function to wrap.
+
+    Returns:
+        The wrapped handler function.
+    """
 
     @wraps(func)
     async def wrapper(*args, **kwargs):

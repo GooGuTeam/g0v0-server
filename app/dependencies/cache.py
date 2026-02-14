@@ -15,7 +15,6 @@ from fastapi import Depends
 
 
 def get_beatmapset_cache_dependency(redis: Redis) -> OriginBeatmapsetCacheService:
-    """获取beatmapset缓存服务依赖"""
     return get_beatmapset_cache_service(redis)
 
 

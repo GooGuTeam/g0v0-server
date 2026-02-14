@@ -1,3 +1,9 @@
+"""User achievement/medal database models and processing logic.
+
+This module handles user achievements (medals) including storage, retrieval,
+and the logic for processing newly unlocked achievements on score submission.
+"""
+
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -28,11 +34,15 @@ if TYPE_CHECKING:
 
 
 class UserAchievementBase(SQLModel, UTCBaseModel):
+    """Base fields for user achievement records."""
+
     achievement_id: int
     achieved_at: datetime = Field(default_factory=utcnow, sa_column=Column(DateTime(timezone=True)))
 
 
 class UserAchievement(UserAchievementBase, table=True):
+    """Database table for user achievement records."""
+
     __tablename__: str = "lazer_user_achievements"
 
     id: int | None = Field(default=None, primary_key=True, index=True)
@@ -41,12 +51,22 @@ class UserAchievement(UserAchievementBase, table=True):
 
 
 class UserAchievementResp(UserAchievementBase):
+    """Response model for user achievements."""
+
     @classmethod
     def from_db(cls, db_model: UserAchievement) -> "UserAchievementResp":
+        """Create response from database model."""
         return cls.model_validate(db_model)
 
 
 async def process_achievements(session: AsyncSession, redis: Redis, score_id: int):
+    """Process and award achievements for a score submission.
+
+    Args:
+        session: Database session.
+        redis: Redis client for notifications.
+        score_id: The score ID to check achievements for.
+    """
     from .score import Score
 
     score = await session.get(Score, score_id, options=[joinedload(Score.beatmap)])

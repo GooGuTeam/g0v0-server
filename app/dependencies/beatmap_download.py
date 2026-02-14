@@ -5,12 +5,6 @@ from app.service.beatmap_download_service import BeatmapDownloadService, downloa
 from fast_depends import Depends as DIDepends
 from fastapi import Depends
 
-
-def get_beatmap_download_service():
-    """获取谱面下载服务实例"""
-    return download_service
-
-
 DownloadService = Annotated[
-    BeatmapDownloadService, Depends(get_beatmap_download_service), DIDepends(get_beatmap_download_service)
+    BeatmapDownloadService, Depends(lambda: download_service), DIDepends(lambda: download_service)
 ]

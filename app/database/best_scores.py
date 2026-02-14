@@ -1,3 +1,8 @@
+"""Best PP scores database models.
+
+This module tracks users' best PP (performance points) scores for ranking purposes.
+"""
+
 from typing import TYPE_CHECKING
 
 from app.models.score import GameMode
@@ -23,6 +28,8 @@ if TYPE_CHECKING:
 
 
 class BestScore(SQLModel, table=True):
+    """Tracks a user's best PP scores for each beatmap/mode combination."""
+
     __tablename__: str = "best_scores"
     user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
     score_id: int = Field(sa_column=Column(BigInteger, ForeignKey("scores.id"), primary_key=True))

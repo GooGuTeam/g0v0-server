@@ -1,3 +1,9 @@
+"""Score token database models.
+
+This module handles score submission tokens that validate
+and track score submissions in progress.
+"""
+
 from datetime import datetime
 
 from app.models.model import UTCBaseModel
@@ -13,6 +19,8 @@ from sqlmodel import BigInteger, Field, ForeignKey, Relationship, SQLModel
 
 
 class ScoreTokenBase(SQLModel, UTCBaseModel):
+    """Base fields for score tokens."""
+
     id: int | None = Field(
         default=None,
         sa_column=Column(
@@ -33,6 +41,8 @@ class ScoreTokenBase(SQLModel, UTCBaseModel):
 
 
 class ScoreToken(ScoreTokenBase, table=True):
+    """Database table for score submission tokens."""
+
     __tablename__: str = "score_tokens"
     __table_args__ = (
         Index("idx_user_playlist", "user_id", "playlist_item_id"),
@@ -44,6 +54,8 @@ class ScoreToken(ScoreTokenBase, table=True):
 
 
 class ScoreTokenResp(ScoreTokenBase):
+    """Response model for score tokens."""
+
     @classmethod
     def from_db(cls, obj: ScoreToken) -> "ScoreTokenResp":
         return cls.model_validate(obj)

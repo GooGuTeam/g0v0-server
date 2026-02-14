@@ -24,28 +24,27 @@ def json_serializer(value):
     return json.dumps(value)
 
 
-# 数据库引擎
 engine = create_async_engine(
     settings.database_url,
     json_serializer=json_serializer,
-    pool_size=30,  # 增加连接池大小
-    max_overflow=50,  # 增加最大溢出连接数
+    pool_size=30,
+    max_overflow=50,
     pool_timeout=30.0,
-    pool_recycle=3600,  # 1小时回收连接
-    pool_pre_ping=True,  # 启用连接预检查
+    pool_recycle=3600,
+    pool_pre_ping=True,
 )
 
-# Redis 连接
+# Redis connection
 redis_client = redis.from_url(settings.redis_url, decode_responses=True, db=0)
 
-# Redis 消息缓存连接 (db1)
+# Redis message cache connection (db1)
 redis_message_client = redis.from_url(settings.redis_url, decode_responses=True, db=1)
 
-# Redis 二进制数据连接 (不自动解码响应，用于存储音频等二进制数据，db2)
+# Redis binary data connection (no automatic response decoding, used for storing audio and other binary data, db2)
 redis_binary_client = redis.from_url(settings.redis_url, decode_responses=False, db=2)
 
 
-# 数据库依赖
+# Database dependency
 db_session_context: ContextVar[AsyncSession | None] = ContextVar("db_session_context", default=None)
 
 
@@ -84,7 +83,6 @@ async def get_db_factory() -> DBFactory:
     return _factory
 
 
-# Redis 依赖
 def get_redis():
     return redis_client
 
@@ -93,12 +91,12 @@ Redis = Annotated[redis.Redis, Depends(get_redis), DIDepends(get_redis)]
 
 
 def get_redis_binary():
-    """获取二进制数据专用的 Redis 客户端 (不自动解码响应)"""
+    """Get the Redis client for binary data (db2)"""
     return redis_binary_client
 
 
 def get_redis_message() -> redis.Redis:
-    """获取消息专用的 Redis 客户端 (db1)"""
+    """Get the Redis client for message data (db1)"""
     return redis_message_client
 
 

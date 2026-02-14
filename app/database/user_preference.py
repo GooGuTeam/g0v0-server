@@ -1,3 +1,9 @@
+"""User preference database models.
+
+This module stores user preferences for UI settings, audio,
+beatmap downloads, and profile customization.
+"""
+
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
@@ -15,43 +21,58 @@ DEFAULT_ORDER = [
     "beatmaps",
     "kudosu",
 ]
+"""Default profile section order."""
 
 
 class BeatmapCardSize(StrEnum):
+    """Beatmap card size options."""
+
     NORMAL = "normal"
     EXTRA = "extra"
 
 
 class BeatmapDownload(StrEnum):
+    """Beatmap download options."""
+
     ALL = "all"
     NO_VIDEO = "no_video"
     direct = "direct"
 
 
 class ScoringMode(StrEnum):
+    """Score display mode options."""
+
     STANDARDISED = "standardised"
     CLASSIC = "classic"
 
 
 class UserListFilter(StrEnum):
+    """User list filter options."""
+
     ALL = "all"
     ONLINE = "online"
     OFFLINE = "offline"
 
 
 class UserListSort(StrEnum):
+    """User list sort options."""
+
     LAST_VISIT = "last_visit"
     RANK = "rank"
     USERNAME = "username"
 
 
 class UserListView(StrEnum):
+    """User list view mode options."""
+
     CARD = "card"
     LIST = "list"
     BRICK = "brick"
 
 
 class UserPreference(SQLModel, table=True):
+    """Database table for user preferences."""
+
     user_id: int = Field(
         exclude=True, sa_column=Column(BigInteger, ForeignKey("lazer_users.id", ondelete="CASCADE"), primary_key=True)
     )

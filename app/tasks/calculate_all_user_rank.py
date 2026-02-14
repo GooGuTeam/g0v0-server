@@ -1,3 +1,9 @@
+"""User rank calculation scheduled task.
+
+Provides daily rank calculation and recording for all users
+across all game modes. Updates rank history and tracks top ranks.
+"""
+
 from datetime import timedelta
 
 from app.database import RankHistory, UserStatistics
@@ -12,7 +18,16 @@ from sqlmodel import col, exists, select, update
 
 
 @get_scheduler().scheduled_job("cron", hour=0, minute=0, second=0, id="calculate_user_rank")
-async def calculate_user_rank(is_today: bool = False):
+async def calculate_user_rank(is_today: bool = False) -> None:
+    """Calculate and record user ranks for all game modes.
+
+    Runs daily at midnight to compute ranks based on PP values.
+    Updates RankHistory for historical tracking and RankTop for peak ranks.
+
+    Args:
+        is_today: If True, calculate for today's date. Otherwise, calculate
+            for yesterday (default behavior for scheduled runs).
+    """
     today = utcnow().date()
     target_date = today if is_today else today - timedelta(days=1)
     logger.info("Starting user rank calculation for {}", target_date)

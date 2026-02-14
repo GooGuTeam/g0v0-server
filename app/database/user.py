@@ -1,3 +1,9 @@
+"""User database models and related utilities.
+
+This module provides models for users including profile data,
+statistics, relationships, and transformation logic.
+"""
+
 from datetime import datetime, timedelta
 import json
 from typing import TYPE_CHECKING, ClassVar, Literal, NotRequired, TypedDict, overload
@@ -50,16 +56,22 @@ if TYPE_CHECKING:
 
 
 class Kudosu(TypedDict):
+    """User kudosu point count."""
+
     available: int
     total: int
 
 
 class RankHighest(TypedDict):
+    """User's highest rank achieved."""
+
     rank: int
     updated_at: datetime
 
 
 class UserProfileCover(TypedDict):
+    """User profile cover image data."""
+
     url: str
     custom_url: NotRequired[str]
     id: NotRequired[str]
@@ -75,11 +87,15 @@ Badge = TypedDict(
         "url": str,
     },
 )
+"""User badge data."""
 
 COUNTRIES = json.loads((STATIC_DIR / "iso3166.json").read_text())
+"""ISO 3166 country code to name mapping."""
 
 
 class UserDict(TypedDict):
+    """TypedDict representation of a user for API responses."""
+
     avatar_url: str
     country_code: str
     id: int
@@ -160,6 +176,8 @@ class UserDict(TypedDict):
 
 
 class UserModel(DatabaseModel[UserDict]):
+    """Base model for users with transformation support."""
+
     # https://github.com/ppy/osu-web/blob/d0407b1f2846dfd8b85ec0cf20e3fe3028a7b486/app/Transformers/UserCompactTransformer.php#L22-L39
     CARD_INCLUDES: ClassVar[list[str]] = [
         "country",
@@ -321,12 +339,12 @@ class UserModel(DatabaseModel[UserDict]):
     @field_validator("playmode", mode="before")
     @classmethod
     def validate_playmode(cls, v):
-        """将字符串转换为 GameMode 枚举"""
+        """Convert string to GameMode enum."""
         if isinstance(v, str):
             try:
                 return GameMode(v)
             except ValueError:
-                # 如果转换失败，返回默认值
+                # If conversion fails, return default value
                 return GameMode.OSU
         return v
 
@@ -721,6 +739,16 @@ class User(AsyncAttrs, UserModel, table=True):
     user_preference: UserPreference | None = Relationship(back_populates="user")
 
     async def is_user_can_pm(self, from_user: "User", session: AsyncSession) -> tuple[bool, str]:
+        """Check if the user can receive private messages from the given user.
+
+        Args:
+            from_user: The user who wants to send the private message.
+            session: The database session to use for queries.
+
+        Returns:
+            A tuple where the first element is a boolean indicating if the message can be sent,
+            and the second element is a string message explaining the reason if it cannot be sent.
+        """
         from .relationship import Relationship, RelationshipType
 
         from_relationship = (
@@ -765,6 +793,14 @@ class User(AsyncAttrs, UserModel, table=True):
 
     @classmethod
     def is_restricted_query(cls, user_id: int | Mapped[int]):
+        """Generate a query to check if a user is restricted.
+
+        Args:
+            user_id: The ID of the user to check.
+
+        Returns:
+            A SQLAlchemy query that can be executed to determine if the user is restricted.
+        """
         return exists().where(
             (col(UserAccountHistory.user_id) == user_id)
             & (col(UserAccountHistory.type) == UserAccountHistoryType.RESTRICTION)
@@ -785,12 +821,15 @@ class User(AsyncAttrs, UserModel, table=True):
         )
 
     async def is_restricted(self, session: AsyncSession) -> bool:
+        """Check if the user is currently restricted.
+
+        A user is considered restricted if they have an active restriction in their account history.
+
+        Args:
+            session: The database session to use for the query.
+
+        Returns:
+            True if the user is restricted, False otherwise.
+        """
         active_restrictions = (await session.exec(select(self.is_restricted_query(self.id)))).first()
         return active_restrictions or False
-
-
-# 为了向后兼容，在 SQL 查询中使用 User
-# 例如: select(User).where(User.id == 1)
-# 但类型注解和返回值使用 User
-# 例如: async def get_user() -> User | None:
-#           return (await session.exec(select(User)...)).first()

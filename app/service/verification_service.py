@@ -1,5 +1,6 @@
-"""
-邮件验证管理服务
+"""Email verification management service.
+
+Handles email verification, login sessions, and trusted devices.
 """
 
 from datetime import timedelta
@@ -21,33 +22,37 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 
 class EmailVerificationService:
-    """邮件验证服务"""
+    """Email verification service.
+
+    Manages email verification codes, login sessions,
+    and trusted device authentication.
+    """
 
     @staticmethod
     def generate_verification_code() -> str:
-        """生成8位验证码"""
+        """Generate 8-digit verification code."""
         return "".join(secrets.choice(string.digits) for _ in range(8))
 
     @staticmethod
     async def send_verification_email_via_queue(
         email: str, code: str, username: str, user_id: int, country_code: str | None = None
     ) -> dict[str, str]:
-        """使用邮件队列发送验证邮件
+        """Send verification email via email queue.
 
         Args:
-            email: 接收验证码的邮箱地址
-            code: 验证码
-            username: 用户名
-            user_id: 用户ID
-            country_code: 国家代码（用于选择邮件语言）
+            email: Email address to receive the verification code.
+            code: Verification code.
+            username: Username.
+            user_id: User ID.
+            country_code: Country code (used for email language selection).
 
         Returns:
-            返回格式为 {'id': 'message_id'} 的字典，如果使用 SMTP 则返回 email_id
+            Dictionary in format {'id': 'message_id'}, returns email_id if using SMTP.
         """
         try:
             from app.service.email_template_service import get_email_template_service
 
-            # 使用模板服务生成邮件内容
+            # Use template service to generate email content
             template_service = get_email_template_service()
             subject, html_content, plain_content = template_service.render_verification_email(
                 username=username,
@@ -55,10 +60,10 @@ class EmailVerificationService:
                 country_code=country_code,
                 expiry_minutes=10,
             )
-            # 准备元数据
+            # Prepare metadata
             metadata = {"type": "email_verification", "user_id": user_id, "code": code, "country": country_code}
 
-            # 如果使用 MailerSend，直接发送并返回 message_id
+            # If using MailerSend, send directly and return message_id
             if settings.email_provider == "mailersend":
                 from app.service.mailersend_service import get_mailersend_service
 
@@ -72,7 +77,7 @@ class EmailVerificationService:
                 )
                 return response
             else:
-                # 使用 SMTP 队列发送
+                # Use SMTP queue to send
                 email_id = await email_queue.enqueue_email(
                     to_email=email,
                     subject=subject,
@@ -88,7 +93,7 @@ class EmailVerificationService:
 
     @staticmethod
     def generate_session_token() -> str:
-        """生成会话令牌"""
+        """Generate session token."""
         return secrets.token_urlsafe(32)
 
     @staticmethod
@@ -100,9 +105,9 @@ class EmailVerificationService:
         ip_address: str | None = None,
         user_agent: str | None = None,
     ) -> tuple[EmailVerification, str]:
-        """创建邮件验证记录"""
+        """Create email verification record."""
 
-        # 检查是否有未过期的验证码
+        # Check for unexpired verification code
         existing_result = await db.exec(
             select(EmailVerification).where(
                 EmailVerification.user_id == user_id,
@@ -113,18 +118,18 @@ class EmailVerificationService:
         existing = existing_result.first()
 
         if existing:
-            # 如果有未过期的验证码，直接返回
+            # If unexpired verification code exists, return it directly
             return existing, existing.verification_code
 
-        # 生成新的验证码
+        # Generate new verification code
         code = EmailVerificationService.generate_verification_code()
 
-        # 创建验证记录
+        # Create verification record
         verification = EmailVerification(
             user_id=user_id,
             email=email,
             verification_code=code,
-            expires_at=utcnow() + timedelta(minutes=10),  # 10分钟过期
+            expires_at=utcnow() + timedelta(minutes=10),  # 10-minute expiration
             ip_address=ip_address,
             user_agent=user_agent,
         )
@@ -133,10 +138,10 @@ class EmailVerificationService:
         await db.commit()
         await db.refresh(verification)
 
-        # 存储到 Redis（用于快速验证）
+        # Store in Redis (for quick verification)
         await redis.setex(
             f"email_verification:{user_id}:{code}",
-            600,  # 10分钟过期
+            600,  # 10-minute expiration
             str(verification.id) if verification.id else "0",
         )
 
@@ -154,31 +159,31 @@ class EmailVerificationService:
         user_agent: UserAgentInfo | None = None,
         country_code: str | None = None,
     ) -> dict[str, str]:
-        """发送验证邮件
+        """Send verification email.
 
         Args:
-            db: 数据库会话
-            redis: Redis 客户端
-            user_id: 用户ID
-            username: 用户名
-            email: 邮箱地址
-            ip_address: IP 地址
-            user_agent: 用户代理信息
-            country_code: 国家代码（用于选择邮件语言）
+            db: Database session.
+            redis: Redis client.
+            user_id: User ID.
+            username: Username.
+            email: Email address.
+            ip_address: IP address.
+            user_agent: User agent information.
+            country_code: Country code (used for email language selection).
 
         Returns:
-            返回格式为 {'id': 'message_id'} 的字典
+            Dictionary in format {'id': 'message_id'}.
         """
         try:
-            # 检查是否启用邮件验证功能
+            # Check if email verification feature is enabled
             if not settings.enable_email_verification:
                 logger.debug(f"Email verification is disabled, skipping for user {user_id}")
-                return {"id": "disabled"}  # 返回特殊ID表示功能已禁用
+                return {"id": "disabled"}  # Return special ID indicating feature is disabled
 
-            # 检测客户端信息
+            # Detect client info
             logger.info(f"Detected client for user {user_id}: {user_agent}")
 
-            # 创建验证记录
+            # Create verification record
             (
                 _,
                 code,
@@ -186,7 +191,7 @@ class EmailVerificationService:
                 db, redis, user_id, email, ip_address, user_agent.raw_ua if user_agent else None
             )
 
-            # 使用邮件队列发送验证邮件
+            # Use email queue to send verification email
             response = await EmailVerificationService.send_verification_email_via_queue(
                 email, code, username, user_id, country_code
             )
@@ -211,19 +216,19 @@ class EmailVerificationService:
         user_id: int,
         code: str,
     ) -> tuple[bool, str]:
-        """验证邮箱验证码"""
+        """Verify email verification code."""
         try:
-            # 检查是否启用邮件验证功能
+            # Check if email verification feature is enabled
             if not settings.enable_email_verification:
                 logger.debug(f"Email verification is disabled, auto-approving for user {user_id}")
-                return True, "验证成功（邮件验证功能已禁用）"
+                return True, "Verification successful (email verification disabled)"
 
-            # 先从 Redis 检查
+            # Check Redis first
             verification_id = await redis.get(f"email_verification:{user_id}:{code}")
             if not verification_id:
-                return False, "验证码无效或已过期"
+                return False, "Verification code invalid or expired"
 
-            # 从数据库获取验证记录
+            # Get verification record from database
             result = await db.exec(
                 select(EmailVerification).where(
                     EmailVerification.id == int(verification_id),
@@ -236,23 +241,23 @@ class EmailVerificationService:
 
             verification = result.first()
             if not verification:
-                return False, "验证码无效或已过期"
+                return False, "Verification code invalid or expired"
 
-            # 标记为已使用
+            # Mark as used
             verification.is_used = True
             verification.used_at = utcnow()
 
             await db.commit()
 
-            # 删除 Redis 记录
+            # Delete Redis record
             await redis.delete(f"email_verification:{user_id}:{code}")
 
             logger.info(f"User {user_id} verification code verified successfully")
-            return True, "验证成功"
+            return True, "Verification successful"
 
         except Exception as e:
             logger.error(f"Exception during verification code validation: {e}")
-            return False, "验证过程中发生错误"
+            return False, "Error during verification process"
 
     @staticmethod
     async def resend_verification_code(
@@ -265,59 +270,59 @@ class EmailVerificationService:
         user_agent: UserAgentInfo | None = None,
         country_code: str | None = None,
     ) -> tuple[bool, str, dict[str, str]]:
-        """重新发送验证码
+        """Resend verification code.
 
         Args:
-            db: 数据库会话
-            redis: Redis 客户端
-            user_id: 用户ID
-            username: 用户名
-            email: 邮箱地址
-            ip_address: IP 地址
-            user_agent: 用户代理信息
-            country_code: 国家代码（用于选择邮件语言）
+            db: Database session.
+            redis: Redis client.
+            user_id: User ID.
+            username: Username.
+            email: Email address.
+            ip_address: IP address.
+            user_agent: User agent info.
+            country_code: Country code (for selecting email language).
 
         Returns:
-            (是否成功, 消息, {'id': 'message_id'})
+            (success, message, {'id': 'message_id'})
         """
         try:
-            # 避免未使用参数警告
+            # Avoid unused parameter warning
             _ = user_agent
-            # 检查是否启用邮件验证功能
+            # Check if email verification feature is enabled
             if not settings.enable_email_verification:
                 logger.debug(f"Email verification is disabled, skipping resend for user {user_id}")
-                return True, "验证码已发送（邮件验证功能已禁用）", {"id": "disabled"}
+                return True, "Verification code sent (email verification disabled)", {"id": "disabled"}
 
-            # 检查重发频率限制（60秒内只能发送一次）
+            # Check resend rate limit (60 seconds between sends)
             rate_limit_key = f"email_verification_rate_limit:{user_id}"
             if await redis.get(rate_limit_key):
-                return False, "请等待60秒后再重新发送", {"id": ""}
+                return False, "Please wait 60 seconds before resending", {"id": ""}
 
-            # 设置频率限制
+            # Set rate limit
             await redis.setex(rate_limit_key, 60, "1")
 
-            # 生成新的验证码
+            # Generate new verification code
             response = await EmailVerificationService.send_verification_email(
                 db, redis, user_id, username, email, ip_address, user_agent, country_code
             )
 
             if response and response.get("id"):
-                return True, "验证码已重新发送", response
+                return True, "Verification code resent", response
             else:
-                return False, "重新发送失败，请稍后再试", {"id": ""}
+                return False, "Resend failed, please try again later", {"id": ""}
 
         except Exception as e:
             logger.error(f"Exception during resending verification code: {e}")
-            return False, "重新发送过程中发生错误", {"id": ""}
+            return False, "Error during resend process", {"id": ""}
 
 
 class LoginSessionService:
-    """登录会话服务"""
+    """Login session service."""
 
     # Session verification interface methods
     @staticmethod
     async def find_for_verification(db: AsyncSession, token: str) -> LoginSession | None:
-        """根据会话ID查找会话用于验证"""
+        """Find session by session ID for verification."""
         try:
             result = await db.exec(
                 select(LoginSession).where(
@@ -331,7 +336,7 @@ class LoginSessionService:
 
     @staticmethod
     def get_key_for_event(session_id: str) -> str:
-        """获取用于事件广播的会话密钥"""
+        """Get session key for event broadcasting."""
         return f"g0v0:{session_id}"
 
     @staticmethod
@@ -345,14 +350,14 @@ class LoginSessionService:
         web_uuid: str | None = None,
         is_verified: bool = False,
     ) -> LoginSession:
-        """创建登录会话"""
+        """Create login session."""
         session = LoginSession(
             user_id=user_id,
             token_id=token_id,
             ip_address=ip_address,
             user_agent=user_agent,
             is_new_device=is_new_device,
-            expires_at=utcnow() + timedelta(hours=24),  # 24小时过期
+            expires_at=utcnow() + timedelta(hours=24),  # 24-hour expiration
             is_verified=is_verified,
             web_uuid=web_uuid,
         )
@@ -466,7 +471,7 @@ class LoginSessionService:
         user_agent: UserAgentInfo,
         web_uuid: str | None = None,
     ) -> bool:
-        """标记用户的未验证会话为已验证"""
+        """Mark user's unverified sessions as verified."""
         device_info: TrustedDevice | None = None
         if user_agent.is_client or web_uuid:
             device_info = await LoginSessionService.get_or_create_trusted_device(
@@ -474,7 +479,7 @@ class LoginSessionService:
             )
 
         try:
-            # 查找用户所有未验证且未过期的会话
+            # Find all unverified and unexpired sessions for user
             result = await db.exec(
                 select(LoginSession).where(
                     LoginSession.user_id == user_id,
@@ -485,7 +490,7 @@ class LoginSessionService:
             )
             sessions = result.all()
 
-            # 标记所有会话为已验证
+            # Mark all sessions as verified
             for session in sessions:
                 session.is_verified = True
                 session.verified_at = utcnow()
@@ -506,7 +511,7 @@ class LoginSessionService:
 
     @staticmethod
     async def check_is_need_verification(db: AsyncSession, user_id: int, token_id: int) -> bool:
-        """检查用户是否需要验证（有未验证的会话）"""
+        """Check if user needs verification (has unverified sessions)."""
         if settings.enable_totp_verification or settings.enable_email_verification:
             unverified_session = (
                 await db.exec(

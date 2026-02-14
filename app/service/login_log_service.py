@@ -1,5 +1,6 @@
-"""
-用户登录记录服务
+"""User login logging service.
+
+Records user login attempts with IP and geolocation information.
 """
 
 import asyncio
@@ -14,7 +15,11 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 
 class LoginLogService:
-    """用户登录记录服务"""
+    """User login logging service.
+
+    Provides methods to record successful and failed login attempts
+    with geolocation information.
+    """
 
     @staticmethod
     async def record_login(
@@ -27,24 +32,24 @@ class LoginLogService:
         notes: str | None = None,
     ) -> UserLoginLog:
         """
-        记录用户登录信息
+        Record a user login attempt.
 
         Args:
-            db: 数据库会话
-            user_id: 用户ID
-            request: HTTP请求对象
-            login_success: 登录是否成功
-            login_method: 登录方式
-            notes: 备注信息
+            db: Database session.
+            user_id: ID of the user who attempted to log in.
+            request: HTTP request object.
+            login_success: Whether login was successful.
+            login_method: Login method.
+            notes: Additional notes.
 
         Returns:
-            UserLoginLog: 登录记录对象
+            UserLoginLog: Login log object.
         """
-        # 获取客户端IP并标准化格式
+        # Get client IP and normalize format
         raw_ip = get_client_ip(request)
         ip_address = normalize_ip(raw_ip)
 
-        # 创建基本的登录记录
+        # Create basic login record
         login_log = UserLoginLog(
             user_id=user_id,
             ip_address=ip_address,
@@ -55,11 +60,11 @@ class LoginLogService:
             notes=notes,
         )
 
-        # 异步获取GeoIP信息
+        # Async get GeoIP info
         try:
             geoip = get_geoip_helper()
 
-            # 在后台线程中运行GeoIP查询（避免阻塞）
+            # Run GeoIP query in background thread (avoid blocking)
             loop = asyncio.get_event_loop()
             geo_info = await loop.run_in_executor(None, lambda: geoip.lookup(ip_address))
 
@@ -71,7 +76,7 @@ class LoginLogService:
                 login_log.longitude = geo_info.get("longitude", "")
                 login_log.time_zone = geo_info.get("time_zone", "")
 
-                # 处理 ASN（可能是字符串，需要转换为整数）
+                # Handle ASN (may be string, needs conversion to int)
                 asn_value = geo_info.get("asn")
                 if asn_value is not None:
                     try:
@@ -88,7 +93,7 @@ class LoginLogService:
         except Exception as e:
             logger.warning(f"GeoIP lookup error for {ip_address}: {e}")
 
-        # 保存到数据库
+        # Save to database
         db.add(login_log)
         await db.commit()
         await db.refresh(login_log)
@@ -105,23 +110,22 @@ class LoginLogService:
         notes: str | None = None,
         user_agent: str | None = None,
     ) -> UserLoginLog:
-        """
-        记录失败的登录尝试
+        """Record failed login attempt.
 
         Args:
-            db: 数据库会话
-            request: HTTP请求对象
-            attempted_username: 尝试登录的用户名
-            login_method: 登录方式
-            notes: 备注信息
+            db: Database session.
+            request: HTTP request object.
+            attempted_username: Username that was attempted.
+            login_method: Login method.
+            notes: Additional notes.
 
         Returns:
-            UserLoginLog: 登录记录对象
+            UserLoginLog: Login log object.
         """
-        # 对于失败的登录，使用user_id=0表示未知用户
+        # For failed logins, use user_id=0 for unknown user
         return await LoginLogService.record_login(
             db=db,
-            user_id=0,  # 0表示未知/失败的登录
+            user_id=0,  # 0 indicates unknown/failed login
             request=request,
             login_success=False,
             login_method=login_method,
@@ -136,13 +140,13 @@ class LoginLogService:
 
 def get_request_info(request: Request) -> dict:
     """
-    提取请求的详细信息
+    Extract request information for logging.
 
     Args:
-        request: HTTP请求对象
+        request: HTTP request object.
 
     Returns:
-        dict: 包含请求信息的字典
+        dict: Dictionary containing IP, user agent, referer, accept language, and other headers.
     """
     return {
         "ip": get_client_ip(request),

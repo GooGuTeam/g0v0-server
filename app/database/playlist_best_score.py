@@ -1,3 +1,8 @@
+"""Playlist best score database models.
+
+This module tracks users' best scores on playlist items in multiplayer rooms.
+"""
+
 from typing import TYPE_CHECKING
 
 from .user import User
@@ -21,6 +26,8 @@ if TYPE_CHECKING:
 
 
 class PlaylistBestScore(SQLModel, table=True):
+    """Tracks best scores for playlist items in multiplayer rooms."""
+
     __tablename__: str = "playlist_best_scores"
 
     user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
@@ -48,6 +55,17 @@ async def process_playlist_best_score(
     session: AsyncSession,
     redis: Redis,
 ):
+    """Process and update best score for a playlist item.
+
+    Args:
+        room_id: The multiplayer room ID.
+        playlist_id: The playlist item ID.
+        user_id: The user ID.
+        score_id: The score ID.
+        total_score: The total score achieved.
+        session: Database session.
+        redis: Redis client.
+    """
     previous = (
         await session.exec(
             select(PlaylistBestScore).where(
@@ -81,6 +99,17 @@ async def get_position(
     score_id: int,
     session: AsyncSession,
 ) -> int:
+    """Get the leaderboard position of a score.
+
+    Args:
+        room_id: The multiplayer room ID.
+        playlist_id: The playlist item ID.
+        score_id: The score ID.
+        session: Database session.
+
+    Returns:
+        The position (1-indexed) of the score on the leaderboard.
+    """
     rownum = (
         func.row_number()
         .over(

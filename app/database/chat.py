@@ -1,3 +1,9 @@
+"""Chat system database models.
+
+This module provides models for chat channels, messages, and user silencing
+for the real-time chat system.
+"""
+
 from datetime import datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING, ClassVar, NotRequired, TypedDict
@@ -25,16 +31,22 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 if TYPE_CHECKING:
     from app.router.notification.server import ChatServer
+
+
 # ChatChannel
 
 
 class ChatUserAttributes(BaseModel):
+    """User-specific attributes for a chat channel."""
+
     can_message: bool
     can_message_error: str | None = None
     last_read_id: int
 
 
 class ChannelType(StrEnum):
+    """Types of chat channels."""
+
     PUBLIC = "PUBLIC"
     PRIVATE = "PRIVATE"
     MULTIPLAYER = "MULTIPLAYER"
@@ -48,12 +60,16 @@ class ChannelType(StrEnum):
 
 
 class MessageType(StrEnum):
+    """Types of chat messages."""
+
     ACTION = "action"
     MARKDOWN = "markdown"
     PLAIN = "plain"
 
 
 class ChatChannelDict(TypedDict):
+    """TypedDict representation of a chat channel."""
+
     channel_id: int
     description: str
     name: str
@@ -70,6 +86,8 @@ class ChatChannelDict(TypedDict):
 
 
 class ChatChannelModel(DatabaseModel[ChatChannelDict]):
+    """Base model for chat channels with transformation support."""
+
     CONVERSATION_INCLUDES: ClassVar[list[str]] = [
         "last_message_id",
         "users",
@@ -206,14 +224,25 @@ class ChatChannelModel(DatabaseModel[ChatChannelDict]):
 
 
 class ChatChannel(ChatChannelModel, table=True):
+    """Database table model for chat channels."""
+
     __tablename__: str = "chat_channels"
 
     channel_name: str = Field(sa_column=Column(name="name", type_=VARCHAR(50), index=True))
 
     @classmethod
     async def get(cls, channel: str | int, session: AsyncSession) -> "ChatChannel | None":
+        """Get a chat channel by ID or name.
+
+        Args:
+            channel: Channel ID (int) or name (str) to lookup.
+            session: Database session.
+
+        Returns:
+            The chat channel if found, None otherwise.
+        """
         if isinstance(channel, int) or channel.isdigit():
-            # 使用查询而不是 get() 来确保对象完全加载
+            # Use query instead of get() to ensure object is fully loaded
             result = await session.exec(select(ChatChannel).where(ChatChannel.channel_id == int(channel)))
             channel_ = result.first()
             if channel_ is not None:
@@ -231,6 +260,8 @@ class ChatChannel(ChatChannelModel, table=True):
 
 # ChatMessage
 class ChatMessageDict(TypedDict):
+    """TypedDict representation of a chat message."""
+
     channel_id: int
     content: str
     message_id: int
@@ -243,6 +274,8 @@ class ChatMessageDict(TypedDict):
 
 
 class ChatMessageModel(DatabaseModel[ChatMessageDict]):
+    """Base model for chat messages with transformation support."""
+
     channel_id: int = Field(index=True, foreign_key="chat_channels.channel_id")
     content: str = Field(sa_column=Column(VARCHAR(1000)))
     message_id: int = Field(index=True, primary_key=True, default=None)
@@ -263,12 +296,16 @@ class ChatMessageModel(DatabaseModel[ChatMessageDict]):
 
 
 class ChatMessage(ChatMessageModel, table=True):
+    """Database table model for chat messages."""
+
     __tablename__: str = "chat_messages"
     user: User = Relationship(sa_relationship_kwargs={"lazy": "joined"})
     channel: "ChatChannel" = Relationship()
 
 
 class SilenceUser(UTCBaseModel, SQLModel, table=True):
+    """Records user silences (mutes) in specific channels."""
+
     __tablename__: str = "chat_silence_users"
     id: int = Field(primary_key=True, default=None, index=True)
     user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
@@ -279,6 +316,8 @@ class SilenceUser(UTCBaseModel, SQLModel, table=True):
 
 
 class UserSilenceResp(SQLModel):
+    """Response model for user silence information."""
+
     id: int
     user_id: int
 

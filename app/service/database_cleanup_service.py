@@ -1,5 +1,6 @@
-"""
-数据库清理服务 - 清理过期的验证码和会话
+"""Database cleanup service.
+
+Cleans up expired verification codes and sessions from the database.
 """
 
 from datetime import timedelta
@@ -14,28 +15,32 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 
 class DatabaseCleanupService:
-    """数据库清理服务"""
+    """Database cleanup service for expired records.
+
+    Provides static methods to clean up expired verification codes,
+    login sessions, OAuth tokens, and other temporary records.
+    """
 
     @staticmethod
     async def cleanup_expired_verification_codes(db: AsyncSession) -> int:
         """
-        清理过期的邮件验证码
+        Clean up expired email verification codes.
 
         Args:
-            db: 数据库会话
+            db: Database session.
 
         Returns:
-            int: 清理的记录数
+            int: Number of records cleaned up.
         """
         try:
-            # 查找过期的验证码记录
+            # Find expired verification code records
             current_time = utcnow()
 
             stmt = select(EmailVerification).where(EmailVerification.expires_at < current_time)
             result = await db.exec(stmt)
             expired_codes = result.all()
 
-            # 删除过期的记录
+            # Delete expired records
             deleted_count = 0
             for code in expired_codes:
                 await db.delete(code)
@@ -56,16 +61,16 @@ class DatabaseCleanupService:
     @staticmethod
     async def cleanup_expired_login_sessions(db: AsyncSession) -> int:
         """
-        清理过期的登录会话
+        Clean up expired login sessions.
 
         Args:
-            db: 数据库会话
+            db: Database session.
 
         Returns:
-            int: 清理的记录数
+            int: Number of records cleaned up.
         """
         try:
-            # 查找过期的登录会话记录
+            # Find expired login session records
             current_time = utcnow()
 
             stmt = select(LoginSession).where(
@@ -74,7 +79,7 @@ class DatabaseCleanupService:
             result = await db.exec(stmt)
             expired_sessions = result.all()
 
-            # 删除过期的记录
+            # Delete expired records
             deleted_count = 0
             for session in expired_sessions:
                 await db.delete(session)
@@ -94,28 +99,27 @@ class DatabaseCleanupService:
 
     @staticmethod
     async def cleanup_old_used_verification_codes(db: AsyncSession, days_old: int = 7) -> int:
-        """
-        清理旧的已使用验证码记录
+        """Clean up old used verification code records.
 
         Args:
-            db: 数据库会话
-            days_old: 清理多少天前的已使用记录，默认7天
+            db: Database session.
+            days_old: Clean records older than this many days. Default is 7.
 
         Returns:
-            int: 清理的记录数
+            Number of deleted records.
         """
         try:
-            # 查找指定天数前的已使用验证码记录
+            # Find used verification codes older than specified days
             cutoff_time = utcnow() - timedelta(days=days_old)
 
             stmt = select(EmailVerification).where(col(EmailVerification.is_used).is_(True))
             result = await db.exec(stmt)
             all_used_codes = result.all()
 
-            # 筛选出过期的记录
+            # Filter out expired records
             old_used_codes = [code for code in all_used_codes if code.used_at and code.used_at < cutoff_time]
 
-            # 删除旧的已使用记录
+            # Delete old used records
             deleted_count = 0
             for code in old_used_codes:
                 await db.delete(code)
@@ -135,28 +139,27 @@ class DatabaseCleanupService:
 
     @staticmethod
     async def cleanup_unverified_login_sessions(db: AsyncSession, hours_old: int = 1) -> int:
-        """
-        清理指定小时前创建但仍未验证的登录会话
+        """Clean up login sessions created but not verified within the specified hours.
 
         Args:
-            db: 数据库会话
-            hours_old: 清理多少小时前创建但仍未验证的会话，默认1小时
+            db: Database session.
+            hours_old: Clean sessions created but not verified before this many hours. Default is 1.
 
         Returns:
-            int: 清理的记录数
+            int: Number of records cleaned up.
         """
         try:
-            # 计算截止时间
+            # Calculate cutoff time
             cutoff_time = utcnow() - timedelta(hours=hours_old)
 
-            # 查找指定时间前创建且仍未验证的会话记录
+            # Find sessions created before the cutoff time that are still unverified
             stmt = select(LoginSession).where(
                 col(LoginSession.is_verified).is_(False), LoginSession.created_at < cutoff_time
             )
             result = await db.exec(stmt)
             unverified_sessions = result.all()
 
-            # 删除未验证的会话记录
+            # Delete unverified session records
             deleted_count = 0
             for session in unverified_sessions:
                 await db.delete(session)
@@ -176,21 +179,20 @@ class DatabaseCleanupService:
 
     @staticmethod
     async def cleanup_outdated_verified_sessions(db: AsyncSession) -> int:
-        """
-        清理过期会话记录
+        """Clean up expired session records.
 
         Args:
-            db: 数据库会话
+            db: Database session.
 
         Returns:
-            int: 清理的记录数
+            Number of deleted records.
         """
         try:
             stmt = select(LoginSession).where(
                 col(LoginSession.is_verified).is_(True), col(LoginSession.token_id).is_(None)
             )
             result = await db.exec(stmt)
-            # 删除旧的已验证记录
+            # Delete old verified records
             deleted_count = 0
             for session in result.all():
                 await db.delete(session)
@@ -210,24 +212,23 @@ class DatabaseCleanupService:
 
     @staticmethod
     async def cleanup_outdated_trusted_devices(db: AsyncSession) -> int:
-        """
-        清理过期的受信任设备记录
+        """Clean up expired trusted device records.
 
         Args:
-            db: 数据库会话
+            db: Database session.
 
         Returns:
-            int: 清理的记录数
+            Number of deleted records.
         """
         try:
-            # 查找过期的受信任设备记录
+            # Find expired trusted device records
             current_time = utcnow()
 
             stmt = select(TrustedDevice).where(TrustedDevice.expires_at < current_time)
             result = await db.exec(stmt)
             expired_devices = result.all()
 
-            # 删除过期的记录
+            # Delete expired records
             deleted_count = 0
             for device in expired_devices:
                 await db.delete(device)
@@ -247,14 +248,13 @@ class DatabaseCleanupService:
 
     @staticmethod
     async def cleanup_outdated_tokens(db: AsyncSession) -> int:
-        """
-        清理过期的 OAuth 令牌
+        """Clean up expired OAuth tokens.
 
         Args:
-            db: 数据库会话
+            db: Database session.
 
         Returns:
-            int: 清理的记录数
+            Number of deleted records.
         """
         try:
             current_time = utcnow()
@@ -282,36 +282,35 @@ class DatabaseCleanupService:
 
     @staticmethod
     async def run_full_cleanup(db: AsyncSession) -> dict[str, int]:
-        """
-        运行完整的清理流程
+        """Run complete cleanup process.
 
         Args:
-            db: 数据库会话
+            db: Database session.
 
         Returns:
-            dict: 各项清理的结果统计
+            Dictionary with cleanup statistics for each category.
         """
         results = {}
 
-        # 清理过期的验证码
+        # Clean up expired verification codes
         results["expired_verification_codes"] = await DatabaseCleanupService.cleanup_expired_verification_codes(db)
 
-        # 清理过期的登录会话
+        # Clean up expired login sessions
         results["expired_login_sessions"] = await DatabaseCleanupService.cleanup_expired_login_sessions(db)
 
-        # 清理1小时前未验证的登录会话
+        # Clean up login sessions not verified within 1 hour
         results["unverified_login_sessions"] = await DatabaseCleanupService.cleanup_unverified_login_sessions(db, 1)
 
-        # 清理7天前的已使用验证码
+        # Clean up verification codes used more than 7 days ago
         results["old_used_verification_codes"] = await DatabaseCleanupService.cleanup_old_used_verification_codes(db, 7)
 
-        # 清理过期的受信任设备
+        # Clean up expired trusted devices
         results["outdated_trusted_devices"] = await DatabaseCleanupService.cleanup_outdated_trusted_devices(db)
 
-        # 清理过期的 OAuth 令牌
+        # Clean up expired OAuth tokens
         results["outdated_oauth_tokens"] = await DatabaseCleanupService.cleanup_outdated_tokens(db)
 
-        # 清理过期（token 过期）的已验证会话
+        # Clean up verified sessions with expired tokens
         results["outdated_verified_sessions"] = await DatabaseCleanupService.cleanup_outdated_verified_sessions(db)
 
         total_cleaned = sum(results.values())
@@ -322,14 +321,13 @@ class DatabaseCleanupService:
 
     @staticmethod
     async def get_cleanup_statistics(db: AsyncSession) -> dict[str, int]:
-        """
-        获取清理统计信息
+        """Get cleanup statistics.
 
         Args:
-            db: 数据库会话
+            db: Database session.
 
         Returns:
-            dict: 统计信息
+            Dictionary with statistics.
         """
         try:
             current_time = utcnow()
@@ -337,21 +335,21 @@ class DatabaseCleanupService:
             cutoff_7_days = current_time - timedelta(days=7)
             cutoff_30_days = current_time - timedelta(days=30)
 
-            # 统计过期的验证码数量
+            # Count expired verification codes
             expired_codes_stmt = (
                 select(func.count()).select_from(EmailVerification).where(EmailVerification.expires_at < current_time)
             )
             expired_codes_result = await db.exec(expired_codes_stmt)
             expired_codes_count = expired_codes_result.one()
 
-            # 统计过期的登录会话数量
+            # Count expired login sessions
             expired_sessions_stmt = (
                 select(func.count()).select_from(LoginSession).where(LoginSession.expires_at < current_time)
             )
             expired_sessions_result = await db.exec(expired_sessions_stmt)
             expired_sessions_count = expired_sessions_result.one()
 
-            # 统计1小时前未验证的登录会话数量
+            # Count unverified login sessions older than 1 hour
             unverified_sessions_stmt = (
                 select(func.count())
                 .select_from(LoginSession)
@@ -360,7 +358,7 @@ class DatabaseCleanupService:
             unverified_sessions_result = await db.exec(unverified_sessions_stmt)
             unverified_sessions_count = unverified_sessions_result.one()
 
-            # 统计7天前的已使用验证码数量
+            # Count used verification codes older than 7 days
             old_used_codes_stmt = select(EmailVerification).where(col(EmailVerification.is_used).is_(True))
             old_used_codes_result = await db.exec(old_used_codes_stmt)
             all_used_codes = old_used_codes_result.all()
@@ -368,7 +366,7 @@ class DatabaseCleanupService:
                 [code for code in all_used_codes if code.used_at and code.used_at < cutoff_7_days]
             )
 
-            # 统计30天前的已验证会话数量
+            # Count verified sessions older than 30 days
             outdated_verified_sessions_stmt = select(LoginSession).where(col(LoginSession.is_verified).is_(True))
             outdated_verified_sessions_result = await db.exec(outdated_verified_sessions_stmt)
             all_verified_sessions = outdated_verified_sessions_result.all()
@@ -380,14 +378,14 @@ class DatabaseCleanupService:
                 ]
             )
 
-            # 统计过期的 OAuth 令牌数量
+            # Count expired OAuth tokens
             outdated_tokens_stmt = (
                 select(func.count()).select_from(OAuthToken).where(OAuthToken.refresh_token_expires_at < current_time)
             )
             outdated_tokens_result = await db.exec(outdated_tokens_stmt)
             outdated_tokens_count = outdated_tokens_result.one()
 
-            # 统计过期的受信任设备数量
+            # Count expired trusted devices
             outdated_devices_stmt = (
                 select(func.count()).select_from(TrustedDevice).where(TrustedDevice.expires_at < current_time)
             )

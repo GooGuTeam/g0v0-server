@@ -214,6 +214,7 @@ bancho.py-master/*
 
 # runtime file
 storage/
+!app/storage/
 replays/
 osu-master/*
 rulesets/

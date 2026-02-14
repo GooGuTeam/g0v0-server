@@ -6,6 +6,19 @@ from pydantic import BaseModel, ValidationError
 
 
 def BodyOrForm[T: BaseModel](model: type[T]):  # noqa: N802
+    """
+    A dependency that can parse either JSON body or form data into a Pydantic model.
+    It checks the Content-Type header to determine how to parse the incoming data.
+    If the Content-Type is application/json, it will attempt to parse the body as JSON.
+    Otherwise, it will treat the incoming data as form data.
+
+    Args:
+        model: The Pydantic model class to parse the data into.
+
+    Returns:
+        A dependency function that can be used in FastAPI routes.
+    """
+
     async def dependency(
         request: Request,
     ) -> T:

@@ -1,4 +1,8 @@
-"""缓存相关的 APScheduler 任务入口。"""
+"""Cache-related APScheduler task entry points.
+
+Provides scheduled tasks for cache warmup, ranking refresh,
+user cache preloading, and cache cleanup operations.
+"""
 
 import asyncio
 from datetime import UTC, timedelta
@@ -28,7 +32,10 @@ CACHE_JOB_IDS: Final[dict[str, str]] = {
 
 
 async def warmup_cache() -> None:
-    """执行缓存预热"""
+    """Perform beatmap cache warmup.
+
+    Warms up the homepage beatmap cache to improve initial load times.
+    """
     try:
         logger.info("Starting beatmap cache warmup...")
 
@@ -44,7 +51,10 @@ async def warmup_cache() -> None:
 
 
 async def refresh_ranking_cache() -> None:
-    """刷新排行榜缓存"""
+    """Refresh ranking cache.
+
+    Updates cached ranking data for all game modes.
+    """
     try:
         logger.info("Starting ranking cache refresh...")
 
@@ -62,7 +72,11 @@ async def refresh_ranking_cache() -> None:
 
 
 async def schedule_user_cache_preload_task() -> None:
-    """定时用户缓存预加载任务"""
+    """Scheduled user cache preload task.
+
+    Preloads cache for recently active users (within 24 hours)
+    to improve response times for subsequent requests.
+    """
     if not settings.enable_user_cache_preload:
         return
 
@@ -102,7 +116,10 @@ async def schedule_user_cache_preload_task() -> None:
 
 
 async def schedule_user_cache_warmup_task() -> None:
-    """定时用户缓存预热任务 - 预加载排行榜前100用户"""
+    """Scheduled user cache warmup task.
+
+    Preloads cache for the top 100 users in each game mode's leaderboard.
+    """
     try:
         logger.info("Starting user cache warmup task...")
 
@@ -144,7 +161,10 @@ async def schedule_user_cache_warmup_task() -> None:
 
 
 async def schedule_user_cache_cleanup_task() -> None:
-    """定时用户缓存清理任务"""
+    """Scheduled user cache cleanup task.
+
+    Logs cache statistics and cleans up stale cache entries.
+    """
     try:
         logger.info("Starting user cache cleanup task...")
 
@@ -161,7 +181,10 @@ async def schedule_user_cache_cleanup_task() -> None:
 
 
 async def warmup_user_cache() -> None:
-    """用户缓存预热"""
+    """Warm up user cache.
+
+    Wrapper for schedule_user_cache_warmup_task with error handling.
+    """
     try:
         await schedule_user_cache_warmup_task()
     except Exception as e:
@@ -169,7 +192,10 @@ async def warmup_user_cache() -> None:
 
 
 async def preload_user_cache() -> None:
-    """用户缓存预加载"""
+    """Preload user cache.
+
+    Wrapper for schedule_user_cache_preload_task with error handling.
+    """
     try:
         await schedule_user_cache_preload_task()
     except Exception as e:
@@ -177,7 +203,10 @@ async def preload_user_cache() -> None:
 
 
 async def cleanup_user_cache() -> None:
-    """用户缓存清理"""
+    """Clean up user cache.
+
+    Wrapper for schedule_user_cache_cleanup_task with error handling.
+    """
     try:
         await schedule_user_cache_cleanup_task()
     except Exception as e:
@@ -185,7 +214,14 @@ async def cleanup_user_cache() -> None:
 
 
 def register_cache_jobs() -> None:
-    """注册缓存相关 APScheduler 任务"""
+    """Register cache-related APScheduler jobs.
+
+    Registers the following scheduled jobs:
+    - Beatmap warmup (every 30 minutes)
+    - Ranking refresh (configurable interval)
+    - User preload (every 15 minutes)
+    - User cleanup (every hour)
+    """
     scheduler = get_scheduler()
 
     scheduler.add_job(
@@ -235,13 +271,19 @@ def register_cache_jobs() -> None:
 
 
 async def start_cache_tasks() -> None:
-    """注册 APScheduler 任务并执行启动时任务"""
+    """Register APScheduler jobs and execute startup tasks.
+
+    Called during application startup to initialize cache management.
+    """
     register_cache_jobs()
     logger.info("Cache APScheduler jobs registered; running initial tasks")
 
 
 async def stop_cache_tasks() -> None:
-    """移除 APScheduler 任务"""
+    """Remove APScheduler jobs.
+
+    Called during application shutdown to clean up scheduled jobs.
+    """
     scheduler = get_scheduler()
     for job_id in CACHE_JOB_IDS.values():
         try:

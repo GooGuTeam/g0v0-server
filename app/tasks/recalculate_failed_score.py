@@ -1,3 +1,10 @@
+"""Failed score recalculation scheduled task.
+
+Processes scores that failed PP calculation during submission
+and retries the calculation. Updates user statistics after
+successful recalculation.
+"""
+
 from app.calculator import pre_fetch_and_calculate_pp
 from app.database.score import Score, calculate_user_pp
 from app.database.statistics import UserStatistics
@@ -10,7 +17,12 @@ from sqlmodel import select
 
 
 @get_scheduler().scheduled_job("interval", id="recalculate_failed_beatmap", minutes=5)
-async def recalculate_failed_score():
+async def recalculate_failed_score() -> None:
+    """Recalculate PP for scores that previously failed calculation.
+
+    Runs every 5 minutes to process the score recalculation queue.
+    Scores are re-queued if calculation fails again.
+    """
     redis = get_redis()
     fetcher = await get_fetcher()
     need_add = set()

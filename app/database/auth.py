@@ -1,3 +1,9 @@
+"""Authentication and authorization database models.
+
+This module contains models for OAuth tokens, OAuth clients, API keys,
+and TOTP (two-factor authentication) configuration.
+"""
+
 from datetime import datetime
 import secrets
 from typing import TYPE_CHECKING
@@ -24,6 +30,8 @@ if TYPE_CHECKING:
 
 
 class OAuthToken(UTCBaseModel, SQLModel, table=True):
+    """Database table for OAuth access tokens."""
+
     __tablename__: str = "oauth_tokens"
 
     id: int = Field(default=None, primary_key=True, index=True)
@@ -42,6 +50,8 @@ class OAuthToken(UTCBaseModel, SQLModel, table=True):
 
 
 class OAuthClient(UTCBaseModel, SQLModel, table=True):
+    """Database table for OAuth client applications."""
+
     __tablename__: str = "oauth_clients"
     name: str = Field(max_length=100, index=True)
     description: str = Field(sa_column=Column(Text), default="")
@@ -58,6 +68,8 @@ class OAuthClient(UTCBaseModel, SQLModel, table=True):
 
 
 class V1APIKeys(SQLModel, table=True):
+    """Database table for v1 API keys."""
+
     __tablename__: str = "v1_api_keys"
     id: int | None = Field(default=None, primary_key=True)
     name: str = Field(max_length=100, index=True)
@@ -66,6 +78,8 @@ class V1APIKeys(SQLModel, table=True):
 
 
 class TotpKeys(SQLModel, table=True):
+    """Database table for TOTP (two-factor authentication) keys."""
+
     __tablename__: str = "totp_keys"
     user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), primary_key=True))
     secret: str = Field(max_length=100)

@@ -1,3 +1,8 @@
+"""Multiplayer room service.
+
+Provides functionality for creating and managing playlist rooms.
+"""
+
 from datetime import timedelta
 
 from app.database.beatmap import Beatmap
@@ -14,6 +19,16 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 
 async def create_playlist_room_from_api(session: AsyncSession, room: APIUploadedRoom, host_id: int) -> Room:
+    """Create a playlist room from API-uploaded room data.
+
+    Args:
+        session: Database session.
+        room: API-uploaded room data.
+        host_id: Host user ID.
+
+    Returns:
+        The created Room object.
+    """
     db_room = Room.model_validate({"host_id": host_id, **room.model_dump(exclude={"playlist"})})
     db_room.starts_at = utcnow()
     db_room.ends_at = db_room.starts_at + timedelta(minutes=db_room.duration if db_room.duration is not None else 0)
@@ -46,6 +61,20 @@ async def create_playlist_room(
     max_attempts: int | None = None,
     playlist: list[Playlist] = [],
 ) -> Room:
+    """Create a new playlist room.
+
+    Args:
+        session: Database session.
+        name: Room name.
+        host_id: Host user ID.
+        category: Room category.
+        duration: Room duration in minutes.
+        max_attempts: Maximum attempts allowed.
+        playlist: List of playlist items.
+
+    Returns:
+        The created Room object.
+    """
     db_room = Room(
         name=name,
         category=category,
@@ -82,6 +111,14 @@ async def create_playlist_room(
 
 
 async def add_playlists_to_room(session: AsyncSession, room_id: int, playlist: list[Playlist], owner_id: int):
+    """Add playlist items to a room.
+
+    Args:
+        session: Database session.
+        room_id: Room ID.
+        playlist: List of playlist items.
+        owner_id: Owner user ID.
+    """
     for item in playlist:
         if not (await session.exec(select(exists().where(col(Beatmap.id) == item.beatmap)))).first():
             fetcher = await get_fetcher()

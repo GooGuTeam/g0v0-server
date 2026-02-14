@@ -1,3 +1,11 @@
+"""Performance and difficulty calculation module.
+
+This module provides functionality for calculating performance points (PP),
+difficulty ratings, score conversions, and beatmap validation. It integrates
+with pluggable performance calculator backends and includes suspicious beatmap
+detection.
+"""
+
 import asyncio
 from enum import Enum
 import importlib
@@ -27,7 +35,18 @@ logger = log("Calculator")
 CALCULATOR: PerformanceCalculator | None = None
 
 
-async def init_calculator():
+async def init_calculator() -> PerformanceCalculator | None:
+    """Initialize the performance calculator.
+
+    Dynamically imports and initializes the configured performance calculator
+    backend from app.calculators.performance.
+
+    Returns:
+        The initialized PerformanceCalculator, or None if initialization fails.
+
+    Raises:
+        ImportError: If the calculator module cannot be imported.
+    """
     global CALCULATOR
     try:
         module = importlib.import_module(f"app.calculators.performance.{settings.calculator}")
@@ -40,12 +59,30 @@ async def init_calculator():
 
 
 def get_calculator() -> PerformanceCalculator:
+    """Get the initialized performance calculator.
+
+    Returns:
+        The PerformanceCalculator instance.
+
+    Raises:
+        RuntimeError: If the calculator has not been initialized.
+    """
     if CALCULATOR is None:
         raise RuntimeError("Performance calculator is not initialized")
     return CALCULATOR
 
 
 def clamp[T: int | float](n: T, min_value: T, max_value: T) -> T:
+    """Clamp a value between minimum and maximum bounds.
+
+    Args:
+        n: The value to clamp.
+        min_value: The minimum allowed value.
+        max_value: The maximum allowed value.
+
+    Returns:
+        The clamped value.
+    """
     if n < min_value:
         return min_value
     elif n > max_value:
@@ -58,8 +95,6 @@ def get_display_score(ruleset_id: int, total_score: int, mode: ScoringMode, maxi
     """
     Calculate the display score based on the scoring mode.
 
-    Based on: https://github.com/ppy/osu/blob/master/osu.Game/Scoring/Legacy/ScoreInfoExtensions.cs
-
     Args:
         ruleset_id: The ruleset ID (0=osu!, 1=taiko, 2=catch, 3=mania)
         total_score: The standardised total score
@@ -68,6 +103,9 @@ def get_display_score(ruleset_id: int, total_score: int, mode: ScoringMode, maxi
 
     Returns:
         The display score in the requested scoring mode
+
+    Reference:
+        - https://github.com/ppy/osu/blob/master/osu.Game/Scoring/Legacy/ScoreInfoExtensions.cs
     """
     if mode == ScoringMode.STANDARDISED:
         return total_score
@@ -106,8 +144,19 @@ def _convert_standardised_to_classic(ruleset_id: int, standardised_total_score: 
 
 
 def calculate_pp_for_no_calculator(score: "Score", star_rating: float) -> float:
+    """Calculate PP using fallback algorithm when no calculator is available.
+
+    Uses a custom exponential reward formula based on score and star rating.
+    See: https://www.desmos.com/calculator/i2aa7qm3o6
+
+    Args:
+        score: The score object.
+        star_rating: The beatmap star rating.
+
+    Returns:
+        The calculated PP value.
+    """
     # TODO: Improve this algorithm
-    # https://www.desmos.com/calculator/i2aa7qm3o6
     k = 4.0
 
     pmax = 1.4 * (star_rating**2.8)
@@ -126,6 +175,19 @@ def calculate_pp_for_no_calculator(score: "Score", star_rating: float) -> float:
 
 
 async def calculate_pp(score: "Score", beatmap: str, session: AsyncSession) -> float:
+    """Calculate performance points for a score.
+
+    Checks for banned/suspicious beatmaps and uses the configured
+    performance calculator backend.
+
+    Args:
+        score: The score object.
+        beatmap: The beatmap file content as a string.
+        session: The database session.
+
+    Returns:
+        The calculated PP value, or 0 if the beatmap is banned/suspicious.
+    """
     from app.database.beatmap import BannedBeatmaps
 
     if settings.suspicious_score_check:
@@ -170,14 +232,24 @@ async def calculate_pp(score: "Score", beatmap: str, session: AsyncSession) -> f
 async def pre_fetch_and_calculate_pp(
     score: "Score", session: AsyncSession, redis: Redis, fetcher: "Fetcher"
 ) -> tuple[float, bool]:
-    """
-    优化版PP计算：预先获取beatmap文件并使用缓存
+    """Optimized PP calculation with pre-fetching and caching.
+
+    Performs beatmap fetching and PP calculation with Redis caching support.
+
+    Args:
+        score: The score object.
+        session: The database session.
+        redis: The Redis client.
+        fetcher: The fetcher instance.
+
+    Returns:
+        A tuple of (pp_value, success). Success is False only if fetching fails.
     """
     from app.database.beatmap import BannedBeatmaps
 
     beatmap_id = score.beatmap_id
 
-    # 快速检查是否被封禁
+    # Quick check if beatmap is banned
     if settings.suspicious_score_check:
         beatmap_banned = (
             await session.exec(select(exists()).where(col(BannedBeatmaps.beatmap_id) == beatmap_id))
@@ -185,17 +257,17 @@ async def pre_fetch_and_calculate_pp(
         if beatmap_banned:
             return 0, False
 
-    # 异步获取beatmap原始文件，利用已有的Redis缓存机制
+    # Async fetch beatmap raw file, using existing Redis cache mechanism
     try:
         beatmap_raw = await fetcher.get_or_fetch_beatmap_raw(redis, beatmap_id)
     except Exception as e:
         logger.error(f"Failed to fetch beatmap {beatmap_id}: {e}")
         return 0, False
 
-    # 在获取文件的同时，可以检查可疑beatmap
+    # While fetching file, can also check suspicious beatmap
     if settings.suspicious_score_check:
         try:
-            # 将可疑检查也移到线程池中执行
+            # Move suspicious check to thread pool
             def _check_suspicious():
                 return is_suspicious_beatmap(beatmap_raw)
 
@@ -208,20 +280,40 @@ async def pre_fetch_and_calculate_pp(
         except Exception:
             logger.exception(f"Error checking if beatmap {beatmap_id} is suspicious")
 
-    # 调用已优化的PP计算函数
+    # Call optimized PP calculation function
     return await calculate_pp(score, beatmap_raw, session), True
 
 
-# https://osu.ppy.sh/wiki/Gameplay/Score/Total_score
 def calculate_level_to_score(n: int) -> float:
+    """Calculate the total score required to reach a given level.
+
+    Args:
+        n: The target level.
+
+    Returns:
+        The total score required.
+
+    Reference:
+        - https://osu.ppy.sh/wiki/Gameplay/Score/Total_score
+    """
     if n <= 100:
         return 5000 / 3 * (4 * n**3 - 3 * n**2 - n) + 1.25 * 1.8 ** (n - 60)
     else:
         return 26931190827 + 99999999999 * (n - 100)
 
 
-# https://github.com/ppy/osu-queue-score-statistics/blob/4bdd479530408de73f3cdd95e097fe126772a65b/osu.Server.Queues.ScoreStatisticsProcessor/Processors/TotalScoreProcessor.cs#L70-L116
 def calculate_score_to_level(total_score: int) -> float:
+    """Calculate the level for a given total score.
+
+    Args:
+        total_score: The total score.
+
+    Returns:
+        The calculated level (including decimal progress).
+
+    Reference:
+        - https://github.com/ppy/osu-queue-score-statistics/blob/4bdd479530408de73f3cdd95e097fe126772a65b/osu.Server.Queues.ScoreStatisticsProcessor/Processors/TotalScoreProcessor.cs#L70-L116
+    """
     to_next_level = [
         30000,
         100000,
@@ -351,40 +443,80 @@ def calculate_score_to_level(total_score: int) -> float:
     return level + 1
 
 
-# https://osu.ppy.sh/wiki/Performance_points/Weighting_system
 def calculate_pp_weight(index: int) -> float:
+    """Calculate PP weighting factor for a score at given index.
+
+    Based on: https://osu.ppy.sh/wiki/Performance_points/Weighting_system
+
+    Args:
+        index: The 0-based index in the sorted scores list.
+
+    Returns:
+        The weight factor (0.95^index).
+    """
     return math.pow(0.95, index)
 
 
 def calculate_weighted_pp(pp: float, index: int) -> float:
+    """Calculate weighted PP value for a score.
+
+    Args:
+        pp: The raw PP value.
+        index: The 0-based index in the sorted scores list.
+
+    Returns:
+        The weighted PP value.
+    """
     return calculate_pp_weight(index) * pp if pp > 0 else 0.0
 
 
 def calculate_weighted_acc(acc: float, index: int) -> float:
+    """Calculate weighted accuracy for a score.
+
+    Args:
+        acc: The accuracy value.
+        index: The 0-based index in the sorted scores list.
+
+    Returns:
+        The weighted accuracy value.
+    """
     return calculate_pp_weight(index) * acc if acc > 0 else 0.0
 
 
-# 大致算法来自 https://github.com/MaxOhn/rosu-pp/blob/main/src/model/beatmap/suspicious.rs
+# Suspicious beatmap detection algorithm based on:
+# https://github.com/MaxOhn/rosu-pp/blob/main/src/model/beatmap/suspicious.rs
 
 
 class Threshold(int, Enum):
-    # 谱面异常常量
-    NOTES_THRESHOLD = 500000  # 除 taiko 以外任何模式的物件数量
-    TAIKO_THRESHOLD = 30000  # taiko 模式下的物量限制
+    """Threshold constants for suspicious beatmap detection."""
 
-    NOTES_PER_1S_THRESHOLD = 200  # 3000 BPM
-    NOTES_PER_10S_THRESHOLD = 500  # 600 BPM
+    # Beatmap abnormality constants
+    NOTES_THRESHOLD = 500000  # Object count limit for non-taiko modes
+    TAIKO_THRESHOLD = 30000  # Object count limit for taiko mode
 
-    # 这个尺寸已经是常规游玩区域大小的 4 倍了 …… 如果不合适那另说吧
+    NOTES_PER_1S_THRESHOLD = 200  # 3000 BPM equivalent
+    NOTES_PER_10S_THRESHOLD = 500  # 600 BPM equivalent
+
+    # This is already 4x the normal play area size
     NOTE_POSX_THRESHOLD = 512  # x: [-512,512]
     NOTE_POSY_THRESHOLD = 384  # y: [-384,384]
 
-    POS_ERROR_THRESHOLD = 1280 * 50  # 超过这么多个物件（包括滑条控制点）的位置有问题就毙掉
+    POS_ERROR_THRESHOLD = 1280 * 50  # Ban if this many objects (including slider control points) have position issues
 
     SLIDER_REPEAT_THRESHOLD = 5000
 
 
 def too_dense(hit_objects: list[HitObject], per_1s: int, per_10s: int) -> bool:
+    """Check if hit objects are too densely packed.
+
+    Args:
+        hit_objects: List of hit objects.
+        per_1s: Maximum objects allowed per 1 second window.
+        per_10s: Maximum objects allowed per 10 second window.
+
+    Returns:
+        True if the beatmap is too dense, False otherwise.
+    """
     per_1s = max(1, per_1s)
     per_10s = max(1, per_10s)
     for i in range(0, len(hit_objects)):
@@ -397,6 +529,14 @@ def too_dense(hit_objects: list[HitObject], per_1s: int, per_10s: int) -> bool:
 
 
 def slider_is_sus(hit_objects: list[HitObject]) -> bool:
+    """Check if sliders have suspicious properties.
+
+    Args:
+        hit_objects: List of hit objects.
+
+    Returns:
+        True if any slider is suspicious, False otherwise.
+    """
     for obj in hit_objects:
         if isinstance(obj, Slider):
             flag_repeat = obj.repeat_count > Threshold.SLIDER_REPEAT_THRESHOLD
@@ -419,10 +559,29 @@ def slider_is_sus(hit_objects: list[HitObject]) -> bool:
 
 
 def is_2b(hit_objects: list[HitObject]) -> bool:
+    """Check if beatmap contains overlapping (2B) hit objects.
+
+    Args:
+        hit_objects: List of hit objects.
+
+    Returns:
+        True if overlapping objects are detected, False otherwise.
+    """
     return any(hit_objects[i] == hit_objects[i + 1].start_time for i in range(0, len(hit_objects) - 1))
 
 
 def is_suspicious_beatmap(content: str) -> bool:
+    """Check if a beatmap is suspicious.
+
+    Analyzes beatmap content for abnormal properties like excessive
+    object count, density, position errors, or 2B patterns.
+
+    Args:
+        content: The .osu beatmap file content.
+
+    Returns:
+        True if the beatmap is suspicious, False otherwise.
+    """
     osufile = OsuFile(content=content.encode("utf-8")).parse_file()
 
     if osufile.hit_objects[-1].start_time - osufile.hit_objects[0].start_time > 24 * 60 * 60 * 1000:

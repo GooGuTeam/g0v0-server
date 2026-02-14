@@ -1,3 +1,20 @@
+"""Authentication and authorization utilities.
+
+This module provides authentication-related functions including password
+verification, user authentication, JWT token management, TOTP (two-factor
+authentication), and OAuth token storage.
+
+Functions:
+    validate_username: Validate username format and rules.
+    validate_password: Validate password requirements.
+    verify_password: Verify a password against a hash.
+    get_password_hash: Generate a password hash.
+    authenticate_user: Authenticate a user by name and password.
+    create_access_token: Create a JWT access token.
+    store_token: Store OAuth tokens in the database.
+    verify_token: Verify and decode a JWT token.
+"""
+
 from datetime import timedelta
 import hashlib
 import re
@@ -23,17 +40,24 @@ from redis.asyncio import Redis
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-# 密码哈希上下文
+# Password hashing context
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# bcrypt 缓存（模拟应用状态缓存）
+# bcrypt cache (simulated application state cache)
 bcrypt_cache = {}
 
 logger = log("Auth")
 
 
 def validate_username(username: str) -> list[str]:
-    """验证用户名"""
+    """Validate a username against format rules.
+
+    Args:
+        username: The username to validate.
+
+    Returns:
+        A list of validation error messages. Empty if valid.
+    """
     errors = []
 
     if not username:
@@ -46,11 +70,11 @@ def validate_username(username: str) -> list[str]:
     if len(username) > 15:
         errors.append("Username must be at most 15 characters long")
 
-    # 检查用户名格式（只允许字母、数字、下划线、连字符）
+    # Check username format (only letters, numbers, underscores, hyphens)
     if not re.match(r"^[a-zA-Z0-9_-]+$", username):
         errors.append("Username can only contain letters, numbers, underscores, and hyphens")
 
-    # 检查是否以数字开头
+    # Check if starts with a number
     if username[0].isdigit():
         errors.append("Username cannot start with a number")
 
@@ -61,7 +85,14 @@ def validate_username(username: str) -> list[str]:
 
 
 def validate_password(password: str) -> list[str]:
-    """验证密码"""
+    """Validate a password against security requirements.
+
+    Args:
+        password: The password to validate.
+
+    Returns:
+        A list of validation error messages. Empty if valid.
+    """
     errors = []
 
     if not password:
@@ -75,24 +106,32 @@ def validate_password(password: str) -> list[str]:
 
 
 def verify_password_legacy(plain_password: str, bcrypt_hash: str) -> bool:
+    """Verify a password using osu!'s verification method.
+
+    The verification process:
+    1. Plain password -> MD5 hash
+    2. MD5 hash -> bcrypt verification
+
+    Args:
+        plain_password: The plain text password.
+        bcrypt_hash: The bcrypt hash to verify against.
+
+    Returns:
+        True if the password is valid, False otherwise.
     """
-    验证密码 - 使用 osu! 的验证方式
-    1. 明文密码 -> MD5哈希
-    2. MD5哈希 -> bcrypt验证
-    """
-    # 1. 明文密码转 MD5
+    # 1. Convert plain password to MD5
     pw_md5 = hashlib.md5(plain_password.encode()).hexdigest().encode()  # noqa: S324
 
-    # 2. 检查缓存
+    # 2. Check cache
     if bcrypt_hash in bcrypt_cache:
         return bcrypt_cache[bcrypt_hash] == pw_md5
 
-    # 3. 如果缓存中没有，进行 bcrypt 验证
+    # 3. If not in cache, perform bcrypt verification
     try:
-        # 验证 MD5 哈希与 bcrypt 哈希
+        # Verify MD5 hash against bcrypt hash
         is_valid = bcrypt.checkpw(pw_md5, bcrypt_hash.encode())
 
-        # 如果验证成功，将结果缓存
+        # If verification succeeds, cache the result
         if is_valid:
             bcrypt_cache[bcrypt_hash] = pw_md5
 
@@ -103,18 +142,36 @@ def verify_password_legacy(plain_password: str, bcrypt_hash: str) -> bool:
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """验证密码（向后兼容）"""
-    # 首先尝试新的验证方式
+    """Verify a password with backward compatibility.
+
+    First attempts osu!'s legacy verification, then falls back to
+    standard bcrypt verification.
+
+    Args:
+        plain_password: The plain text password.
+        hashed_password: The hashed password to verify against.
+
+    Returns:
+        True if the password is valid, False otherwise.
+    """
+    # First try legacy verification
     if verify_password_legacy(plain_password, hashed_password):
         return True
 
-    # 如果失败，尝试标准 bcrypt 验证
+    # If failed, try standard bcrypt verification
     return pwd_context.verify(plain_password, hashed_password)
 
 
 def get_password_hash(password: str) -> str:
-    """生成密码哈希 - 使用 osu! 的方式"""
-    # 1. 明文密码 -> MD5
+    """Generate a password hash using osu!'s method.
+
+    Args:
+        password: The plain text password.
+
+    Returns:
+        The bcrypt hash of the MD5-hashed password.
+    """
+    # 1. Plain password -> MD5
     pw_md5 = hashlib.md5(password.encode()).hexdigest().encode()  # noqa: S324
     # 2. MD5 -> bcrypt
     pw_bcrypt = bcrypt.hashpw(pw_md5, bcrypt.gensalt())
@@ -122,13 +179,20 @@ def get_password_hash(password: str) -> str:
 
 
 async def authenticate_user_legacy(db: AsyncSession, name: str, password: str) -> User | None:
+    """Authenticate a user using logic similar to from_login.
+
+    Args:
+        db: The database session.
+        name: Username, email, or user ID.
+        password: The plain text password.
+
+    Returns:
+        The authenticated User, or None if authentication failed.
     """
-    验证用户身份 - 使用类似 from_login 的逻辑
-    """
-    # 1. 明文密码转 MD5
+    # 1. Convert plain password to MD5
     pw_md5 = hashlib.md5(password.encode()).hexdigest()  # noqa: S324
 
-    # 2. 根据用户名查找用户
+    # 2. Find user by name
     user = None
     user = (await db.exec(select(User).where(User.username == name))).first()
     if user is None:
@@ -138,22 +202,22 @@ async def authenticate_user_legacy(db: AsyncSession, name: str, password: str) -
     if user is None:
         return None
 
-    # 3. 验证密码
+    # 3. Validate password
     if user.pw_bcrypt is None or user.pw_bcrypt == "":
         return None
 
-    # 4. 检查缓存
+    # 4. Check cache
     if user.pw_bcrypt in bcrypt_cache:
         if bcrypt_cache[user.pw_bcrypt] == pw_md5.encode():
             return user
         else:
             return None
 
-    # 5. 验证 bcrypt
+    # 5. Verify bcrypt
     try:
         is_valid = bcrypt.checkpw(pw_md5.encode(), user.pw_bcrypt.encode())
         if is_valid:
-            # 缓存验证结果
+            # Cache the verification result
             bcrypt_cache[user.pw_bcrypt] = pw_md5.encode()
             return user
     except Exception:
@@ -163,40 +227,66 @@ async def authenticate_user_legacy(db: AsyncSession, name: str, password: str) -
 
 
 async def authenticate_user(db: AsyncSession, username: str, password: str) -> User | None:
-    """验证用户身份"""
+    """Authenticate a user by username and password.
+
+    Args:
+        db: The database session.
+        username: Username, email, or user ID.
+        password: The plain text password.
+
+    Returns:
+        The authenticated User, or None if authentication failed.
+    """
     return await authenticate_user_legacy(db, username, password)
 
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
-    """创建访问令牌"""
+    """Create a JWT access token.
+
+    Args:
+        data: The payload data for the token.
+        expires_delta: Optional custom expiration time.
+
+    Returns:
+        The encoded JWT token string.
+    """
     to_encode = data.copy()
     if expires_delta:
         expire = utcnow() + expires_delta
     else:
         expire = utcnow() + timedelta(minutes=settings.access_token_expire_minutes)
 
-    # 添加标准JWT声明
+    # Add standard JWT claims
     to_encode.update({"exp": expire, "jti": secrets.token_hex(16)})
     if settings.jwt_audience:
         to_encode["aud"] = settings.jwt_audience
     to_encode["iss"] = str(settings.server_url)
 
-    # 编码JWT
+    # Encode JWT
     encoded_jwt = jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
     return encoded_jwt
 
 
 def generate_refresh_token() -> str:
-    """生成刷新令牌"""
+    """Generate a secure refresh token.
+
+    Returns:
+        A random 64-character alphanumeric string.
+    """
     length = 64
     characters = string.ascii_letters + string.digits
     return "".join(secrets.choice(characters) for _ in range(length))
 
 
 async def invalidate_user_tokens(db: AsyncSession, user_id: int) -> int:
-    """使指定用户的所有令牌失效
+    """Invalidate all tokens for a user.
 
-    返回删除的令牌数量
+    Args:
+        db: The database session.
+        user_id: The user ID whose tokens to invalidate.
+
+    Returns:
+        The number of tokens deleted.
     """
     # 使用 select 先获取所有令牌
     stmt = select(OAuthToken).where(OAuthToken.user_id == user_id)
@@ -209,13 +299,20 @@ async def invalidate_user_tokens(db: AsyncSession, user_id: int) -> int:
         await db.delete(token)
         count += 1
 
-    # 提交更改
+    # Commit changes
     await db.commit()
     return count
 
 
 def verify_token(token: str) -> dict | None:
-    """验证访问令牌"""
+    """Verify and decode a JWT access token.
+
+    Args:
+        token: The JWT token string.
+
+    Returns:
+        The decoded payload, or None if verification fails.
+    """
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
         return payload
@@ -234,18 +331,34 @@ async def store_token(
     refresh_token_expires_in: int,
     allow_multiple_devices: bool = True,
 ) -> OAuthToken:
-    """存储令牌到数据库（支持多设备）"""
+    """Store OAuth tokens in the database with multi-device support.
+
+    Args:
+        db: The database session.
+        user_id: The user ID.
+        client_id: The OAuth client ID.
+        scopes: The permission scopes.
+        access_token: The access token string.
+        refresh_token: The refresh token string.
+        expires_in: Access token expiration time in seconds.
+        refresh_token_expires_in: Refresh token expiration time in seconds.
+        allow_multiple_devices: Whether to allow multiple devices.
+            Defaults to True.
+
+    Returns:
+        The created OAuthToken record.
+    """
     expires_at = utcnow() + timedelta(seconds=expires_in)
     refresh_token_expires_at = utcnow() + timedelta(seconds=refresh_token_expires_in)
 
     if not allow_multiple_devices:
-        # 旧的行为：删除用户的旧令牌（单设备模式）
+        # Old behavior: delete old tokens for user (single device mode)
         statement = select(OAuthToken).where(OAuthToken.user_id == user_id, OAuthToken.client_id == client_id)
         old_tokens = (await db.exec(statement)).all()
         for token in old_tokens:
             await db.delete(token)
     else:
-        # 新的行为：只删除过期的令牌，保留有效的令牌（多设备模式）
+        # New behavior: only delete expired tokens, keep valid tokens (multi-device mode)
         statement = select(OAuthToken).where(
             OAuthToken.user_id == user_id, OAuthToken.client_id == client_id, OAuthToken.expires_at <= utcnow()
         )
@@ -253,7 +366,7 @@ async def store_token(
         for token in expired_tokens:
             await db.delete(token)
 
-        # 限制每个用户每个客户端的最大令牌数量（防止无限增长）
+        # Limit maximum tokens per user per client (prevent unlimited growth)
         max_tokens_per_client = settings.max_tokens_per_client
         statement = (
             select(OAuthToken)
@@ -263,18 +376,18 @@ async def store_token(
 
         active_tokens = (await db.exec(statement)).all()
         if len(active_tokens) >= max_tokens_per_client:
-            # 删除最旧的令牌
+            # Delete oldest tokens
             tokens_to_delete = active_tokens[max_tokens_per_client - 1 :]
             for token in tokens_to_delete:
                 await db.delete(token)
             logger.info(f"Cleaned up {len(tokens_to_delete)} old tokens for user {user_id}")
 
-    # 检查是否有重复的 access_token
+    # Check for duplicate access_token
     duplicate_token = (await db.exec(select(OAuthToken).where(OAuthToken.access_token == access_token))).first()
     if duplicate_token:
         await db.delete(duplicate_token)
 
-    # 创建新令牌记录
+    # Create new token record
     token_record = OAuthToken(
         user_id=user_id,
         client_id=client_id,
@@ -293,7 +406,15 @@ async def store_token(
 
 
 async def get_token_by_access_token(db: AsyncSession, access_token: str) -> OAuthToken | None:
-    """根据访问令牌获取令牌记录"""
+    """Get a token record by access token.
+
+    Args:
+        db: The database session.
+        access_token: The access token string.
+
+    Returns:
+        The OAuthToken if found and not expired, None otherwise.
+    """
     statement = select(OAuthToken).where(
         OAuthToken.access_token == access_token,
         OAuthToken.expires_at > utcnow(),
@@ -302,7 +423,15 @@ async def get_token_by_access_token(db: AsyncSession, access_token: str) -> OAut
 
 
 async def get_token_by_refresh_token(db: AsyncSession, refresh_token: str) -> OAuthToken | None:
-    """根据刷新令牌获取令牌记录"""
+    """Get a token record by refresh token.
+
+    Args:
+        db: The database session.
+        refresh_token: The refresh token string.
+
+    Returns:
+        The OAuthToken if found and not expired, None otherwise.
+    """
     statement = select(OAuthToken).where(
         OAuthToken.refresh_token == refresh_token,
         OAuthToken.refresh_token_expires_at > utcnow(),
@@ -313,6 +442,17 @@ async def get_token_by_refresh_token(db: AsyncSession, refresh_token: str) -> OA
 async def get_user_by_authorization_code(
     db: AsyncSession, redis: Redis, client_id: int, code: str
 ) -> tuple[User, list[str]] | None:
+    """Get user and scopes by OAuth authorization code.
+
+    Args:
+        db: The database session.
+        redis: The Redis client.
+        client_id: The OAuth client ID.
+        code: The authorization code.
+
+    Returns:
+        A tuple of (User, scopes) if found, None otherwise.
+    """
     user_id = await redis.hget(f"oauth:code:{client_id}:{code}", "user_id")  # pyright: ignore[reportGeneralTypeIssues]
     scopes = await redis.hget(f"oauth:code:{client_id}:{code}", "scopes")  # pyright: ignore[reportGeneralTypeIssues]
     if not user_id or not scopes:
@@ -329,17 +469,32 @@ async def get_user_by_authorization_code(
 
 
 def totp_redis_key(user: User) -> str:
+    """Generate the Redis key for TOTP setup.
+
+    Args:
+        user: The user object.
+
+    Returns:
+        The Redis key string.
+    """
     return f"totp:setup:{user.email}"
 
 
 def _generate_totp_account_label(user: User) -> str:
-    """生成TOTP账户标签
+    """Generate TOTP account label.
 
-    根据配置选择使用用户名或邮箱，并添加服务器信息使标签更具描述性
+    Creates a descriptive label for use in authenticator apps,
+    based on configuration choosing username or email.
+
+    Args:
+        user: The user object.
+
+    Returns:
+        The account label string.
     """
     primary_identifier = user.username if settings.totp_use_username_in_label else user.email
 
-    # 如果配置了服务名称，添加到标签中以便在认证器中区分
+    # Add server info to label if configured for disambiguation in authenticator
     if settings.totp_service_name:
         return f"{primary_identifier} ({settings.totp_service_name})"
     else:
@@ -347,25 +502,39 @@ def _generate_totp_account_label(user: User) -> str:
 
 
 def _generate_totp_issuer_name() -> str:
-    """生成TOTP发行者名称
+    """Generate TOTP issuer name.
 
-    优先使用自定义的totp_issuer，否则使用服务名称
+    Prioritizes custom totp_issuer, falls back to service name.
+
+    Returns:
+        The issuer name string.
     """
     if settings.totp_issuer:
         return settings.totp_issuer
     elif settings.totp_service_name:
         return settings.totp_service_name
     else:
-        # 回退到默认值
+        # Fallback to default value
         return "osu! Private Server"
 
 
 async def start_create_totp_key(user: User, redis: Redis) -> StartCreateTotpKeyResp:
+    """Start the TOTP key creation process.
+
+    Generates a new secret and stores it in Redis for verification.
+
+    Args:
+        user: The user object.
+        redis: The Redis client.
+
+    Returns:
+        StartCreateTotpKeyResp with secret and provisioning URI.
+    """
     secret = pyotp.random_base32()
     await redis.hset(totp_redis_key(user), mapping={"secret": secret, "fails": 0})  # pyright: ignore[reportGeneralTypeIssues]
     await redis.expire(totp_redis_key(user), 300)
 
-    # 生成更完整的账户标签和issuer信息
+    # Generate complete account label and issuer info
     account_label = _generate_totp_account_label(user)
     issuer_name = _generate_totp_issuer_name()
 
@@ -376,30 +545,70 @@ async def start_create_totp_key(user: User, redis: Redis) -> StartCreateTotpKeyR
 
 
 def verify_totp_key(secret: str, code: str) -> bool:
+    """Verify a TOTP code against a secret.
+
+    Args:
+        secret: The TOTP secret.
+        code: The code to verify.
+
+    Returns:
+        True if the code is valid, False otherwise.
+    """
     return pyotp.TOTP(secret).verify(code, valid_window=1)
 
 
 async def verify_totp_key_with_replay_protection(user_id: int, secret: str, code: str, redis: Redis) -> bool:
-    """验证TOTP密钥，并防止密钥重放攻击"""
+    """Verify TOTP code with replay attack protection.
+
+    Prevents reuse of the same code within 120 seconds.
+
+    Args:
+        user_id: The user ID.
+        secret: The TOTP secret.
+        code: The code to verify.
+        redis: The Redis client.
+
+    Returns:
+        True if the code is valid and not replayed, False otherwise.
+    """
     if not pyotp.TOTP(secret).verify(code, valid_window=1):
         return False
 
-    # 防止120秒内重复使用同一密钥（参考osu-web实现）
+    # Prevent reuse of same code within 120 seconds (following osu-web implementation)
     cache_key = f"totp:{user_id}:{code}"
     if await redis.exists(cache_key):
         return False
 
-    # 设置120秒过期时间
+    # Set 120 second expiration
     await redis.setex(cache_key, 120, "1")
     return True
 
 
 def _generate_backup_codes(count=10, length=BACKUP_CODE_LENGTH) -> list[str]:
+    """Generate TOTP backup codes.
+
+    Args:
+        count: Number of codes to generate. Defaults to 10.
+        length: Length of each code. Defaults to BACKUP_CODE_LENGTH.
+
+    Returns:
+        List of generated backup codes.
+    """
     alphabet = string.ascii_uppercase + string.digits
     return ["".join(secrets.choice(alphabet) for _ in range(length)) for _ in range(count)]
 
 
 async def _store_totp_key(user: User, secret: str, db: AsyncSession) -> list[str]:
+    """Store TOTP secret and backup codes in database.
+
+    Args:
+        user: The user object.
+        secret: The TOTP secret.
+        db: The database session.
+
+    Returns:
+        The list of generated backup codes.
+    """
     backup_codes = _generate_backup_codes()
     hashed_codes = [bcrypt.hashpw(code.encode(), bcrypt.gensalt()) for code in backup_codes]
     totp_secret = TotpKeys(user_id=user.id, secret=secret, backup_keys=[code.decode() for code in hashed_codes])
@@ -411,6 +620,20 @@ async def _store_totp_key(user: User, secret: str, db: AsyncSession) -> list[str
 async def finish_create_totp_key(
     user: User, code: str, redis: Redis, db: AsyncSession
 ) -> tuple[FinishStatus, list[str]]:
+    """Finish the TOTP key creation process.
+
+    Verifies the code and stores the TOTP key if successful.
+
+    Args:
+        user: The user object.
+        code: The verification code.
+        redis: The Redis client.
+        db: The database session.
+
+    Returns:
+        A tuple of (FinishStatus, backup_codes). Backup codes are only
+        returned on success.
+    """
     data = await redis.hgetall(totp_redis_key(user))  # pyright: ignore[reportGeneralTypeIssues]
     if not data or "secret" not in data or "fails" not in data:
         return FinishStatus.INVALID, []
@@ -433,6 +656,12 @@ async def finish_create_totp_key(
 
 
 async def disable_totp(user: User, db: AsyncSession) -> None:
+    """Disable TOTP for a user.
+
+    Args:
+        user: The user object.
+        db: The database session.
+    """
     totp = await db.get(TotpKeys, user.id)
     if totp:
         await db.delete(totp)
@@ -440,6 +669,17 @@ async def disable_totp(user: User, db: AsyncSession) -> None:
 
 
 def check_totp_backup_code(totp: TotpKeys, code: str) -> bool:
+    """Check a TOTP backup code.
+
+    If valid, removes the code from the list of available codes.
+
+    Args:
+        totp: The TotpKeys database object.
+        code: The backup code to check.
+
+    Returns:
+        True if the code is valid, False otherwise.
+    """
     for hashed_code in totp.backup_keys:
         if bcrypt.checkpw(code.encode(), hashed_code.encode()):
             copy = totp.backup_keys[:]

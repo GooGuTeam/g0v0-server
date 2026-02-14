@@ -1,3 +1,9 @@
+"""Special statistics creation startup tasks.
+
+Provides backfill operations to create missing user statistics records
+for special game modes (Relax, Autopilot, custom rulesets).
+"""
+
 from app.config import settings
 from app.const import BANCHOBOT_ID
 from app.database.statistics import UserStatistics
@@ -10,7 +16,12 @@ from sqlalchemy import exists
 from sqlmodel import select
 
 
-async def create_rx_statistics():
+async def create_rx_statistics() -> None:
+    """Create missing Relax and Autopilot statistics for all users.
+
+    Ensures every user has UserStatistics records for RX/AP game modes
+    when those modes are enabled in settings.
+    """
     async with with_db() as session:
         users = (await session.exec(select(User.id))).all()
         total_users = len(users)
@@ -59,7 +70,12 @@ async def create_rx_statistics():
             )
 
 
-async def create_custom_ruleset_statistics():
+async def create_custom_ruleset_statistics() -> None:
+    """Create missing custom ruleset statistics for all users.
+
+    Ensures every user has UserStatistics records for all custom
+    rulesets defined in GameMode.
+    """
     async with with_db() as session:
         users = (await session.exec(select(User.id))).all()
         total_users = len(users)

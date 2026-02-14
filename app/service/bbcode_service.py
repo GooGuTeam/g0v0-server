@@ -1,12 +1,11 @@
-"""
-BBCode markup language to HTML.
+"""BBCode markup language to HTML.
 
 This module provides functionality to parse BBCode into HTML, sanitize the HTML,
 and validate BBCode syntax, based on the implementation from osu-web.
 
 Reference:
-    - https://osu.ppy.sh/wiki/BBCode
-    - https://github.com/ppy/osu-web/blob/master/app/Libraries/BBCodeFromDB.php
+    - osu! wiki: https://osu.ppy.sh/wiki/BBCode
+    - osu-web: https://github.com/ppy/osu-web/blob/master/app/Libraries/BBCodeFromDB.php
 """
 
 import html

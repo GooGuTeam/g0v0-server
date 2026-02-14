@@ -1,3 +1,8 @@
+"""User relationship database models.
+
+This module handles user relationships including friends and blocks.
+"""
+
 from enum import StrEnum
 from typing import TYPE_CHECKING, NotRequired, TypedDict
 
@@ -20,11 +25,15 @@ if TYPE_CHECKING:
 
 
 class RelationshipType(StrEnum):
+    """Types of user relationships."""
+
     FOLLOW = "friend"
     BLOCK = "block"
 
 
 class RelationshipDict(TypedDict):
+    """TypedDict representation of a user relationship."""
+
     target_id: int | None
     type: RelationshipType
     id: NotRequired[int | None]
@@ -34,6 +43,8 @@ class RelationshipDict(TypedDict):
 
 
 class RelationshipModel(DatabaseModel[RelationshipDict]):
+    """Base model for user relationships with transformation support."""
+
     __tablename__: str = "relationship"
     id: int | None = Field(
         default=None,
@@ -90,6 +101,8 @@ class RelationshipModel(DatabaseModel[RelationshipDict]):
 
 
 class Relationship(RelationshipModel, table=True):
+    """Database table for user relationships (friends/blocks)."""
+
     target: "User" = SQLRelationship(
         sa_relationship_kwargs={
             "foreign_keys": "[Relationship.target_id]",

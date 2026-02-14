@@ -1,5 +1,6 @@
-"""
-邮件验证服务
+"""Email verification service.
+
+Provides email sending functionality for user verification.
 """
 
 from email.mime.multipart import MIMEMultipart
@@ -13,7 +14,10 @@ from app.log import logger
 
 
 class EmailService:
-    """邮件发送服务"""
+    """Email sending service.
+
+    Handles SMTP email sending for verification and other notifications.
+    """
 
     def __init__(self):
         self.smtp_server = settings.smtp_server
@@ -24,19 +28,32 @@ class EmailService:
         self.from_name = settings.from_name
 
     def generate_verification_code(self) -> str:
-        """生成8位验证码"""
-        # 只使用数字，避免混淆
+        """Generate an 8-digit verification code.
+
+        Returns:
+            8-digit numeric verification code.
+        """
+        # Only use digits to avoid confusion
         return "".join(secrets.choice(string.digits) for _ in range(8))
 
     async def send_verification_email(self, email: str, code: str, username: str) -> bool:
-        """发送验证邮件"""
+        """Send verification email.
+
+        Args:
+            email: Recipient email address.
+            code: Verification code.
+            username: User's username.
+
+        Returns:
+            True if email was sent successfully, False otherwise.
+        """
         try:
             msg = MIMEMultipart()
             msg["From"] = f"{self.from_name} <{self.from_email}>"
             msg["To"] = email
             msg["Subject"] = "邮箱验证 - Email Verification"
 
-            # HTML 邮件内容
+            # HTML email content
             html_content = f"""
 <!DOCTYPE html>
 <html>
@@ -153,5 +170,5 @@ class EmailService:
             return False
 
 
-# 全局邮件服务实例
+# Global email service instance
 email_service = EmailService()

@@ -1,3 +1,9 @@
+"""User events database models.
+
+This module handles user activity events such as achievements, rank changes,
+beatmap uploads, and username changes.
+"""
+
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING
@@ -22,6 +28,8 @@ if TYPE_CHECKING:
 
 
 class EventType(StrEnum):
+    """Types of user events."""
+
     ACHIEVEMENT = "achievement"
     BEATMAP_PLAYCOUNT = "beatmap_playcount"
     BEATMAPSET_APPROVE = "beatmapset_approve"
@@ -31,7 +39,7 @@ class EventType(StrEnum):
     BEATMAPSET_UPLOAD = "beatmapset_upload"
     RANK = "rank"
     RANK_LOST = "rank_lost"
-    # 鉴于本服务器没有 supporter 这一说，这三个字段没有必要
+    # Since this server doesn't have supporter, these three fields are not needed
     # USER_SUPPORT_AGAIN="user_support_again"
     # USER_SUPPORT_FIRST="user_support"
     # USER_SUPPORT_GIFT="user_support_gift"
@@ -39,6 +47,8 @@ class EventType(StrEnum):
 
 
 class Event(UTCBaseModel, SQLModel, table=True):
+    """Database table for user activity events."""
+
     __tablename__: str = "user_events"
     id: int = Field(default=None, primary_key=True)
     created_at: datetime = Field(default_factory=utcnow, sa_column=Column(DateTime(timezone=True)))
@@ -58,7 +68,7 @@ class Event(UTCBaseModel, SQLModel, table=True):
             "type": self.type.value,
         }
 
-        # 临时修复：统一成就事件格式 (TODO: 可在数据迁移完成后移除)
+        # Temporary fix: unify achievement event format (TODO: can be removed after data migration)
         if self.type == EventType.ACHIEVEMENT and "achievement" in self.event_payload:
             achievement_data = self.event_payload["achievement"]
             if "achievement_id" in achievement_data and (

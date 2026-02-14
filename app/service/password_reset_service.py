@@ -1,5 +1,6 @@
-"""
-密码重置服务
+"""Password reset service.
+
+Manages password reset requests using Redis for verification codes.
 """
 
 from datetime import datetime
@@ -11,7 +12,7 @@ from app.auth import get_password_hash, invalidate_user_tokens
 from app.database import User
 from app.dependencies.database import with_db
 from app.log import logger
-from app.service.email_queue import email_queue  # 导入邮件队列
+from app.service.email_queue import email_queue  # Import email queue
 from app.service.email_service import EmailService
 from app.utils import utcnow
 
@@ -20,38 +21,42 @@ from sqlmodel import select
 
 
 class PasswordResetService:
-    """密码重置服务 - 使用Redis管理验证码"""
+    """Password reset service using Redis for verification code management.
 
-    # Redis键前缀
-    RESET_CODE_PREFIX = "password_reset:code:"  # 存储验证码
-    RESET_RATE_LIMIT_PREFIX = "password_reset:rate_limit:"  # 限制请求频率
+    Attributes:
+        RESET_CODE_PREFIX: Redis key prefix for reset codes.
+        RESET_RATE_LIMIT_PREFIX: Redis key prefix for rate limiting.
+    """
+
+    # Redis key prefixes
+    RESET_CODE_PREFIX = "password_reset:code:"  # Store verification code
+    RESET_RATE_LIMIT_PREFIX = "password_reset:rate_limit:"  # Rate limit requests
 
     def __init__(self):
         self.email_service = EmailService()
 
     def generate_reset_code(self) -> str:
-        """生成8位重置验证码"""
+        """Generate an 8-digit reset verification code."""
         return "".join(secrets.choice(string.digits) for _ in range(8))
 
     def _get_reset_code_key(self, email: str) -> str:
-        """获取验证码Redis键"""
+        """Get Redis key for verification code."""
         return f"{self.RESET_CODE_PREFIX}{email.lower()}"
 
     def _get_rate_limit_key(self, email: str) -> str:
-        """获取频率限制Redis键"""
+        """Get Redis key for rate limiting."""
         return f"{self.RESET_RATE_LIMIT_PREFIX}{email.lower()}"
 
     async def request_password_reset(
         self, email: str, ip_address: str, user_agent: str, redis: Redis
     ) -> tuple[bool, str]:
-        """
-        请求密码重置
+        """Request password reset.
 
         Args:
-            email: 邮箱地址
-            ip_address: 请求IP
-            user_agent: 用户代理
-            redis: Redis连接
+            email: Email address.
+            ip_address: Request IP.
+            user_agent: User agent.
+            redis: Redis connection.
 
         Returns:
             Tuple[success, message]
@@ -59,29 +64,29 @@ class PasswordResetService:
         email = email.lower().strip()
 
         async with with_db() as session:
-            # 查找用户
+            # Find user
             user_query = select(User).where(User.email == email)
             user_result = await session.exec(user_query)
             user = user_result.first()
 
             if not user:
-                # 为了安全考虑，不告诉用户邮箱不存在，但仍然要检查频率限制
+                # For security, don't reveal if email exists, but still check rate limit
                 rate_limit_key = self._get_rate_limit_key(email)
                 if await redis.get(rate_limit_key):
-                    return False, "请求过于频繁，请稍后再试"
-                # 设置一个假的频率限制，防止恶意用户探测邮箱
+                    return False, "Request too frequent, please try again later"
+                # Set a fake rate limit to prevent email enumeration
                 await redis.setex(rate_limit_key, 60, "1")
-                return True, "如果该邮箱地址存在，您将收到密码重置邮件"
+                return True, "If this email exists, you will receive a password reset email"
 
-            # 检查频率限制
+            # Check rate limit
             rate_limit_key = self._get_rate_limit_key(email)
             if await redis.get(rate_limit_key):
-                return False, "请求过于频繁，请稍后再试"
+                return False, "Request too frequent, please try again later"
 
-            # 生成重置验证码
+            # Generate reset verification code
             reset_code = self.generate_reset_code()
 
-            # 存储验证码信息到Redis
+            # Store verification code info to Redis
             reset_code_key = self._get_reset_code_key(email)
             reset_data = {
                 "user_id": user.id,
@@ -94,38 +99,38 @@ class PasswordResetService:
             }
 
             try:
-                # 先设置频率限制
+                # Set rate limit first
                 await redis.setex(rate_limit_key, 60, "1")
-                # 存储验证码，10分钟过期
+                # Store verification code, expires in 10 minutes
                 await redis.setex(reset_code_key, 600, json.dumps(reset_data))
 
-                # 发送重置邮件
+                # Send reset email
                 email_sent = await self.send_password_reset_email(email=email, code=reset_code, username=user.username)
 
                 if email_sent:
                     logger.info(f"Sent reset code to user {user.id} ({email})")
-                    return True, "密码重置邮件已发送，请查收邮箱"
+                    return True, "Password reset email sent, please check your inbox"
                 else:
-                    # 邮件发送失败，清理Redis中的数据
+                    # Email send failed, clean up Redis data
                     await redis.delete(reset_code_key)
                     await redis.delete(rate_limit_key)
                     logger.warning(f"Email sending failed, cleaned up Redis data for {email}")
-                    return False, "邮件发送失败，请稍后重试"
+                    return False, "Email sending failed, please try again later"
 
             except Exception:
-                # Redis操作失败，清理可能的部分数据
+                # Redis operation failed, clean up partial data
                 try:
                     await redis.delete(reset_code_key)
                     await redis.delete(rate_limit_key)
                 except Exception:
                     logger.warning("Failed to clean up Redis data after error")
                 logger.exception("Redis operation failed")
-                return False, "服务暂时不可用，请稍后重试"
+                return False, "Service temporarily unavailable, please try again later"
 
     async def send_password_reset_email(self, email: str, code: str, username: str) -> bool:
-        """发送密码重置邮件（使用邮件队列）"""
+        """Send password reset email (using email queue)."""
         try:
-            # HTML 邮件内容
+            # HTML email content
             html_content = f"""
 <!DOCTYPE html>
 <html>
@@ -234,7 +239,7 @@ class PasswordResetService:
 </html>
             """  # noqa: E501
 
-            # 纯文本内容（作为备用）
+            # Plain text content (as fallback)
             plain_content = f"""
 你好 {username}！
 
@@ -255,7 +260,7 @@ class PasswordResetService:
 © 2025 g0v0! Private Server. 此邮件由系统自动发送，请勿回复。
 """
 
-            # 添加邮件到队列
+            # Add email to queue
             subject = "密码重置 - Password Reset"
             metadata = {"type": "password_reset", "email": email, "code": code}
 
@@ -283,14 +288,14 @@ class PasswordResetService:
         redis: Redis,
     ) -> tuple[bool, str]:
         """
-        重置密码
+        Reset user password.
 
         Args:
-            email: 邮箱地址
-            reset_code: 重置验证码
-            new_password: 新密码
-            ip_address: 请求IP
-            redis: Redis连接
+            email: Email address.
+            reset_code: Password reset verification code.
+            new_password: New password.
+            ip_address: Request IP address.
+            redis: Redis connection.
 
         Returns:
             Tuple[success, message]
@@ -299,85 +304,85 @@ class PasswordResetService:
         reset_code = reset_code.strip()
 
         async with with_db() as session:
-            # 从Redis获取验证码数据
+            # Get verification code data from Redis
             reset_code_key = self._get_reset_code_key(email)
             reset_data_str = await redis.get(reset_code_key)
 
             if not reset_data_str:
-                return False, "验证码无效或已过期"
+                return False, "Verification code invalid or expired"
 
             try:
                 reset_data = json.loads(reset_data_str)
             except json.JSONDecodeError:
-                return False, "验证码数据格式错误"
+                return False, "Verification code data format error"
 
-            # 验证验证码
+            # Verify verification code
             if reset_data.get("reset_code") != reset_code:
-                return False, "验证码错误"
+                return False, "Verification code incorrect"
 
-            # 检查是否已使用
+            # Check if already used
             if reset_data.get("used", False):
-                return False, "验证码已使用"
+                return False, "Verification code already used"
 
-            # 验证邮箱匹配
+            # Verify email matches
             if reset_data.get("email") != email:
-                return False, "邮箱地址不匹配"
+                return False, "Email address mismatch"
 
-            # 查找用户
+            # Find user
             user_query = select(User).where(User.email == email)
             user_result = await session.exec(user_query)
             user = user_result.first()
 
             if not user:
-                return False, "用户不存在"
+                return False, "User not found"
 
             if user.id is None:
-                return False, "用户ID无效"
+                return False, "Invalid user ID"
 
-            # 验证用户ID匹配
+            # Verify user ID matches
             if reset_data.get("user_id") != user.id:
-                return False, "用户信息不匹配"
+                return False, "User information mismatch"
 
-            # 密码强度检查
+            # Password strength check
             if len(new_password) < 6:
-                return False, "密码长度至少为6位"
+                return False, "Password must be at least 6 characters"
 
             try:
-                # 先标记验证码为已使用（在数据库操作之前）
+                # Mark verification code as used first (before database operation)
                 reset_data["used"] = True
                 reset_data["used_at"] = utcnow().isoformat()
 
-                # 保存用户ID用于日志记录
+                # Save user ID for logging
                 user_id = user.id
 
-                # 更新用户密码
+                # Update user password
                 password_hash = get_password_hash(new_password)
-                user.pw_bcrypt = password_hash  # 使用正确的字段名称 pw_bcrypt 而不是 password_hash
+                user.pw_bcrypt = password_hash  # Use correct field name pw_bcrypt instead of password_hash
 
-                # 提交数据库更改
+                # Commit database changes
                 await session.commit()
 
-                # 使该用户的所有现有令牌失效（使其他客户端登录失效）
+                # Invalidate all existing tokens for this user (log out other clients)
                 tokens_deleted = await invalidate_user_tokens(session, user_id)
 
-                # 数据库操作成功后，更新Redis状态
-                await redis.setex(reset_code_key, 300, json.dumps(reset_data))  # 保留5分钟用于日志记录
+                # After successful database operation, update Redis state
+                await redis.setex(reset_code_key, 300, json.dumps(reset_data))  # Keep for 5 minutes for logging
 
                 logger.info(
                     f"User {user_id} ({email}) successfully reset password from IP {ip_address},"
                     f" invalidated {tokens_deleted} tokens"
                 )
-                return True, "密码重置成功，所有设备已被登出"
+                return True, "Password reset successful, all devices logged out"
 
             except Exception as e:
-                # 不要在异常处理中访问user.id，可能触发数据库操作
-                user_id = reset_data.get("user_id", "未知")
+                # Don't access user.id in exception handling, may trigger database operation
+                user_id = reset_data.get("user_id", "unknown")
                 logger.error(f"Failed to reset password for user {user_id}: {e}")
                 await session.rollback()
 
-                # 数据库回滚时，需要恢复Redis中的验证码状态
+                # When database rolled back, restore verification code state in Redis
                 try:
-                    # 恢复验证码为未使用状态
+                    # Restore verification code to unused state
                     original_reset_data = {
                         "user_id": reset_data.get("user_id"),
                         "email": reset_data.get("email"),
@@ -385,13 +390,13 @@ class PasswordResetService:
                         "created_at": reset_data.get("created_at"),
                         "ip_address": reset_data.get("ip_address"),
                         "user_agent": reset_data.get("user_agent"),
-                        "used": False,  # 恢复为未使用状态
+                        "used": False,  # Restore to unused state
                     }
 
-                    # 计算剩余的TTL时间
+                    # Calculate remaining TTL time
                     created_at = datetime.fromisoformat(reset_data.get("created_at", ""))
                     elapsed = (utcnow() - created_at).total_seconds()
-                    remaining_ttl = max(0, 600 - int(elapsed))  # 600秒总过期时间
+                    remaining_ttl = max(0, 600 - int(elapsed))  # 600 seconds total expiry
 
                     if remaining_ttl > 0:
                         await redis.setex(
@@ -401,25 +406,24 @@ class PasswordResetService:
                         )
                         logger.info(f"Restored Redis state after database rollback for {email}")
                     else:
-                        # 如果已经过期，直接删除
+                        # If already expired, delete directly
                         await redis.delete(reset_code_key)
                         logger.info(f"Removed expired reset code after database rollback for {email}")
 
                 except Exception as redis_error:
                     logger.error(f"Failed to restore Redis state after rollback: {redis_error}")
 
-                return False, "密码重置失败，请稍后重试"
+                return False, "Password reset failed, please try again later"
 
     async def get_reset_attempts_count(self, email: str, redis: Redis) -> int:
-        """
-        获取邮箱的重置尝试次数（通过检查频率限制键）
+        """Get reset attempts count for email (by checking rate limit key).
 
         Args:
-            email: 邮箱地址
-            redis: Redis连接
+            email: Email address.
+            redis: Redis connection.
 
         Returns:
-            尝试次数
+            Attempts count.
         """
         try:
             rate_limit_key = self._get_rate_limit_key(email)
@@ -430,5 +434,5 @@ class PasswordResetService:
             return 0
 
 
-# 全局密码重置服务实例
+# Global password reset service instance
 password_reset_service = PasswordResetService()
