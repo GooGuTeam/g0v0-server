@@ -1,3 +1,8 @@
+"""TOTP (Time-based One-Time Password) management endpoints.
+
+Provides APIs for enabling, disabling, and managing two-factor authentication.
+"""
+
 from typing import Annotated
 
 from app.auth import (
@@ -22,7 +27,12 @@ import pyotp
 
 
 class TotpStatusResp(BaseModel):
-    """TOTP状态响应"""
+    """TOTP status response.
+
+    Attributes:
+        enabled: Whether TOTP is enabled.
+        created_at: When TOTP was enabled (ISO format).
+    """
 
     enabled: bool
     created_at: str | None = None
@@ -30,15 +40,14 @@ class TotpStatusResp(BaseModel):
 
 @router.get(
     "/totp/status",
-    name="检查 TOTP 状态",
-    description="检查当前用户是否已启用 TOTP 双因素验证",
-    tags=["验证", "g0v0 API"],
+    name="Check TOTP status",
+    description="Check if the current user has enabled TOTP two-factor authentication",
+    tags=["Authentication", "g0v0 API"],
     response_model=TotpStatusResp,
 )
 async def get_totp_status(
     current_user: ClientUser,
 ):
-    """检查用户是否已创建TOTP"""
     totp_key = await current_user.awaitable_attrs.totp_key
 
     if totp_key:
@@ -49,14 +58,14 @@ async def get_totp_status(
 
 @router.post(
     "/totp/create",
-    name="开始 TOTP 创建流程",
+    name="Start TOTP creation flow",
     description=(
-        "开始 TOTP 创建流程\n\n"
-        "返回 TOTP 密钥和 URI，供用户在身份验证器应用中添加账户。\n\n"
-        "然后将身份验证器应用提供的 TOTP 代码请求 PUT `/api/private/totp/create` 来完成 TOTP 创建流程。\n\n"
-        "若 5 分钟内未完成或错误 3 次以上则创建流程需要重新开始。"
+        "Start TOTP creation flow\n\n"
+        "Returns TOTP secret and URI for adding account to authenticator app.\n\n"
+        "Then request PUT `/api/private/totp/create` with the TOTP code from authenticator to complete setup.\n\n"
+        "Creation flow expires after 5 minutes or 3 failed attempts."
     ),
-    tags=["验证", "g0v0 API"],
+    tags=["Authentication", "g0v0 API"],
     response_model=StartCreateTotpKeyResp,
     status_code=201,
 )
@@ -86,18 +95,18 @@ async def start_create_totp(
 
 @router.put(
     "/totp/create",
-    name="完成 TOTP 创建流程",
+    name="Complete TOTP creation flow",
     description=(
-        "完成 TOTP 创建流程，验证用户提供的 TOTP 代码。\n\n"
-        "- 如果验证成功，启用用户的 TOTP 双因素验证，并返回备份码。\n- 如果验证失败，返回错误信息。"
+        "Complete TOTP creation flow by verifying the user-provided TOTP code.\n\n"
+        "- On success: Enables TOTP and returns backup codes.\n- On failure: Returns error message."
     ),
-    tags=["验证", "g0v0 API"],
+    tags=["Authentication", "g0v0 API"],
     response_model=list[str],
     status_code=201,
 )
 async def finish_create_totp(
     session: Database,
-    code: Annotated[str, Body(..., embed=True, description="用户提供的 TOTP 代码")],
+    code: Annotated[str, Body(..., embed=True, description="User-provided TOTP code")],
     redis: Redis,
     current_user: ClientUser,
 ):
@@ -114,14 +123,14 @@ async def finish_create_totp(
 
 @router.delete(
     "/totp",
-    name="禁用 TOTP 双因素验证",
-    description="禁用当前用户的 TOTP 双因素验证",
-    tags=["验证", "g0v0 API"],
+    name="Disable TOTP two-factor authentication",
+    description="Disable TOTP two-factor authentication for the current user",
+    tags=["Authentication", "g0v0 API"],
     status_code=204,
 )
 async def disable_totp(
     session: Database,
-    code: Annotated[str, Body(..., embed=True, description="用户提供的 TOTP 代码或备份码")],
+    code: Annotated[str, Body(..., embed=True, description="User-provided TOTP code or backup code")],
     redis: Redis,
     current_user: ClientUser,
 ):
@@ -129,7 +138,7 @@ async def disable_totp(
     if not totp:
         raise RequestError(ErrorType.TOTP_NOT_ENABLED)
 
-    # 使用防重放保护的TOTP验证或备份码验证
+    # Verify TOTP with replay protection or backup code
     is_totp_valid = False
     if len(code) == 6 and code.isdigit():
         is_totp_valid = await verify_totp_key_with_replay_protection(current_user.id, totp.secret, code, redis)

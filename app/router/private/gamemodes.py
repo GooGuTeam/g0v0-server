@@ -1,3 +1,8 @@
+"""Game modes API endpoint.
+
+Provides information about all supported game modes in the system.
+"""
+
 from app.config import settings
 from app.models.score import GameMode
 
@@ -7,55 +12,50 @@ from pydantic import BaseModel, Field
 
 
 class GameModeInfo(BaseModel):
-    """游戏模式信息
-    - id: 游戏模式数字ID
-    - name: 游戏模式名称
-    - readable: 可读的游戏模式名称
-    - is_official: 是否为官方模式
-    - is_custom_ruleset: 是否为自定义规则集
+    """Game mode information.
+
+    Attributes:
+        id: Numeric game mode ID.
+        name: Game mode name.
+        readable: Human-readable game mode name.
+        is_official: Whether this is an official mode.
+        is_custom_ruleset: Whether this is a custom ruleset.
     """
 
-    id: int = Field(description="游戏模式数字ID")
-    name: str = Field(description="游戏模式名称")
-    readable: str = Field(description="可读的游戏模式名称")
-    is_official: bool = Field(description="是否为官方模式")
-    is_custom_ruleset: bool = Field(description="是否为自定义规则集")
+    id: int = Field(description="Numeric game mode ID")
+    name: str = Field(description="Game mode name")
+    readable: str = Field(description="Human-readable game mode name")
+    is_official: bool = Field(description="Whether this is an official mode")
+    is_custom_ruleset: bool = Field(description="Whether this is a custom ruleset")
 
 
 class GameModesResponse(BaseModel):
-    """游戏模式列表响应
-    - gamemodes: 游戏模式列表
-    - total: 游戏模式总数
-    - enable_rx: 是否启用了RX模式
-    - enable_ap: 是否启用了AP模式
+    """Game modes list response.
+
+    Attributes:
+        gamemodes: List of game modes.
+        total: Total number of game modes.
+        enable_rx: Whether RX mode is enabled.
+        enable_ap: Whether AP mode is enabled.
     """
 
-    gamemodes: list[GameModeInfo] = Field(description="游戏模式列表")
-    total: int = Field(description="游戏模式总数")
-    enable_rx: bool = Field(description="是否启用了RX模式")
-    enable_ap: bool = Field(description="是否启用了AP模式")
+    gamemodes: list[GameModeInfo] = Field(description="List of game modes")
+    total: int = Field(description="Total number of game modes")
+    enable_rx: bool = Field(description="Whether RX mode is enabled")
+    enable_ap: bool = Field(description="Whether AP mode is enabled")
 
 
 @router.get(
     "/gamemodes",
     response_model=GameModesResponse,
-    tags=["游戏模式", "g0v0 API"],
-    name="获取游戏模式列表",
-    description="获取当前支持的所有游戏模式及其对应的ID列表",
+    tags=["Game Modes", "g0v0 API"],
+    name="Get game modes list",
+    description="Get all supported game modes and their corresponding IDs",
 )
 async def get_gamemodes() -> GameModesResponse:
-    """获取所有支持的游戏模式
-
-    返回当前项目中支持的所有游戏模式，包括：
-    - 官方游戏模式（osu, taiko, fruits, mania）
-    - 特殊模式（osurx, osuap, taikorx, fruitsrx）
-    - 自定义规则集（Sentakki, tau, rush, hishigata, soyokaze）
-
-    同时返回RX和AP模式的启用状态。
-    """
     gamemodes = []
 
-    # 遍历所有游戏模式
+    # Iterate through all game modes
     for mode in GameMode:
         gamemodes.append(
             GameModeInfo(
@@ -67,7 +67,7 @@ async def get_gamemodes() -> GameModesResponse:
             )
         )
 
-    # 按ID排序
+    # Sort by ID
     gamemodes.sort(key=lambda x: x.id)
 
     return GameModesResponse(

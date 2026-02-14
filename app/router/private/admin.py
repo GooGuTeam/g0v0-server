@@ -1,3 +1,9 @@
+"""Admin endpoints for user session and trusted device management.
+
+Provides endpoints for users to manage their login sessions and trusted devices
+including listing, viewing, and revoking them.
+"""
+
 from typing import Annotated
 
 from app.database.auth import OAuthToken
@@ -15,6 +21,14 @@ from sqlmodel import col, select
 
 
 class SessionsResp(BaseModel):
+    """Response model for user login sessions.
+
+    Attributes:
+        total: Total number of sessions.
+        current: ID of the current session.
+        sessions: List of login session details.
+    """
+
     total: int
     current: int = 0
     sessions: list[LoginSessionResp]
@@ -22,9 +36,10 @@ class SessionsResp(BaseModel):
 
 @router.get(
     "/admin/sessions",
-    name="获取当前用户的登录会话列表",
-    tags=["用户会话", "g0v0 API", "管理"],
+    name="Get current user's login sessions",
+    tags=["User Sessions", "g0v0 API", "Admin"],
     response_model=SessionsResp,
+    description="Get the list of login sessions for the current user.",
 )
 async def get_sessions(
     session: Database,
@@ -58,9 +73,10 @@ async def get_sessions(
 
 @router.delete(
     "/admin/sessions/{session_id}",
-    name="注销指定的登录会话",
-    tags=["用户会话", "g0v0 API", "管理"],
+    name="Revoke a login session",
+    tags=["User Sessions", "g0v0 API", "Admin"],
     status_code=204,
+    description="Revoke a specific login session.",
 )
 async def delete_session(
     session: Database,
@@ -86,6 +102,14 @@ async def delete_session(
 
 
 class TrustedDevicesResp(BaseModel):
+    """Response model for trusted devices.
+
+    Attributes:
+        total: Total number of trusted devices.
+        current: ID of the current device.
+        devices: List of trusted device details.
+    """
+
     total: int
     current: int = 0
     devices: list[TrustedDeviceResp]
@@ -93,9 +117,10 @@ class TrustedDevicesResp(BaseModel):
 
 @router.get(
     "/admin/trusted-devices",
-    name="获取当前用户的受信任设备列表",
-    tags=["用户会话", "g0v0 API", "管理"],
+    name="Get current user's trusted devices",
+    tags=["User Sessions", "g0v0 API", "Admin"],
     response_model=TrustedDevicesResp,
+    description="Get the list of trusted devices for the current user.",
 )
 async def get_trusted_devices(
     session: Database,
@@ -132,9 +157,10 @@ async def get_trusted_devices(
 
 @router.delete(
     "/admin/trusted-devices/{device_id}",
-    name="移除受信任设备",
-    tags=["用户会话", "g0v0 API", "管理"],
+    name="Remove a trusted device",
+    tags=["User Sessions", "g0v0 API", "Admin"],
     status_code=204,
+    description="Remove a trusted device from the user's account.",
 )
 async def delete_trusted_device(
     session: Database,

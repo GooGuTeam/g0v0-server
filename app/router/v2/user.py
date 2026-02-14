@@ -1,3 +1,9 @@
+"""User endpoints for osu! API v2.
+
+This module provides endpoints for retrieving user information, activity,
+beatmapsets, scores, and other user-related data.
+"""
+
 from datetime import datetime, timedelta
 import sys
 from typing import Annotated, Literal
@@ -38,6 +44,11 @@ from sqlmodel.sql.expression import col
 
 
 def _get_difficulty_reduction_mods() -> set[str]:
+    """Get the set of all difficulty reduction mod acronyms.
+
+    Returns:
+        set[str]: Set of mod acronyms that are classified as difficulty reduction.
+    """
     mods: set[str] = set()
     for ruleset_mods in API_MODS.values():
         for mod_acronym, mod_meta in ruleset_mods.items():
@@ -47,6 +58,16 @@ def _get_difficulty_reduction_mods() -> set[str]:
 
 
 async def visible_to_current_user(user: User, current_user: User | None, session: Database) -> bool:
+    """Check if a user should be visible to the current user.
+
+    Args:
+        user: The user to check visibility for.
+        current_user: The currently authenticated user (may be None).
+        session: Database session.
+
+    Returns:
+        bool: True if the user should be visible, False otherwise.
+    """
     if user.id == BANCHOBOT_ID:
         return False
     if current_user and current_user.id == user.id:
@@ -57,11 +78,16 @@ async def visible_to_current_user(user: User, current_user: User | None, session
 @router.get(
     "/users/",
     responses={
-        200: api_doc("批量获取用户信息", {"users": list[UserModel]}, User.CARD_INCLUDES, name="UsersLookupResponse")
+        200: api_doc(
+            "Batch get user information",
+            {"users": list[UserModel]},
+            User.CARD_INCLUDES,
+            name="UsersLookupResponse",
+        )
     },
-    name="批量获取用户信息",
-    description="通过用户 ID 列表批量获取用户信息。",
-    tags=["用户"],
+    name="Batch get user information",
+    description="Batch retrieve user information by user ID list.",
+    tags=["Users"],
 )
 @router.get("/users/lookup", include_in_schema=False)
 @router.get("/users/lookup/", include_in_schema=False)
@@ -70,29 +96,41 @@ async def get_users(
     session: Database,
     request: Request,
     background_task: BackgroundTasks,
-    user_ids: Annotated[list[int], Query(default_factory=list, alias="ids[]", description="要查询的用户 ID 列表")],
+    user_ids: Annotated[list[int], Query(default_factory=list, alias="ids[]", description="List of user IDs to query")],
     # current_user: User = Security(get_current_user, scopes=["public"]),
     include_variant_statistics: Annotated[
         bool,
-        Query(description="是否包含各模式的统计信息"),
+        Query(description="Whether to include variant statistics for each mode"),
     ] = False,  # TODO: future use
 ):
+    """Batch retrieve user information by user ID list.
+
+    Args:
+        session: Database session dependency.
+        request: FastAPI request object.
+        background_task: Background tasks handler.
+        user_ids: List of user IDs to query.
+        include_variant_statistics: Whether to include variant statistics.
+
+    Returns:
+        dict: Dictionary containing list of user information.
+    """
     redis = get_redis()
     cache_service = get_user_cache_service(redis)
 
     if user_ids:
-        # 先尝试从缓存获取
+        # Try to get from cache first
         cached_users = []
         uncached_user_ids = []
 
-        for user_id in user_ids[:50]:  # 限制50个
+        for user_id in user_ids[:50]:  # Limit to 50
             cached_user = await cache_service.get_user_from_cache(user_id)
             if cached_user:
                 cached_users.append(cached_user)
             else:
                 uncached_user_ids.append(user_id)
 
-        # 查询未缓存的用户
+        # Query uncached users
         if uncached_user_ids:
             searched_users = (
                 await session.exec(
@@ -100,7 +138,7 @@ async def get_users(
                 )
             ).all()
 
-            # 将查询到的用户添加到缓存并返回
+            # Add queried users to cache and return
             for searched_user in searched_users:
                 if searched_user.id != BANCHOBOT_ID:
                     user_resp = await UserModel.transform(
@@ -108,7 +146,7 @@ async def get_users(
                         includes=User.CARD_INCLUDES,
                     )
                     cached_users.append(user_resp)
-                    # 异步缓存，不阻塞响应
+                    # Async cache, don't block response
                     background_task.add_task(cache_service.cache_user, user_resp)
 
         response = {"users": cached_users}
@@ -126,7 +164,7 @@ async def get_users(
                 includes=User.CARD_INCLUDES,
             )
             users.append(user_resp)
-            # 异步缓存
+            # Async cache
             background_task.add_task(cache_service.cache_user, user_resp)
 
         response = {"users": users}
@@ -135,18 +173,33 @@ async def get_users(
 
 @router.get(
     "/users/{user_id}/recent_activity",
-    tags=["用户"],
+    tags=["Users"],
     response_model=list[Event],
-    name="获取用户最近活动",
-    description="获取用户在最近 30 天内的活动日志。",
+    name="Get user recent activity",
+    description="Get user activity logs from the last 30 days.",
 )
 async def get_user_events(
     session: Database,
-    user_id: Annotated[int, Path(description="用户 ID")],
-    limit: Annotated[int, Query(description="限制返回的活动数量")] = 50,
-    offset: Annotated[int | None, Query(description="活动日志的偏移量")] = None,
+    user_id: Annotated[int, Path(description="User ID")],
+    limit: Annotated[int, Query(description="Limit the number of activities returned")] = 50,
+    offset: Annotated[int | None, Query(description="Activity log offset")] = None,
     current_user: User | None = Security(get_optional_user, scopes=["public"]),
 ):
+    """Get user recent activity.
+
+    Args:
+        session: Database session dependency.
+        user_id: The user ID.
+        limit: Maximum number of activities to return.
+        offset: Offset for pagination.
+        current_user: The authenticated user (optional).
+
+    Returns:
+        list[Event]: List of user activity events.
+
+    Raises:
+        RequestError: If the user is not found.
+    """
     db_user = await session.get(User, user_id)
     if db_user is None or not await visible_to_current_user(db_user, current_user, session):
         raise RequestError(ErrorType.USER_NOT_FOUND)
@@ -184,61 +237,95 @@ async def get_user_events(
 @router.get(
     "/users/{user_id}/kudosu",
     response_model=list,
-    name="获取用户 kudosu 记录",
-    description="获取指定用户的 kudosu 记录。TODO: 可能会实现",
-    tags=["用户"],
+    name="Get user kudosu records",
+    description="Get kudosu records for a specified user. TODO: May be implemented in the future",
+    tags=["Users"],
 )
 async def get_user_kudosu(
     session: Database,
-    user_id: Annotated[int, Path(description="用户 ID")],
-    offset: Annotated[int, Query(description="偏移量")] = 0,
-    limit: Annotated[int, Query(description="返回记录数量限制")] = 6,
+    user_id: Annotated[int, Path(description="User ID")],
+    offset: Annotated[int, Query(description="Offset")] = 0,
+    limit: Annotated[int, Query(description="Number of records to return")] = 6,
     current_user: User | None = Security(get_optional_user, scopes=["public"]),
 ):
-    """
-    获取用户的 kudosu 记录
+    """Get user kudosu records.
 
-    TODO: 可能会实现
-    目前返回空数组作为占位符
+    TODO: May be implemented in the future.
+    Currently returns an empty array as a placeholder.
+
+    Args:
+        session: Database session dependency.
+        user_id: The user ID.
+        offset: Pagination offset.
+        limit: Number of records to return.
+        current_user: The authenticated user (optional).
+
+    Returns:
+        list: Empty list (placeholder).
+
+    Raises:
+        RequestError: If the user is not found.
     """
-    # 验证用户是否存在
+    # Verify user exists
     db_user = await session.get(User, user_id)
     if db_user is None or not await visible_to_current_user(db_user, current_user, session):
         raise RequestError(ErrorType.USER_NOT_FOUND)
 
-    # TODO: 实现 kudosu 记录获取逻辑
+    # TODO: Implement kudosu record retrieval logic
     return []
 
 
 @router.get(
     "/users/{user_id}/beatmaps-passed",
-    name="获取用户已通过谱面",
-    description="获取指定用户在给定谱面集中的已通过谱面列表。",
-    tags=["用户"],
+    name="Get user passed beatmaps",
+    description="Get list of passed beatmaps for a user within specified beatmapsets.",
+    tags=["Users"],
     responses={
-        200: api_doc("用户已通过谱面列表", {"beatmaps_passed": list[BeatmapModel]}, name="BeatmapsPassedResponse")
+        200: api_doc(
+            "User passed beatmaps list",
+            {"beatmaps_passed": list[BeatmapModel]},
+            name="BeatmapsPassedResponse",
+        )
     },
 )
 @asset_proxy_response
 async def get_user_beatmaps_passed(
     session: Database,
-    user_id: Annotated[int, Path(description="用户 ID")],
+    user_id: Annotated[int, Path(description="User ID")],
     current_user: User | None = Security(get_optional_user, scopes=["public"]),
     beatmapset_ids: Annotated[
         list[int],
         Query(
             alias="beatmapset_ids[]",
-            description="要查询的谱面集 ID 列表 (最多 50 个)",
+            description="List of beatmapset IDs to query (max 50)",
         ),
     ] = [],
     ruleset_id: Annotated[
         int | None,
-        Query(description="指定 ruleset ID"),
+        Query(description="Specified ruleset ID"),
     ] = None,
-    exclude_converts: Annotated[bool, Query(description="是否排除转谱成绩")] = False,
-    is_legacy: Annotated[bool | None, Query(description="是否仅返回 Stable 成绩")] = None,
-    no_diff_reduction: Annotated[bool, Query(description="是否排除减难 MOD 成绩")] = True,
+    exclude_converts: Annotated[bool, Query(description="Whether to exclude converted beatmap scores")] = False,
+    is_legacy: Annotated[bool | None, Query(description="Whether to only return Stable scores")] = None,
+    no_diff_reduction: Annotated[bool, Query(description="Whether to exclude difficulty reduction mod scores")] = True,
 ):
+    """Get user passed beatmaps within specified beatmapsets.
+
+    Args:
+        session: Database session dependency.
+        user_id: The user ID.
+        current_user: The authenticated user (optional).
+        beatmapset_ids: List of beatmapset IDs to filter.
+        ruleset_id: Optional ruleset ID filter.
+        exclude_converts: Whether to exclude converted beatmap scores.
+        is_legacy: Whether to only return Stable scores.
+        no_diff_reduction: Whether to exclude difficulty reduction mod scores.
+
+    Returns:
+        dict: Dictionary containing list of passed beatmaps.
+
+    Raises:
+        RequestError: If user not found or too many beatmapset IDs.
+    """
     if not beatmapset_ids:
         return {"beatmaps_passed": []}
     if len(beatmapset_ids) > 50:
@@ -305,25 +392,40 @@ async def get_user_beatmaps_passed(
 
 @router.get(
     "/users/{user_id}/{ruleset}",
-    name="获取用户信息(指定ruleset)",
-    description="通过用户 ID 或用户名获取单个用户的详细信息，并指定特定 ruleset。",
-    tags=["用户"],
+    name="Get user information (with ruleset)",
+    description="Get detailed information for a single user by user ID or username, with a specified ruleset.",
+    tags=["Users"],
     responses={
-        200: api_doc("用户信息", UserModel, User.USER_INCLUDES),
+        200: api_doc("User information", UserModel, User.USER_INCLUDES),
     },
 )
 @asset_proxy_response
 async def get_user_info_ruleset(
     session: Database,
     background_task: BackgroundTasks,
-    user_id: Annotated[str, Path(description="用户 ID 或用户名")],
-    ruleset: Annotated[GameMode | None, Path(description="指定 ruleset")],
+    user_id: Annotated[str, Path(description="User ID or username")],
+    ruleset: Annotated[GameMode | None, Path(description="Specified ruleset")],
     current_user: User | None = Security(get_optional_user, scopes=["public"]),
 ):
+    """Get user information with a specified ruleset.
+
+    Args:
+        session: Database session dependency.
+        background_task: Background tasks handler.
+        user_id: User ID or username.
+        ruleset: The game mode to get statistics for.
+        current_user: The authenticated user (optional).
+
+    Returns:
+        UserModel: User information with statistics for the specified ruleset.
+
+    Raises:
+        RequestError: If the user is not found.
+    """
     redis = get_redis()
     cache_service = get_user_cache_service(redis)
 
-    # 如果是数字ID，先尝试从缓存获取
+    # If numeric ID, try to get from cache first
     if user_id.isdigit():
         user_id_int = int(user_id)
         cached_user = await cache_service.get_user_from_cache(user_id_int, ruleset)
@@ -350,7 +452,7 @@ async def get_user_info_ruleset(
         ruleset=ruleset,
     )
 
-    # 异步缓存结果
+    # Async cache result
     background_task.add_task(cache_service.cache_user, user_resp, ruleset)
     return user_resp
 
@@ -358,11 +460,11 @@ async def get_user_info_ruleset(
 @router.get("/users/{user_id}/", include_in_schema=False)
 @router.get(
     "/users/{user_id}",
-    name="获取用户信息",
-    description="通过用户 ID 或用户名获取单个用户的详细信息。",
-    tags=["用户"],
+    name="Get user information",
+    description="Get detailed information for a single user by user ID or username.",
+    tags=["Users"],
     responses={
-        200: api_doc("用户信息", UserModel, User.USER_INCLUDES),
+        200: api_doc("User information", UserModel, User.USER_INCLUDES),
     },
 )
 @asset_proxy_response
@@ -370,13 +472,28 @@ async def get_user_info(
     background_task: BackgroundTasks,
     session: Database,
     request: Request,
-    user_id: Annotated[str, Path(description="用户 ID 或用户名")],
+    user_id: Annotated[str, Path(description="User ID or username")],
     current_user: User | None = Security(get_optional_user, scopes=["public"]),
 ):
+    """Get user information.
+
+    Args:
+        background_task: Background tasks handler.
+        session: Database session dependency.
+        request: FastAPI request object.
+        user_id: User ID or username.
+        current_user: The authenticated user (optional).
+
+    Returns:
+        UserModel: User information.
+
+    Raises:
+        RequestError: If the user is not found.
+    """
     redis = get_redis()
     cache_service = get_user_cache_service(redis)
 
-    # 如果是数字ID，先尝试从缓存获取
+    # If numeric ID, try to get from cache first
     if user_id.isdigit():
         user_id_int = int(user_id)
         cached_user = await cache_service.get_user_from_cache(user_id_int)
@@ -402,7 +519,7 @@ async def get_user_info(
         includes=User.USER_INCLUDES,
     )
 
-    # 异步缓存结果
+    # Async cache result
     background_task.add_task(cache_service.cache_user, user_resp)
     return user_resp
 
@@ -412,12 +529,12 @@ beatmapset_includes = [*BeatmapsetModel.BEATMAPSET_TRANSFORMER_INCLUDES, "beatma
 
 @router.get(
     "/users/{user_id}/beatmapsets/{type}",
-    name="获取用户谱面集列表",
-    description="获取指定用户特定类型的谱面集列表，如最常游玩、收藏等。",
-    tags=["用户"],
+    name="Get user beatmapsets",
+    description="Get user's beatmapsets of a specific type, such as most played, favourites, etc.",
+    tags=["Users"],
     responses={
         200: api_doc(
-            "当类型为 `most_played` 时返回 `list[BeatmapPlaycountsModel]`，其他为 `list[BeatmapsetModel]`",
+            "Returns `list[BeatmapPlaycountsModel]` when type is `most_played`, otherwise `list[BeatmapsetModel]`",
             list[BeatmapsetModel] | list[BeatmapPlaycountsModel],
             beatmapset_includes,
         )
@@ -428,13 +545,31 @@ async def get_user_beatmapsets(
     session: Database,
     background_task: BackgroundTasks,
     cache_service: UserCacheService,
-    user_id: Annotated[int, Path(description="用户 ID")],
-    type: Annotated[BeatmapsetType, Path(description="谱面集类型")],
+    user_id: Annotated[int, Path(description="User ID")],
+    type: Annotated[BeatmapsetType, Path(description="Beatmapset type")],
     current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
-    limit: Annotated[int, Query(ge=1, le=1000, description="返回条数 (1-1000)")] = 100,
-    offset: Annotated[int, Query(ge=0, description="偏移量")] = 0,
+    limit: Annotated[int, Query(ge=1, le=1000, description="Number of results (1-1000)")] = 100,
+    offset: Annotated[int, Query(ge=0, description="Offset")] = 0,
 ):
-    # 先尝试从缓存获取
+    """Get user beatmapsets of a specific type.
+
+    Args:
+        session: Database session dependency.
+        background_task: Background tasks handler.
+        cache_service: User cache service dependency.
+        user_id: The user ID.
+        type: Beatmapset type (favourite, most_played, etc.).
+        current_user: The authenticated user.
+        limit: Maximum number of results.
+        offset: Pagination offset.
+
+    Returns:
+        list: List of beatmapsets or beatmap playcounts depending on type.
+
+    Raises:
+        RequestError: If user not found or invalid beatmapset type.
+    """
+    # Try to get from cache first
     cached_result = await cache_service.get_user_beatmapsets_from_cache(user_id, type.value, limit, offset)
     if cached_result is not None:
         return cached_result
@@ -516,7 +651,7 @@ async def get_user_beatmapsets(
     else:
         raise RequestError(ErrorType.INVALID_BEATMAPSET_TYPE)
 
-    # 异步缓存结果
+    # Async cache result
     async def cache_beatmapsets():
         try:
             await cache_service.cache_user_beatmapsets(user_id, type.value, resp, limit, offset)
@@ -530,36 +665,64 @@ async def get_user_beatmapsets(
 
 @router.get(
     "/users/{user_id}/scores/{type}",
-    name="获取用户成绩列表",
+    name="Get user scores",
     description=(
-        "获取用户特定类型的成绩列表，如最好成绩、最近成绩等。\n\n"
-        "如果 `x-api-version >= 20220705`，返回值为 `ScoreResp`列表，"
-        "否则为 `LegacyScoreResp`列表。"
+        "Get user scores of a specific type, such as best, recent, etc.\n\n"
+        "If `x-api-version >= 20220705`, returns `ScoreResp` list, "
+        "otherwise returns `LegacyScoreResp` list."
     ),
-    tags=["用户"],
+    tags=["Users"],
 )
 @asset_proxy_response
 async def get_user_scores(
     session: Database,
     api_version: APIVersion,
     background_task: BackgroundTasks,
-    user_id: Annotated[int, Path(description="用户 ID")],
+    user_id: Annotated[int, Path(description="User ID")],
     type: Annotated[
         Literal["best", "recent", "firsts", "pinned"],
-        Path(description=("成绩类型: best 最好成绩 / recent 最近 24h 游玩成绩 / firsts 第一名成绩 / pinned 置顶成绩")),
+        Path(
+            description=(
+                "Score type: best (best scores) / recent (scores in last 24h) / "
+                "firsts (first place scores) / pinned (pinned scores)"
+            )
+        ),
     ],
     current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
-    legacy_only: Annotated[bool, Query(description="是否只查询 Stable 成绩")] = False,
-    include_fails: Annotated[bool, Query(description="是否包含失败的成绩")] = False,
-    mode: Annotated[GameMode | None, Query(description="指定 ruleset (可选，默认为用户主模式)")] = None,
-    limit: Annotated[int, Query(ge=1, le=1000, description="返回条数 (1-1000)")] = 100,
-    offset: Annotated[int, Query(ge=0, description="偏移量")] = 0,
+    legacy_only: Annotated[bool, Query(description="Whether to only query Stable scores")] = False,
+    include_fails: Annotated[bool, Query(description="Whether to include failed scores")] = False,
+    mode: Annotated[
+        GameMode | None, Query(description="Specified ruleset (optional, defaults to user's main mode)")
+    ] = None,
+    limit: Annotated[int, Query(ge=1, le=1000, description="Number of results (1-1000)")] = 100,
+    offset: Annotated[int, Query(ge=0, description="Offset")] = 0,
 ):
+    """Get user scores of a specific type.
+
+    Args:
+        session: Database session dependency.
+        api_version: API version from request headers.
+        background_task: Background tasks handler.
+        user_id: The user ID.
+        type: Score type (best, recent, firsts, pinned).
+        current_user: The authenticated user.
+        legacy_only: Whether to only query Stable scores.
+        include_fails: Whether to include failed scores.
+        mode: Optional game mode filter.
+        limit: Maximum number of results.
+        offset: Pagination offset.
+
+    Returns:
+        list: List of score responses.
+
+    Raises:
+        RequestError: If the user is not found.
+    """
     is_legacy_api = api_version < 20220705
     redis = get_redis()
     cache_service = get_user_cache_service(redis)
 
-    # 先尝试从缓存获取（对于recent类型使用较短的缓存时间）
+    # Try to get from cache first (use shorter cache time for recent type)
     cache_expire = 30 if type == "recent" else settings.user_scores_cache_expire_seconds
     cached_scores = await cache_service.get_user_scores_from_cache(
         user_id, type, include_fails, mode, limit, offset, is_legacy_api

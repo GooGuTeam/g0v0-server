@@ -1,3 +1,9 @@
+"""Public user endpoints module for osu! API v1.
+
+This module provides public (unauthenticated) endpoints for retrieving user
+and player information compatible with the legacy osu! API v1 specification.
+"""
+
 from typing import Annotated, Literal
 
 from app.database.statistics import UserStatistics
@@ -25,10 +31,20 @@ from sqlmodel import select
 async def _create_player_mode_stats(
     session: Database, user: User, mode: GameMode, user_statistics: list[UserStatistics]
 ):
-    """创建指定模式的玩家统计数据"""
+    """Create player statistics for a specific game mode.
+
+    Args:
+        session: Database session.
+        user: The user database record.
+        mode: The game mode to get statistics for.
+        user_statistics: List of pre-loaded user statistics.
+
+    Returns:
+        PlayerModeStats instance with statistics for the specified mode.
+    """
     from app.models.v1_user import PlayerModeStats
 
-    # 查找对应模式的统计数据
+    # Find statistics for the corresponding mode
     statistics = None
     for stats in user_statistics:
         if stats.mode == mode:
@@ -36,7 +52,7 @@ async def _create_player_mode_stats(
             break
 
     if not statistics:
-        # 如果没有统计数据，返回默认值
+        # If no statistics found, return default values
         return PlayerModeStats(
             id=user.id,
             mode=int(mode),
@@ -79,38 +95,45 @@ async def _create_player_mode_stats(
         s_count=statistics.grade_s or 0,
         a_count=statistics.grade_a or 0,
         level=int(statistics.level_current) if statistics.level_current else 1,
-        level_progress=0,  # TODO: 计算等级进度
-        rank=0,  # global_rank需要从RankHistory获取
-        country_rank=0,  # country_rank需要从其他地方获取
-        history=PlayerStatsHistory(),  # TODO: 获取PP历史数据
+        level_progress=0,  # TODO: Calculate level progress
+        rank=0,  # global_rank needs to be retrieved from RankHistory
+        country_rank=0,  # country_rank needs to be retrieved from elsewhere
+        history=PlayerStatsHistory(),  # TODO: Get PP history data
     )
 
 
 async def _create_player_info(user: User):
-    """创建玩家基本信息"""
+    """Create player basic information.
+
+    Args:
+        user: The user database record.
+
+    Returns:
+        PlayerInfo instance with basic user information.
+    """
     from app.models.v1_user import PlayerInfo
 
     return PlayerInfo(
         id=user.id,
         name=user.username,
-        safe_name=user.username,  # 使用 username 作为 safe_name
+        safe_name=user.username,  # Use username as safe_name
         priv=user.priv or 1,
         country=user.country_code or "",
         silence_end=int(user.silence_end_at.timestamp()) if user.silence_end_at else 0,
         donor_end=int(user.donor_end_at.timestamp()) if user.donor_end_at else 0,
         creation_time=int(user.join_date.timestamp()) if user.join_date else 0,
         latest_activity=int(user.last_visit.timestamp()) if user.last_visit else 0,
-        clan_id=0,  # TODO: 从 user 获取战队信息
+        clan_id=0,  # TODO: Get clan info from user
         clan_priv=0,
         preferred_mode=int(user.playmode) if user.playmode else 0,
         preferred_type=0,
-        play_style=0,  # TODO: 从 user.playstyle 获取游戏风格
+        play_style=0,  # TODO: Get play style from user.playstyle
         custom_badge_enabled=0,
         custom_badge_name="",
         custom_badge_icon="",
         custom_badge_color="",
         userpage_content=user.page["html"] if user.page and "html" in user.page else "",
-        recentFailed=0,  # TODO: 获取最近失败次数
+        recentFailed=0,  # TODO: Get recent failed count
         social_discord=user.discord,
         social_youtube=None,
         social_twitter=user.twitter,
@@ -122,16 +145,31 @@ async def _create_player_info(user: User):
 
 
 async def _get_player_events(session: Database, user_id: int):
-    """获取玩家事件列表"""
-    # TODO: 实现事件查询逻辑
-    # 这里应该查询 app.database.events 表
+    """Get player events list.
+
+    Args:
+        session: Database session.
+        user_id: The user ID.
+
+    Returns:
+        List of player events.
+    """
+    # TODO: Implement event query logic
+    # Should query app.database.events table
     return []
 
 
 async def _count_online_users_optimized(redis):
-    """
-    优化的在线用户计数函数
-    首先尝试使用HyperLogLog近似计数，失败则回退到SCAN
+    """Optimized online user count function.
+
+    First attempts to use a pre-computed set for counting,
+    falls back to SCAN if the set is not available.
+
+    Args:
+        redis: Redis connection.
+
+    Returns:
+        Number of online users.
     """
     try:
         online_set_key = "metadata:online_users_set"
@@ -143,12 +181,12 @@ async def _count_online_users_optimized(redis):
     except Exception as e:
         logger.debug(f"Online users set not available: {e}")
 
-    # 方案2: 回退到优化的SCAN操作
+    # Fallback: Optimized SCAN operation
     online_count = 0
     cursor = 0
     scan_iterations = 0
-    max_iterations = 50  # 进一步减少最大迭代次数
-    batch_size = 10000  # 增加批次大小
+    max_iterations = 50  # Reduced max iterations
+    batch_size = 10000  # Increased batch size
 
     try:
         while cursor != 0 or scan_iterations == 0:
@@ -160,7 +198,7 @@ async def _count_online_users_optimized(redis):
             online_count += len(keys)
             scan_iterations += 1
 
-            # 如果连续几次没有找到键，可能已经扫描完成
+            # If no keys found for several iterations, scan likely complete
             if len(keys) == 0 and scan_iterations > 2:
                 break
 
@@ -169,34 +207,40 @@ async def _count_online_users_optimized(redis):
 
     except Exception as e:
         logger.error(f"Error counting online users: {e}")
-        # 如果SCAN失败，返回0而不是让整个API失败
+        # If SCAN fails, return 0 instead of failing the entire API
         return 0
 
 
 @public_router.get(
     "/get_player_info",
-    name="获取玩家信息",
-    description="返回指定玩家的信息。",
+    name="Get Player Info",
+    description="Return information for a specified player.",
 )
 async def api_get_player_info(
     session: Database,
-    scope: Annotated[Literal["stats", "events", "info", "all"], Query(..., description="信息范围")],
-    id: Annotated[int | None, Query(ge=3, le=2147483647, description="用户 ID")] = None,
-    name: Annotated[str | None, Query(regex=r"^[\w \[\]-]{2,32}$", description="用户名")] = None,
+    scope: Annotated[Literal["stats", "events", "info", "all"], Query(..., description="Information scope")],
+    id: Annotated[int | None, Query(ge=3, le=2147483647, description="User ID")] = None,
+    name: Annotated[str | None, Query(regex=r"^[\w \[\]-]{2,32}$", description="Username")] = None,
 ):
-    """
-    获取指定玩家的信息
+    """Get information for a specified player.
 
     Args:
-        scope: 信息范围 - stats(统计), events(事件), info(基本信息), all(全部)
-        id: 用户 ID (可选)
-        name: 用户名 (可选)
+        session: Database session.
+        scope: Information scope - stats (statistics), events, info (basic), or all.
+        id: User ID (optional).
+        name: Username (optional).
+
+    Returns:
+        GetPlayerInfoResponse with the requested information scope.
+
+    Raises:
+        FieldMissingError: If neither id nor name is provided.
     """
-    # 验证参数
+    # Validate parameters
     if not id and not name:
         raise FieldMissingError(["id", "name"])
 
-    # 查询用户
+    # Query user
     if id:
         user = await session.get(User, id)
     else:
@@ -209,13 +253,13 @@ async def api_get_player_info(
 
     try:
         if scope == "stats":
-            # 获取所有模式的统计数据
+            # Get statistics for all modes
             user_statistics = list(
                 (await session.exec(select(UserStatistics).where(UserStatistics.user_id == user.id))).all()
             )
 
             stats_dict = {}
-            # 获取所有游戏模式的统计数据
+            # Get statistics for all game modes
             all_modes = [GameMode.OSU, GameMode.TAIKO, GameMode.FRUITS, GameMode.MANIA, GameMode.OSURX, GameMode.OSUAP]
 
             for mode in all_modes:
@@ -225,18 +269,18 @@ async def api_get_player_info(
             return GetPlayerInfoResponse(player=PlayerStatsResponse(stats=stats_dict))
 
         elif scope == "events":
-            # 获取事件数据
+            # Get events data
             events = await _get_player_events(session, user.id)
             return GetPlayerInfoResponse(player=PlayerEventsResponse(events=events))
 
         elif scope == "info":
-            # 获取基本信息
+            # Get basic info
             info = await _create_player_info(user)
             return GetPlayerInfoResponse(player=PlayerInfoResponse(info=info))
 
         elif scope == "all":
-            # 获取所有信息
-            # 统计数据
+            # Get all information
+            # Statistics
             user_statistics = list(
                 (await session.exec(select(UserStatistics).where(UserStatistics.user_id == user.id))).all()
             )
@@ -248,10 +292,10 @@ async def api_get_player_info(
                 mode_stats = await _create_player_mode_stats(session, user, mode, user_statistics)
                 stats_dict[str(int(mode))] = mode_stats
 
-            # 基本信息
+            # Basic info
             info = await _create_player_info(user)
 
-            # 事件
+            # Events
             events = await _get_player_events(session, user.id)
 
             return GetPlayerInfoResponse(player=PlayerAllResponse(info=info, stats=stats_dict, events=events))
@@ -264,17 +308,22 @@ async def api_get_player_info(
 @public_router.get(
     "/get_player_count",
     response_model=GetPlayerCountResponse,
-    name="获取玩家数量",
-    description="返回在线和总用户数量。",
+    name="Get Player Count",
+    description="Return online and total user counts.",
 )
 async def api_get_player_count(
     session: Database,
 ):
-    """
-    获取玩家数量统计
+    """Get player count statistics.
+
+    Args:
+        session: Database session.
 
     Returns:
-        包含在线用户数和总用户数的响应
+        GetPlayerCountResponse with online and total user counts.
+
+    Raises:
+        RequestError: If an internal error occurs.
     """
     try:
         redis = get_redis()
@@ -311,7 +360,7 @@ async def api_get_player_count(
         return GetPlayerCountResponse(
             counts=PlayerCountData(
                 online=online_count,
-                total=max(0, total_count - 1),  # 减去1个机器人账户，确保不为负数
+                total=max(0, total_count - 1),  # Subtract 1 bot account, ensure non-negative
             )
         )
 

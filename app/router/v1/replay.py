@@ -1,3 +1,9 @@
+"""Replay endpoint module for osu! API v1.
+
+This module provides endpoints for retrieving replay data compatible
+with the legacy osu! API v1 specification.
+"""
+
 import base64
 from datetime import date
 from typing import Annotated, Literal
@@ -20,6 +26,13 @@ from sqlmodel import col, select
 
 
 class ReplayModel(BaseModel):
+    """V1 API replay response model.
+
+    Attributes:
+        content: Base64-encoded replay data.
+        encoding: Encoding type (always 'base64').
+    """
+
     content: str
     encoding: Literal["base64"] = "base64"
 
@@ -27,14 +40,14 @@ class ReplayModel(BaseModel):
 @router.get(
     "/get_replay",
     response_model=ReplayModel,
-    name="获取回放文件",
-    description="获取指定谱面的回放文件。",
+    name="Get Replay",
+    description="Get the replay data for a specific score.",
     dependencies=[Depends(RateLimiter(limiter=Limiter(Rate(10, Duration.MINUTE))))],
 )
 async def download_replay(
     session: Database,
-    beatmap: Annotated[int, Query(..., alias="b", description="谱面 ID")],
-    user: Annotated[str, Query(..., alias="u", description="用户")],
+    beatmap: Annotated[int, Query(..., alias="b", description="Beatmap ID")],
+    user: Annotated[str, Query(..., alias="u", description="User")],
     storage_service: StorageService,
     ruleset_id: Annotated[
         int | None,
@@ -44,10 +57,34 @@ async def download_replay(
             ge=0,
         ),
     ] = None,
-    score_id: Annotated[int | None, Query(alias="s", description="成绩 ID")] = None,
-    type: Annotated[Literal["string", "id"] | None, Query(description="用户类型：string 用户名称 / id 用户 ID")] = None,
-    mods: Annotated[int, Query(description="成绩的 MOD")] = 0,
+    score_id: Annotated[int | None, Query(alias="s", description="Score ID")] = None,
+    type: Annotated[
+        Literal["string", "id"] | None, Query(description="User type: string for username / id for user ID")
+    ] = None,
+    mods: Annotated[int, Query(description="Score mods")] = 0,
 ):
+    """Download replay data for a score.
+
+    This endpoint retrieves the replay file for a specific score and returns it
+    as base64-encoded data. It also increments the replay watch counter for
+    the score owner.
+
+    Args:
+        session: Database session.
+        beatmap: The beatmap ID.
+        user: The user (username or ID based on type parameter).
+        storage_service: Storage service for file access.
+        ruleset_id: Game mode filter (0=osu!, 1=taiko, 2=catch, 3=mania).
+        score_id: Specific score ID to retrieve.
+        type: Interpret user parameter as 'string' (username) or 'id'.
+        mods: Filter by specific mods.
+
+    Returns:
+        ReplayModel with base64-encoded replay data.
+
+    Raises:
+        RequestError: If score or replay file is not found.
+    """
     mods_ = int_to_mods(mods)
     if score_id is not None:
         score_record = await session.get(Score, score_id)

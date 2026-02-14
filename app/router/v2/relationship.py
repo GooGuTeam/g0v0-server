@@ -1,3 +1,9 @@
+"""User relationship API endpoints.
+
+This module provides endpoints for managing user relationships including
+friends (follows) and blocks.
+"""
+
 from typing import Annotated, Any
 
 from app.database import Relationship, RelationshipType, User
@@ -17,23 +23,23 @@ from sqlmodel import col, exists, select
 
 @router.get(
     "/friends",
-    tags=["用户关系"],
+    tags=["Relationships"],
     responses={
         200: api_doc(
-            "好友列表\n\n如果 `x-api-version < 20241022`，返回值为 `User` 列表，否则为 `Relationship` 列表。",
+            "Friends list\n\nIf `x-api-version < 20241022`, returns `User` list, otherwise `Relationship` list.",
             list[RelationshipModel] | list[UserModel],
             [f"target.{inc}" for inc in User.LIST_INCLUDES],
         )
     },
-    name="获取好友列表",
-    description="获取当前用户的好友列表。",
+    name="Get friends list",
+    description="Get the current user's friends list.",
 )
 @router.get(
     "/blocks",
-    tags=["用户关系"],
+    tags=["Relationships"],
     response_model=list[dict[str, Any]],
-    name="获取屏蔽列表",
-    description="获取当前用户的屏蔽用户列表。",
+    name="Get block list",
+    description="Get the current user's blocked users list.",
 )
 async def get_relationship(
     db: Database,
@@ -41,6 +47,17 @@ async def get_relationship(
     api_version: APIVersion,
     current_user: Annotated[User, Security(get_current_user, scopes=["friends.read"])],
 ):
+    """Get the current user's relationships (friends or blocks).
+
+    Args:
+        db: Database session dependency.
+        request: The FastAPI request object.
+        api_version: API version for response format selection.
+        current_user: The authenticated user.
+
+    Returns:
+        List of relationships or users depending on endpoint and API version.
+    """
     relationship_type = RelationshipType.FOLLOW if request.url.path.endswith("/friends") else RelationshipType.BLOCK
     relationships = await db.exec(
         select(Relationship).where(
@@ -71,23 +88,43 @@ async def get_relationship(
 
 @router.post(
     "/friends",
-    tags=["用户关系"],
-    responses={200: api_doc("好友关系", {"user_relation": RelationshipModel}, name="UserRelationshipResponse")},
-    name="添加或更新好友关系",
-    description="\n添加或更新与目标用户的好友关系。",
+    tags=["Relationships"],
+    responses={
+        200: api_doc(
+            "Friend relationship",
+            {"user_relation": RelationshipModel},
+            name="UserRelationshipResponse",
+        )
+    },
+    name="Add or update friend relationship",
+    description="\nAdd or update a friend relationship with the target user.",
 )
 @router.post(
     "/blocks",
-    tags=["用户关系"],
-    name="添加或更新屏蔽关系",
-    description="\n添加或更新与目标用户的屏蔽关系。",
+    tags=["Relationships"],
+    name="Add or update block relationship",
+    description="\nAdd or update a block relationship with the target user.",
 )
 async def add_relationship(
     db: Database,
     request: Request,
-    target: Annotated[int, Query(description="目标用户 ID")],
+    target: Annotated[int, Query(description="Target user ID")],
     current_user: ClientUser,
 ):
+    """Add or update a relationship with a target user.
+
+    Args:
+        db: Database session dependency.
+        request: The FastAPI request object.
+        target: Target user ID.
+        current_user: The authenticated user.
+
+    Returns:
+        dict: The created/updated relationship (for friends).
+
+    Raises:
+        RequestError: If user is restricted, target not found, or adding self.
+    """
     if await current_user.is_restricted(db):
         raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
     if not (
@@ -108,8 +145,8 @@ async def add_relationship(
     ).first()
     if relationship:
         relationship.type = relationship_type
-        # 这里原来如果是 block 也会修改为 follow
-        # 与 ppy/osu-web 的行为保持一致
+        # Original behavior: if it was block, it would also change to follow
+        # Keeping consistent with ppy/osu-web behavior
     else:
         relationship = Relationship(
             user_id=current_user.id,
@@ -152,22 +189,34 @@ async def add_relationship(
 
 @router.delete(
     "/friends/{target}",
-    tags=["用户关系"],
-    name="取消好友关系",
-    description="\n删除与目标用户的好友关系。",
+    tags=["Relationships"],
+    name="Remove friend",
+    description="\nRemove a friend relationship with the target user.",
 )
 @router.delete(
     "/blocks/{target}",
-    tags=["用户关系"],
-    name="取消屏蔽关系",
-    description="\n删除与目标用户的屏蔽关系。",
+    tags=["Relationships"],
+    name="Remove block",
+    description="\nRemove a block relationship with the target user.",
 )
 async def delete_relationship(
     db: Database,
     request: Request,
-    target: Annotated[int, Path(..., description="目标用户 ID")],
+    target: Annotated[int, Path(..., description="Target user ID")],
     current_user: ClientUser,
-):
+) -> None:
+    """Delete a relationship with a target user.
+
+    Args:
+        db: Database session dependency.
+        request: The FastAPI request object.
+        target: Target user ID.
+        current_user: The authenticated user.
+
+    Raises:
+        RequestError: If user is restricted, target not found, relationship not found,
+                     or relationship type mismatch.
+    """
     if await current_user.is_restricted(db):
         raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
     if not (

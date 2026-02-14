@@ -1,3 +1,9 @@
+"""WebSocket notification server for real-time chat.
+
+This module implements a WebSocket-based notification server that handles
+real-time chat messaging, channel management, and user presence.
+"""
+
 import asyncio
 from typing import Annotated, overload
 
@@ -29,7 +35,19 @@ logger = log("NotificationServer")
 
 
 class ChatServer:
+    """WebSocket chat server managing real-time connections.
+
+    Handles WebSocket connections, channel subscriptions, message broadcasting,
+    and user presence tracking.
+
+    Attributes:
+        connect_client: Dict mapping user IDs to their WebSocket connections.
+        channels: Dict mapping channel IDs to lists of user IDs.
+        redis: Redis client for message persistence.
+    """
+
     def __init__(self):
+        """Initialize the chat server."""
         self.connect_client: dict[int, WebSocket] = {}
         self.channels: dict[int, list[int]] = {}
         self.redis: Redis = redis_message_client
@@ -40,28 +58,48 @@ class ChatServer:
         self._subscribed = False
 
     def connect(self, user_id: int, client: WebSocket):
+        """Register a WebSocket connection for a user.
+
+        Args:
+            user_id: The user's ID.
+            client: The WebSocket connection.
+        """
         self.connect_client[user_id] = client
 
     def get_user_joined_channel(self, user_id: int) -> list[int]:
+        """Get list of channel IDs a user has joined.
+
+        Args:
+            user_id: The user's ID.
+
+        Returns:
+            List of channel IDs the user is in.
+        """
         return [channel_id for channel_id, users in self.channels.items() if user_id in users]
 
     async def disconnect(self, user: User, session: AsyncSession):
+        """Handle user disconnection and cleanup.
+
+        Args:
+            user: The disconnecting user.
+            session: Database session.
+        """
         user_id = user.id
         if user_id in self.connect_client:
             del self.connect_client[user_id]
 
-        # 创建频道ID列表的副本以避免在迭代过程中修改字典
+        # Create a copy of channel ID list to avoid modifying dict during iteration
         channel_ids_to_process = []
         for channel_id, channel in self.channels.items():
             if user_id in channel:
                 channel_ids_to_process.append(channel_id)
 
-        # 现在安全地处理每个频道
+        # Now safely process each channel
         for channel_id in channel_ids_to_process:
-            # 再次检查用户是否仍在频道中（防止并发修改）
+            # Check again if user is still in channel (prevent concurrent modification)
             if channel_id in self.channels and user_id in self.channels[channel_id]:
                 self.channels[channel_id].remove(user_id)
-                # 使用明确的查询避免延迟加载
+                # Use explicit query to avoid lazy loading
                 db_channel = (
                     await session.exec(select(ChatChannel).where(ChatChannel.channel_id == channel_id))
                 ).first()
@@ -75,6 +113,12 @@ class ChatServer:
     async def send_event(self, client: WebSocket, event: ChatEvent): ...
 
     async def send_event(self, client: WebSocket | int, event: ChatEvent):
+        """Send an event to a specific client.
+
+        Args:
+            client: WebSocket connection or user ID.
+            event: Chat event to send.
+        """
         if isinstance(client, int):
             client_ = self.connect_client.get(client)
             if client_ is None:
@@ -84,10 +128,16 @@ class ChatServer:
             await client.send_text(safe_json_dumps(event))
 
     async def broadcast(self, channel_id: int, event: ChatEvent):
+        """Broadcast an event to all users in a channel.
+
+        Args:
+            channel_id: The channel ID to broadcast to.
+            event: Chat event to broadcast.
+        """
         users_in_channel = self.channels.get(channel_id, [])
         logger.info(f"Broadcasting to channel {channel_id}, users: {users_in_channel}")
 
-        # 如果频道中没有用户，检查是否是多人游戏频道
+        # If no users in channel, check if it's a multiplayer channel
         if not users_in_channel:
             try:
                 async with with_db() as session:
@@ -96,8 +146,8 @@ class ChatServer:
                         logger.warning(
                             f"No users in multiplayer channel {channel_id}, message will not be delivered to anyone"
                         )
-                        # 对于多人游戏房间，这可能是正常的（用户都离开了房间）
-                        # 但我们仍然记录这个情况以便调试
+                        # For multiplayer rooms, this may be normal (all users left the room)
+                        # But we still log this for debugging
             except Exception as e:
                 logger.error(f"Failed to check channel type for {channel_id}: {e}")
 
@@ -106,9 +156,22 @@ class ChatServer:
             logger.debug(f"Sent event to user {user_id} in channel {channel_id}")
 
     async def mark_as_read(self, channel_id: int, user_id: int, message_id: int):
+        """Mark a message as read for a user.
+
+        Args:
+            channel_id: The channel ID.
+            user_id: The user's ID.
+            message_id: The message ID to mark as read.
+        """
         await self.redis.set(f"chat:{channel_id}:last_read:{user_id}", message_id)
 
     async def send_message_to_channel(self, message: ChatMessageDict, is_bot_command: bool = False):
+        """Send a message to a channel and update read state.
+
+        Args:
+            message: The message data to send.
+            is_bot_command: Whether this is a bot command (sent only to sender).
+        """
         logger.info(
             f"Sending message to channel {message['channel_id']}, message_id: "
             f"{message['message_id']}, is_bot_command: {is_bot_command}"
@@ -122,7 +185,7 @@ class ChatServer:
             logger.info(f"Sending bot command to user {message['sender_id']}")
             bg_tasks.add_task(self.send_event, message["sender_id"], event)
         else:
-            # 总是广播消息，无论是临时ID还是真实ID
+            # Always broadcast message, regardless of temporary or real ID
             logger.info(f"Broadcasting message to all users in channel {message['channel_id']}")
             bg_tasks.add_task(
                 self.broadcast,
@@ -130,8 +193,8 @@ class ChatServer:
                 event,
             )
 
-        # 只有真实消息 ID（正数且非零）才进行标记已读和设置最后消息
-        # Redis 消息系统生成的ID都是正数，所以这里应该都能正常处理
+        # Only update last message for real message IDs (positive and non-zero)
+        # Redis message system generates positive IDs, so this should work normally
         if message["message_id"] and message["message_id"] > 0:
             await self.mark_as_read(message["channel_id"], message["sender_id"], message["message_id"])
             await self.redis.set(f"chat:{message['channel_id']}:last_msg", message["message_id"])
@@ -140,6 +203,12 @@ class ChatServer:
             logger.debug(f"Skipping last message update for message ID: {message['message_id']}")
 
     async def batch_join_channel(self, users: list[User], channel: ChatChannel):
+        """Add multiple users to a channel at once.
+
+        Args:
+            users: List of users to add.
+            channel: The channel to join.
+        """
         channel_id = channel.channel_id
 
         not_joined = []
@@ -164,6 +233,15 @@ class ChatServer:
             )
 
     async def join_channel(self, user: User, channel: ChatChannel) -> ChatChannelDict:
+        """Add a user to a channel and notify them.
+
+        Args:
+            user: The user joining.
+            channel: The channel to join.
+
+        Returns:
+            The channel data sent to the user.
+        """
         user_id = user.id
         channel_id = channel.channel_id
 
@@ -187,6 +265,12 @@ class ChatServer:
         return channel_resp
 
     async def leave_channel(self, user: User, channel: ChatChannel) -> None:
+        """Remove a user from a channel and notify them.
+
+        Args:
+            user: The user leaving.
+            channel: The channel to leave.
+        """
         user_id = user.id
         channel_id = channel.channel_id
 
@@ -208,8 +292,14 @@ class ChatServer:
         )
 
     async def join_room_channel(self, channel_id: int, user_id: int):
+        """Join a room channel (called from external multiplayer system).
+
+        Args:
+            channel_id: The channel ID to join.
+            user_id: The user ID joining.
+        """
         async with with_db() as session:
-            # 使用明确的查询避免延迟加载
+            # Use explicit query to avoid lazy loading
             db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.channel_id == channel_id))).first()
             if db_channel is None:
                 logger.warning(f"Attempted to join non-existent channel {channel_id} by user {user_id}")
@@ -224,8 +314,14 @@ class ChatServer:
             await self.join_channel(user, db_channel)
 
     async def leave_room_channel(self, channel_id: int, user_id: int):
+        """Leave a room channel (called from external multiplayer system).
+
+        Args:
+            channel_id: The channel ID to leave.
+            user_id: The user ID leaving.
+        """
         async with with_db() as session:
-            # 使用明确的查询避免延迟加载
+            # Use explicit query to avoid lazy loading
             db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.channel_id == channel_id))).first()
             if db_channel is None:
                 logger.warning(f"Attempted to leave non-existent channel {channel_id} by user {user_id}")
@@ -240,6 +336,11 @@ class ChatServer:
             await self.leave_channel(user, db_channel)
 
     async def new_private_notification(self, detail: NotificationDetail):
+        """Create and send a new private notification.
+
+        Args:
+            detail: The notification details to send.
+        """
         async with with_db() as session:
             id = await insert_notification(session, detail)
             users = (await session.exec(select(UserNotification).where(UserNotification.notification_id == id))).all()
@@ -262,6 +363,13 @@ chat_router = APIRouter(include_in_schema=False)
 
 
 async def _listen_stop(ws: WebSocket, user_id: int, factory: DBFactory):
+    """Listen for WebSocket disconnect or stop events.
+
+    Args:
+        ws: The WebSocket connection.
+        user_id: The connected user's ID.
+        factory: Database session factory.
+    """
     try:
         while True:
             packets = await ws.receive_json()
@@ -288,16 +396,25 @@ async def _listen_stop(ws: WebSocket, user_id: int, factory: DBFactory):
 async def chat_websocket(
     websocket: WebSocket,
     factory: Annotated[DBFactory, Depends(get_db_factory)],
-    token: Annotated[str | None, Query(description="认证令牌，支持通过URL参数传递")] = None,
-    access_token: Annotated[str | None, Query(description="访问令牌，支持通过URL参数传递")] = None,
-    authorization: Annotated[str | None, Header(description="Bearer认证头")] = None,
+    token: Annotated[str | None, Query(description="Auth token, supports passing via URL parameter")] = None,
+    access_token: Annotated[str | None, Query(description="Access token, supports passing via URL parameter")] = None,
+    authorization: Annotated[str | None, Header(description="Bearer auth header")] = None,
 ):
+    """WebSocket endpoint for real-time chat notifications.
+
+    Args:
+        websocket: The WebSocket connection.
+        factory: Database session factory.
+        token: Optional auth token from query parameter.
+        access_token: Optional access token from query parameter.
+        authorization: Optional Bearer auth header.
+    """
     if not server._subscribed:
         server._subscribed = True
         await server.ChatSubscriber.start_subscribe()
 
     async for session in factory():
-        # 优先使用查询参数中的token，支持token或access_token参数名
+        # Prioritize token from query parameters, supports both token and access_token parameter names
         auth_token = token or access_token
         if not auth_token and authorization:
             auth_token = authorization.removeprefix("Bearer ")
@@ -322,7 +439,7 @@ async def chat_websocket(
         user = user_and_token[0]
         user_id = user.id
         server.connect(user_id, websocket)
-        # 使用明确的查询避免延迟加载
+        # Use explicit query to avoid lazy loading
         db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.channel_id == 1))).first()
         if db_channel is not None:
             await server.join_channel(user, db_channel)

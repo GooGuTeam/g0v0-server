@@ -1,3 +1,9 @@
+"""Notification router module.
+
+This module provides endpoints for managing user notifications,
+including fetching unread notifications and marking them as read.
+"""
+
 from app.config import settings
 from app.database.notification import Notification, UserNotification
 from app.database.user import User
@@ -21,6 +27,15 @@ __all__ = ["chat_router"]
 
 
 class NotificationResp(BaseModel):
+    """Response model for notification listing.
+
+    Attributes:
+        has_more: Whether there are more notifications to fetch.
+        notifications: List of unread notifications.
+        unread_count: Total count of unread notifications.
+        notification_endpoint: WebSocket endpoint URL for real-time notifications.
+    """
+
     has_more: bool
     notifications: list[Notification]
     unread_count: int
@@ -29,16 +44,28 @@ class NotificationResp(BaseModel):
 
 @router.get(
     "/notifications",
-    tags=["通知", "聊天"],
-    name="获取通知",
-    description="获取当前用户未读通知。根据 ID 排序。同时返回通知服务器入口。",
+    tags=["Notification", "Chat"],
+    name="Get Notifications",
+    description=(
+        "Get unread notifications for the current user, sorted by ID. Also returns the notification server endpoint."
+    ),
     response_model=NotificationResp,
 )
 async def get_notifications(
     session: Database,
-    max_id: int | None = Query(None, description="获取 ID 小于此值的通知"),
+    max_id: int | None = Query(None, description="Get notifications with ID less than this value"),
     current_user: User = Security(get_client_user),
 ):
+    """Get unread notifications for the current user.
+
+    Args:
+        session: Database session.
+        max_id: Optional maximum notification ID for pagination.
+        current_user: The authenticated user.
+
+    Returns:
+        NotificationResp containing unread notifications and metadata.
+    """
     if settings.server_url is not None:
         notification_endpoint = f"{settings.server_url}notification-server".replace("http://", "ws://").replace(
             "https://", "wss://"
@@ -73,6 +100,15 @@ async def get_notifications(
 
 
 class _IdentityReq(BaseModel):
+    """Request model for identifying notifications.
+
+    Attributes:
+        category: Notification category filter.
+        id: Specific notification ID.
+        object_id: Related object ID.
+        object_type: Related object type.
+    """
+
     category: str | None = None
     id: int | None = None
     object_id: int | None = None
@@ -82,6 +118,16 @@ class _IdentityReq(BaseModel):
 async def _get_notifications(
     session: Database, current_user: User, identities: list[_IdentityReq]
 ) -> list[UserNotification]:
+    """Fetch notifications matching the given identity filters.
+
+    Args:
+        session: Database session.
+        current_user: The authenticated user.
+        identities: List of identity filters to match notifications.
+
+    Returns:
+        List of matching UserNotification objects.
+    """
     result: dict[int, UserNotification] = {}
     base_query = select(UserNotification).where(
         UserNotification.user_id == current_user.id,
@@ -109,9 +155,9 @@ async def _get_notifications(
 
 @router.post(
     "/notifications/mark-read",
-    tags=["通知", "聊天"],
-    name="标记通知为已读",
-    description="标记当前用户的通知为已读。",
+    tags=["Notification", "Chat"],
+    name="Mark Notifications as Read",
+    description="Mark the current user's notifications as read.",
     status_code=204,
 )
 async def mark_notifications_as_read(
@@ -120,6 +166,14 @@ async def mark_notifications_as_read(
     notifications: list[_IdentityReq] = Body(default_factory=list),
     current_user: User = Security(get_client_user),
 ):
+    """Mark specified notifications as read.
+
+    Args:
+        session: Database session.
+        identities: List of notification identity filters.
+        notifications: Additional notification identity filters.
+        current_user: The authenticated user.
+    """
     identities.extend(notifications)
     user_notifications = await _get_notifications(session, current_user, identities)
     for user_notification in user_notifications:
