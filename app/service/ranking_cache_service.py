@@ -1,6 +1,6 @@
-"""
-用户排行榜缓存服务
-用于缓存用户排行榜数据，减轻数据库压力
+"""User ranking cache service.
+
+Caches user ranking data to reduce database load.
 """
 
 import asyncio
@@ -9,10 +9,9 @@ from typing import TYPE_CHECKING, Literal
 
 from app.config import settings
 from app.database.statistics import UserStatistics, UserStatisticsModel
-from app.helpers.asset_proxy_helper import replace_asset_urls
+from app.helpers import replace_asset_urls, safe_json_dumps, utcnow
 from app.log import logger
 from app.models.score import GameMode
-from app.utils import safe_json_dumps, utcnow
 
 from redis.asyncio import Redis
 from sqlmodel import col, select
@@ -23,7 +22,11 @@ if TYPE_CHECKING:
 
 
 class RankingCacheService:
-    """用户排行榜缓存服务"""
+    """User ranking cache service.
+
+    Caches performance and score rankings, country rankings,
+    and team rankings using Redis.
+    """
 
     def __init__(self, redis: Redis):
         self.redis = redis
@@ -37,7 +40,7 @@ class RankingCacheService:
         country: str | None = None,
         page: int = 1,
     ) -> str:
-        """生成缓存键"""
+        """Generate cache key."""
         country_part = f":{country.upper()}" if country else ""
         return f"ranking:{ruleset}:{type}{country_part}:page:{page}"
 
@@ -47,24 +50,24 @@ class RankingCacheService:
         type: Literal["performance", "score"],
         country: str | None = None,
     ) -> str:
-        """生成统计信息缓存键"""
+        """Generate statistics cache key."""
         country_part = f":{country.upper()}" if country else ""
         return f"ranking:stats:{ruleset}:{type}{country_part}"
 
     def _get_country_cache_key(self, ruleset: GameMode, page: int = 1) -> str:
-        """生成地区排行榜缓存键"""
+        """Generate country ranking cache key."""
         return f"country_ranking:{ruleset}:page:{page}"
 
     def _get_country_stats_cache_key(self, ruleset: GameMode) -> str:
-        """生成地区排行榜统计信息缓存键"""
+        """Generate country ranking statistics cache key."""
         return f"country_ranking:stats:{ruleset}"
 
     def _get_team_cache_key(self, ruleset: GameMode, page: int = 1) -> str:
-        """生成战队排行榜缓存键"""
+        """Generate team ranking cache key."""
         return f"team_ranking:{ruleset}:page:{page}"
 
     def _get_team_stats_cache_key(self, ruleset: GameMode) -> str:
-        """生成战队排行榜统计信息缓存键"""
+        """Generate team ranking statistics cache key."""
         return f"team_ranking:stats:{ruleset}"
 
     async def get_cached_ranking(
@@ -74,7 +77,7 @@ class RankingCacheService:
         country: str | None = None,
         page: int = 1,
     ) -> list[dict] | None:
-        """获取缓存的排行榜数据"""
+        """Get cached ranking data."""
         try:
             cache_key = self._get_cache_key(ruleset, type, country, page)
             cached_data = await self.redis.get(cache_key)
@@ -93,12 +96,12 @@ class RankingCacheService:
         ranking_data: list[dict],
         country: str | None = None,
         page: int = 1,
-        ttl: int | None = None,  # 允许为None以使用配置文件的默认值
+        ttl: int | None = None,  # Allow None to use config default
     ) -> None:
-        """缓存排行榜数据"""
+        """Cache ranking data."""
         try:
             cache_key = self._get_cache_key(ruleset, type, country, page)
-            # 使用配置文件的TTL设置
+            # Use config file TTL setting
             if ttl is None:
                 ttl = settings.ranking_cache_expire_minutes * 60
             await self.redis.set(cache_key, safe_json_dumps(ranking_data), ex=ttl)
@@ -112,7 +115,7 @@ class RankingCacheService:
         type: Literal["performance", "score"],
         country: str | None = None,
     ) -> dict | None:
-        """获取缓存的统计信息"""
+        """Get cached statistics."""
         try:
             cache_key = self._get_stats_cache_key(ruleset, type, country)
             cached_data = await self.redis.get(cache_key)
@@ -130,14 +133,14 @@ class RankingCacheService:
         type: Literal["performance", "score"],
         stats: dict,
         country: str | None = None,
-        ttl: int | None = None,  # 允许为None以使用配置文件的默认值
+        ttl: int | None = None,  # Allow None to use config default
     ) -> None:
-        """缓存统计信息"""
+        """Cache statistics."""
         try:
             cache_key = self._get_stats_cache_key(ruleset, type, country)
-            # 使用配置文件的TTL设置，统计信息缓存时间更长
+            # Use config TTL setting, statistics cache time is longer
             if ttl is None:
-                ttl = settings.ranking_cache_expire_minutes * 60 * 6  # 6倍时间
+                ttl = settings.ranking_cache_expire_minutes * 60 * 6  # 6x time
             await self.redis.set(cache_key, safe_json_dumps(stats), ex=ttl)
             logger.debug(f"Cached stats for {cache_key}")
         except Exception as e:
@@ -148,7 +151,7 @@ class RankingCacheService:
         ruleset: GameMode,
         page: int = 1,
     ) -> list[dict] | None:
-        """获取缓存的地区排行榜数据"""
+        """Get cached country ranking data."""
         try:
             cache_key = self._get_country_cache_key(ruleset, page)
             cached_data = await self.redis.get(cache_key)
@@ -167,7 +170,7 @@ class RankingCacheService:
         page: int = 1,
         ttl: int | None = None,
     ) -> None:
-        """缓存地区排行榜数据"""
+        """Cache country ranking data."""
         try:
             cache_key = self._get_country_cache_key(ruleset, page)
             if ttl is None:
@@ -182,7 +185,7 @@ class RankingCacheService:
         ruleset: GameMode,
         page: int = 1,
     ) -> list[dict] | None:
-        """获取缓存的战队排行榜数据"""
+        """Get cached team ranking data."""
         try:
             cache_key = self._get_team_cache_key(ruleset, page)
             cached_data = await self.redis.get(cache_key)
@@ -201,7 +204,7 @@ class RankingCacheService:
         page: int = 1,
         ttl: int | None = None,
     ) -> None:
-        """缓存战队排行榜数据"""
+        """Cache team ranking data."""
         try:
             cache_key = self._get_team_cache_key(ruleset, page)
             if ttl is None:
@@ -212,7 +215,7 @@ class RankingCacheService:
             logger.error(f"Error caching team ranking: {e}")
 
     async def get_cached_team_stats(self, ruleset: GameMode) -> dict | None:
-        """获取缓存的战队排行榜统计信息"""
+        """Get cached team ranking statistics."""
         try:
             cache_key = self._get_team_stats_cache_key(ruleset)
             cached_data = await self.redis.get(cache_key)
@@ -230,7 +233,7 @@ class RankingCacheService:
         stats: dict,
         ttl: int | None = None,
     ) -> None:
-        """缓存战队排行榜统计信息"""
+        """Cache team ranking statistics."""
         try:
             cache_key = self._get_team_stats_cache_key(ruleset)
             if ttl is None:
@@ -241,7 +244,7 @@ class RankingCacheService:
             logger.error(f"Error caching team stats: {e}")
 
     async def get_cached_country_stats(self, ruleset: GameMode) -> dict | None:
-        """获取缓存的地区排行榜统计信息"""
+        """Get cached country ranking statistics."""
         try:
             cache_key = self._get_country_stats_cache_key(ruleset)
             cached_data = await self.redis.get(cache_key)
@@ -259,11 +262,11 @@ class RankingCacheService:
         stats: dict,
         ttl: int | None = None,
     ) -> None:
-        """缓存地区排行榜统计信息"""
+        """Cache country ranking statistics."""
         try:
             cache_key = self._get_country_stats_cache_key(ruleset)
             if ttl is None:
-                ttl = settings.ranking_cache_expire_minutes * 60 * 6  # 6倍时间
+                ttl = settings.ranking_cache_expire_minutes * 60 * 6  # 6x time
             await self.redis.set(cache_key, safe_json_dumps(stats), ex=ttl)
             logger.debug(f"Cached country stats for {cache_key}")
         except Exception as e:
@@ -275,14 +278,14 @@ class RankingCacheService:
         ruleset: GameMode,
         type: Literal["performance", "score"],
         country: str | None = None,
-        max_pages: int | None = None,  # 允许为None以使用配置文件的默认值
+        max_pages: int | None = None,  # Allow None to use config default
     ) -> None:
-        """刷新排行榜缓存"""
+        """Refresh ranking cache."""
         if self._refreshing:
             logger.debug(f"Ranking cache refresh already in progress for {ruleset}:{type}")
             return
 
-        # 使用配置文件的设置
+        # Use config file settings
         if max_pages is None:
             max_pages = settings.ranking_cache_max_pages
 
@@ -290,7 +293,7 @@ class RankingCacheService:
         try:
             logger.info(f"Starting ranking cache refresh for {ruleset}:{type}")
 
-            # 构建查询条件
+            # Build query conditions
             wheres = [
                 col(UserStatistics.mode) == ruleset,
                 col(UserStatistics.pp) > 0,
@@ -308,11 +311,11 @@ class RankingCacheService:
                 wheres.append(col(UserStatistics.user).has(country_code=country.upper()))
                 include.append("country_rank")
 
-            # 获取总用户数用于统计
+            # Get total user count for statistics
             total_users_query = select(UserStatistics).where(*wheres)
             total_users = len((await session.exec(total_users_query)).all())
 
-            # 计算统计信息
+            # Calculate statistics
             stats = {
                 "total": total_users,
                 "total_users": total_users,
@@ -322,10 +325,10 @@ class RankingCacheService:
                 "country": country,
             }
 
-            # 缓存统计信息
+            # Cache statistics
             await self.cache_stats(ruleset, type, stats, country)
 
-            # 分页缓存数据
+            # Paginated data caching
             for page in range(1, max_pages + 1):
                 try:
                     statistics_list = await session.exec(
@@ -334,16 +337,16 @@ class RankingCacheService:
 
                     statistics_data = statistics_list.all()
                     if not statistics_data:
-                        break  # 没有更多数据
+                        break  # No more data
 
-                    # 转换为响应格式并确保正确序列化
+                    # Convert to response format and ensure proper serialization
                     ranking_data = []
                     for statistics in statistics_data:
                         user_stats_resp = await UserStatisticsModel.transform(statistics, includes=include)
 
                         user_dict = user_stats_resp
 
-                        # 应用资源代理处理
+                        # Apply resource proxy processing
                         if settings.enable_asset_proxy:
                             try:
                                 user_dict = await replace_asset_urls(user_dict)
@@ -352,10 +355,10 @@ class RankingCacheService:
 
                         ranking_data.append(user_dict)
 
-                    # 缓存这一页的数据
+                    # Cache this page's data
                     await self.cache_ranking(ruleset, type, ranking_data, country, page)
 
-                    # 添加延迟避免数据库过载
+                    # Add delay to avoid database overload
                     if page < max_pages:
                         await asyncio.sleep(0.1)
 
@@ -375,7 +378,7 @@ class RankingCacheService:
         ruleset: GameMode,
         max_pages: int | None = None,
     ) -> None:
-        """刷新地区排行榜缓存"""
+        """Refresh country ranking cache."""
         if self._refreshing:
             logger.debug(f"Country ranking cache refresh already in progress for {ruleset}")
             return
@@ -387,15 +390,15 @@ class RankingCacheService:
         try:
             logger.info(f"Starting country ranking cache refresh for {ruleset}")
 
-            # 获取所有国家
+            # Get all countries
             from app.database import User
 
             countries = (await session.exec(select(User.country_code).distinct())).all()
 
-            # 计算每个国家的统计数据
+            # Calculate statistics for each country
             country_stats_list = []
             for country in countries:
-                if not country:  # 跳过空的国家代码
+                if not country:  # Skip empty country codes
                     continue
 
                 statistics = (
@@ -409,7 +412,7 @@ class RankingCacheService:
                     )
                 ).all()
 
-                if not statistics:  # 跳过没有数据的国家
+                if not statistics:  # Skip countries with no data
                     continue
 
                 pp = 0
@@ -430,20 +433,20 @@ class RankingCacheService:
                 country_stats["performance"] = round(pp)
                 country_stats_list.append(country_stats)
 
-            # 按表现分排序
+            # Sort by performance
             country_stats_list.sort(key=lambda x: x["performance"], reverse=True)
 
-            # 计算统计信息
+            # Calculate statistics
             stats = {
                 "total_countries": len(country_stats_list),
                 "last_updated": utcnow().isoformat(),
                 "ruleset": ruleset,
             }
 
-            # 缓存统计信息
+            # Cache statistics
             await self.cache_country_stats(ruleset, stats)
 
-            # 分页缓存数据（每页50个国家）
+            # Paginated data caching (50 countries per page)
             page_size = 50
             for page in range(1, max_pages + 1):
                 start_idx = (page - 1) * page_size
@@ -451,12 +454,12 @@ class RankingCacheService:
 
                 page_data = country_stats_list[start_idx:end_idx]
                 if not page_data:
-                    break  # 没有更多数据
+                    break  # No more data
 
-                # 缓存这一页的数据
+                # Cache this page's data
                 await self.cache_country_ranking(ruleset, page_data, page)
 
-                # 添加延迟避免Redis过载
+                # Add delay to avoid Redis overload
                 if page < max_pages and page_data:
                     await asyncio.sleep(0.1)
 
@@ -468,11 +471,11 @@ class RankingCacheService:
             self._refreshing = False
 
     async def refresh_all_rankings(self, session: AsyncSession) -> None:
-        """刷新所有排行榜缓存"""
+        """Refresh all ranking caches."""
         game_modes = [GameMode.OSU, GameMode.TAIKO, GameMode.FRUITS, GameMode.MANIA]
         ranking_types: list[Literal["performance", "score"]] = ["performance", "score"]
 
-        # 获取需要缓存的国家列表（活跃用户数量前20的国家）
+        # Get list of countries to cache (top 20 countries by active user count)
         from app.database import User
 
         from sqlmodel import func
@@ -491,26 +494,26 @@ class RankingCacheService:
 
         refresh_tasks = []
 
-        # 全球排行榜
+        # Global rankings
         for mode in game_modes:
             for ranking_type in ranking_types:
                 task = self.refresh_ranking_cache(session, mode, ranking_type)
                 refresh_tasks.append(task)
 
-        # 国家排行榜（仅前20个国家）
+        # Country rankings (top 20 countries only)
         for country in top_countries:
             for mode in game_modes:
                 for ranking_type in ranking_types:
                     task = self.refresh_ranking_cache(session, mode, ranking_type, country)
                     refresh_tasks.append(task)
 
-        # 地区排行榜
+        # Regional rankings
         for mode in game_modes:
             task = self.refresh_country_ranking_cache(session, mode)
             refresh_tasks.append(task)
 
-        # 并发执行刷新任务，但限制并发数
-        semaphore = asyncio.Semaphore(5)  # 最多同时5个任务
+        # Concurrent refresh with limited parallelism
+        semaphore = asyncio.Semaphore(5)  # Max 5 concurrent tasks
 
         async def bounded_refresh(task):
             async with semaphore:
@@ -531,12 +534,12 @@ class RankingCacheService:
         country: str | None = None,
         include_country_ranking: bool = True,
     ) -> None:
-        """使缓存失效"""
+        """Invalidate caches."""
         try:
             deleted_keys = 0
 
             if ruleset and type:
-                # 删除特定的用户排行榜缓存
+                # Delete specific user ranking cache
                 country_part = f":{country.upper()}" if country else ""
                 pattern = f"ranking:{ruleset}:{type}{country_part}:page:*"
                 keys = await self.redis.keys(pattern)
@@ -545,7 +548,7 @@ class RankingCacheService:
                     deleted_keys += len(keys)
                     logger.info(f"Invalidated {len(keys)} cache keys for {ruleset}:{type}")
             elif ruleset:
-                # 删除特定游戏模式的所有缓存
+                # Delete all caches for specific game mode
                 patterns = [
                     f"ranking:{ruleset}:*",
                     f"country_ranking:{ruleset}:*" if include_country_ranking else None,
@@ -557,7 +560,7 @@ class RankingCacheService:
                             await self.redis.delete(*keys)
                             deleted_keys += len(keys)
             else:
-                # 删除所有排行榜缓存
+                # Delete all ranking caches
                 patterns = ["ranking:*"]
                 if include_country_ranking:
                     patterns.append("country_ranking:*")
@@ -574,7 +577,7 @@ class RankingCacheService:
             logger.error(f"Error invalidating cache: {e}")
 
     async def invalidate_country_cache(self, ruleset: GameMode | None = None) -> None:
-        """使地区排行榜缓存失效"""
+        """Invalidate country ranking cache."""
         try:
             pattern = f"country_ranking:{ruleset}:*" if ruleset else "country_ranking:*"
 
@@ -586,7 +589,7 @@ class RankingCacheService:
             logger.error(f"Error invalidating country cache: {e}")
 
     async def invalidate_team_cache(self, ruleset: GameMode | None = None) -> None:
-        """使战队排行榜缓存失效"""
+        """Invalidate team ranking cache."""
         try:
             pattern = f"team_ranking:{ruleset}:*" if ruleset else "team_ranking:*"
 
@@ -598,17 +601,17 @@ class RankingCacheService:
             logger.error(f"Error invalidating team cache: {e}")
 
     async def get_cache_stats(self) -> dict:
-        """获取缓存统计信息"""
+        """Get cache statistics."""
         try:
-            # 获取用户排行榜缓存
+            # Get user ranking cache keys
             ranking_keys = await self.redis.keys("ranking:*")
-            # 获取地区排行榜缓存
+            # Get country ranking cache keys
             country_keys = await self.redis.keys("country_ranking:*")
 
             total_keys = ranking_keys + country_keys
             total_size = 0
 
-            for key in total_keys[:100]:  # 限制检查数量以避免性能问题
+            for key in total_keys[:100]:  # Limit check count to avoid performance issues
                 try:
                     size = await self.redis.memory_usage(key)
                     if size:
@@ -629,12 +632,12 @@ class RankingCacheService:
             return {"error": str(e)}
 
 
-# 全局缓存服务实例
+# Global cache service instance
 _ranking_cache_service: RankingCacheService | None = None
 
 
 def get_ranking_cache_service(redis: Redis) -> RankingCacheService:
-    """获取排行榜缓存服务实例"""
+    """Get ranking cache service instance."""
     global _ranking_cache_service
     if _ranking_cache_service is None:
         _ranking_cache_service = RankingCacheService(redis)
@@ -642,8 +645,8 @@ def get_ranking_cache_service(redis: Redis) -> RankingCacheService:
 
 
 async def schedule_ranking_refresh_task(session: AsyncSession, redis: Redis):
-    """定时排行榜刷新任务"""
-    # 默认启用排行榜缓存，除非明确禁用
+    """Scheduled ranking refresh task."""
+    # Ranking cache enabled by default unless explicitly disabled
     if not settings.enable_ranking_cache:
         return
 

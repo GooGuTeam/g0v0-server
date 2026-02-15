@@ -1,3 +1,9 @@
+"""Beatmapset database models and related utilities.
+
+This module provides models for beatmapsets (collections of beatmap difficulties),
+including metadata, covers, nominations, and transformation logic.
+"""
+
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, ClassVar, NotRequired, TypedDict
 
@@ -35,24 +41,33 @@ BeatmapCovers = TypedDict(
         "slimcover@2x": NotRequired[str | None],
     },
 )
+"""TypedDict for beatmapset cover image URLs."""
 
 
 class BeatmapHype(BaseModel):
+    """Beatmapset hype status."""
+
     current: int
     required: int
 
 
 class BeatmapAvailability(BaseModel):
+    """Beatmapset download availability information."""
+
     more_information: str | None = Field(default=None)
     download_disabled: bool | None = Field(default=None)
 
 
 class BeatmapNominations(SQLModel):
+    """Beatmapset nomination status."""
+
     current: int | None = Field(default=None)
     required: int | None = Field(default=None)
 
 
 class BeatmapNomination(TypedDict):
+    """Single nomination record."""
+
     beatmapset_id: int
     reset: bool
     user_id: int
@@ -60,16 +75,22 @@ class BeatmapNomination(TypedDict):
 
 
 class BeatmapDescription(TypedDict):
+    """Beatmapset description in bbcode and rendered HTML."""
+
     bbcode: NotRequired[str | None]
     description: NotRequired[str | None]
 
 
 class BeatmapTranslationText(BaseModel):
+    """Localized text for genre/language."""
+
     name: str
     id: int | None = None
 
 
 class BeatmapsetDict(TypedDict):
+    """TypedDict representation of a beatmapset for API responses."""
+
     id: int
     artist: str
     artist_unicode: str
@@ -117,6 +138,8 @@ class BeatmapsetDict(TypedDict):
 
 
 class BeatmapsetModel(DatabaseModel[BeatmapsetDict]):
+    """Base model for beatmapset data with transformation support."""
+
     BEATMAPSET_TRANSFORMER_INCLUDES: ClassVar[list[str]] = [
         "availability",
         "has_favourited",
@@ -446,6 +469,8 @@ class BeatmapsetModel(DatabaseModel[BeatmapsetDict]):
 
 
 class Beatmapset(AsyncAttrs, BeatmapsetModel, table=True):
+    """Database table model for beatmapsets."""
+
     __tablename__: str = "beatmapsets"
 
     # Beatmapset

@@ -1,5 +1,11 @@
-"""
-GeoLite2 Helper Class (asynchronous)
+"""GeoLite2 Helper Class (asynchronous).
+
+This module provides functionality for downloading, updating, and querying
+MaxMind GeoLite2 databases for IP geolocation and ASN lookups.
+
+Classes:
+    GeoIPHelper: Manages GeoLite2 database downloads and IP lookups.
+    GeoIPLookupResult: TypedDict for lookup results.
 """
 
 import asyncio
@@ -20,6 +26,21 @@ import maxminddb
 
 
 class GeoIPLookupResult(TypedDict, total=False):
+    """TypedDict for GeoIP lookup results.
+
+    Attributes:
+        ip: The queried IP address.
+        country_iso: ISO country code (e.g., 'US', 'JP').
+        country_name: Full country name in English.
+        city_name: City name in English.
+        latitude: Latitude coordinate as string.
+        longitude: Longitude coordinate as string.
+        time_zone: Timezone identifier (e.g., 'America/New_York').
+        postal_code: Postal/ZIP code.
+        asn: Autonomous System Number.
+        organization: ASN organization name.
+    """
+
     ip: Required[str]
     country_iso: str
     country_name: str
@@ -41,6 +62,19 @@ EDITIONS = {
 
 
 class GeoIPHelper:
+    """Helper class for managing and querying GeoLite2 databases.
+
+    Provides functionality to download, update, and query MaxMind GeoLite2
+    databases for IP geolocation (City) and ASN information.
+
+    Attributes:
+        dest_dir: Directory to store the database files.
+        license_key: MaxMind license key for downloads.
+        editions: List of database editions to manage ('City', 'ASN', etc.).
+        max_age_days: Maximum age of database before re-download.
+        timeout: HTTP request timeout in seconds.
+    """
+
     def __init__(
         self,
         dest_dir: str | Path = Path("./geoip"),
@@ -49,6 +83,16 @@ class GeoIPHelper:
         max_age_days: int = 8,
         timeout: float = 60.0,
     ):
+        """Initialize the GeoIP helper.
+
+        Args:
+            dest_dir: Directory to store database files. Defaults to './geoip'.
+            license_key: MaxMind license key. Can also be set via
+                MAXMIND_LICENSE_KEY environment variable.
+            editions: List of editions to manage. Defaults to ['City', 'ASN'].
+            max_age_days: Re-download if database is older. Defaults to 8.
+            timeout: HTTP request timeout in seconds. Defaults to 60.0.
+        """
         self.dest_dir = Path(dest_dir).expanduser()
         self.license_key = license_key or os.getenv("MAXMIND_LICENSE_KEY")
         self.editions = list(editions or ["City", "ASN"])
@@ -59,6 +103,15 @@ class GeoIPHelper:
 
     @staticmethod
     def _safe_extract(tar: tarfile.TarFile, path: Path) -> None:
+        """Safely extract a tarball to prevent path traversal attacks.
+
+        Args:
+            tar: The tarfile object to extract.
+            path: The destination path.
+
+        Raises:
+            RuntimeError: If an unsafe path is detected in the archive.
+        """
         base = path.resolve()
         for member in tar.getmembers():
             target = (base / member.name).resolve()
@@ -68,10 +121,12 @@ class GeoIPHelper:
 
     @staticmethod
     def _as_mapping(value: Any) -> dict[str, Any]:
+        """Convert a value to a dict, returning empty dict if not a dict."""
         return value if isinstance(value, dict) else {}
 
     @staticmethod
     def _as_str(value: Any, default: str = "") -> str:
+        """Convert a value to string with a default fallback."""
         if isinstance(value, str):
             return value
         if value is None:
@@ -80,20 +135,24 @@ class GeoIPHelper:
 
     @staticmethod
     def _as_int(value: Any) -> int | None:
+        """Convert a value to int, returning None if not an int."""
         return value if isinstance(value, int) else None
 
     @staticmethod
     def _extract_tarball(src: Path, dest: Path) -> None:
+        """Extract a gzipped tarball to a destination."""
         with tarfile.open(src, "r:gz") as tar:
             GeoIPHelper._safe_extract(tar, dest)
 
     @staticmethod
     def _find_mmdb(root: Path) -> Path | None:
+        """Find the first .mmdb file in a directory tree."""
         for candidate in root.rglob("*.mmdb"):
             return candidate
         return None
 
     def _latest_file_sync(self, edition_id: str) -> Path | None:
+        """Find the latest database file for an edition (sync version)."""
         directory = self.dest_dir
         if not directory.is_dir():
             return None
@@ -103,9 +162,22 @@ class GeoIPHelper:
         return max(candidates, key=lambda p: p.stat().st_mtime)
 
     async def _latest_file(self, edition_id: str) -> Path | None:
+        """Find the latest database file for an edition (async version)."""
         return await asyncio.to_thread(self._latest_file_sync, edition_id)
 
     async def _download_and_extract(self, edition_id: str) -> Path:
+        """Download and extract a GeoLite2 database.
+
+        Args:
+            edition_id: The edition ID to download (e.g., 'GeoLite2-City').
+
+        Returns:
+            Path to the extracted .mmdb file.
+
+        Raises:
+            ValueError: If the license key is not configured.
+            RuntimeError: If the .mmdb file is not found in the archive.
+        """
         if not self.license_key:
             raise ValueError("MaxMind License Key is missing. Please configure it via env MAXMIND_LICENSE_KEY.")
 
@@ -127,7 +199,7 @@ class GeoIPHelper:
             await asyncio.to_thread(self._extract_tarball, tgz_path, tmp_dir)
             mmdb_path = await asyncio.to_thread(self._find_mmdb, tmp_dir)
             if mmdb_path is None:
-                raise RuntimeError("未在压缩包中找到 .mmdb 文件")
+                raise RuntimeError(".mmdb file not found in the archive")
 
             await asyncio.to_thread(self.dest_dir.mkdir, parents=True, exist_ok=True)
             dst = self.dest_dir / mmdb_path.name
@@ -137,6 +209,11 @@ class GeoIPHelper:
             await asyncio.to_thread(shutil.rmtree, tmp_dir, ignore_errors=True)
 
     async def update(self, force: bool = False) -> None:
+        """Update GeoLite2 databases, downloading if needed.
+
+        Args:
+            force: Force re-download regardless of age. Defaults to False.
+        """
         async with self._update_lock:
             for edition in self.editions:
                 edition_id = EDITIONS[edition]
@@ -174,6 +251,14 @@ class GeoIPHelper:
                     self._readers[edition] = maxminddb.open_database(str(path))
 
     def lookup(self, ip: str) -> GeoIPLookupResult:
+        """Look up geolocation and ASN information for an IP address.
+
+        Args:
+            ip: The IP address to look up.
+
+        Returns:
+            GeoIPLookupResult containing location and ASN information.
+        """
         res: GeoIPLookupResult = {"ip": ip}
         city_reader = self._readers.get("City")
         if city_reader:
@@ -209,6 +294,7 @@ class GeoIPHelper:
         return res
 
     def close(self) -> None:
+        """Close all database readers and release resources."""
         for reader in self._readers.values():
             with suppress(Exception):
                 reader.close()

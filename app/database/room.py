@@ -1,6 +1,13 @@
+"""Multiplayer room database models.
+
+This module provides models for multiplayer rooms including playlists,
+participants, and room configuration.
+"""
+
 from datetime import datetime
 from typing import ClassVar, NotRequired, TypedDict
 
+from app.helpers import utcnow
 from app.models.room import (
     MatchType,
     QueueMode,
@@ -9,7 +16,6 @@ from app.models.room import (
     RoomPlaylistItemStats,
     RoomStatus,
 )
-from app.utils import utcnow
 
 from ._base import DatabaseModel, included, ondemand
 from .item_attempts_count import ItemAttemptsCount, ItemAttemptsCountDict, ItemAttemptsCountModel
@@ -24,6 +30,8 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 
 class RoomDict(TypedDict):
+    """TypedDict representation of a multiplayer room."""
+
     id: int
     name: str
     category: RoomCategory
@@ -49,6 +57,8 @@ class RoomDict(TypedDict):
 
 
 class RoomModel(DatabaseModel[RoomDict]):
+    """Base model for multiplayer rooms with transformation support."""
+
     SHOW_RESPONSE_INCLUDES: ClassVar[list[str]] = [
         "current_user_score.playlist_item_attempts",
         "host.country",
@@ -87,7 +97,7 @@ class RoomModel(DatabaseModel[RoomDict]):
     @field_validator("channel_id", mode="before")
     @classmethod
     def validate_channel_id(cls, v):
-        """将 None 转换为 0"""
+        """Convert None to 0 for channel_id."""
         if v is None:
             return 0
         return v
@@ -201,6 +211,8 @@ class RoomModel(DatabaseModel[RoomDict]):
 
 
 class Room(AsyncAttrs, RoomModel, table=True):
+    """Database table for multiplayer rooms."""
+
     __tablename__: str = "rooms"
 
     host_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
@@ -217,6 +229,8 @@ class Room(AsyncAttrs, RoomModel, table=True):
 
 
 class APIUploadedRoom(SQLModel):
+    """Model for room data uploaded via API."""
+
     name: str = Field(index=True)
     category: RoomCategory = Field(default=RoomCategory.NORMAL, index=True)
     status: RoomStatus

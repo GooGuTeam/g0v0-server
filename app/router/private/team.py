@@ -1,3 +1,8 @@
+"""Team management endpoints.
+
+Provides APIs for creating, updating, managing teams and handling team membership requests.
+"""
+
 import hashlib
 from typing import Annotated
 
@@ -6,6 +11,7 @@ from app.database.user import User, UserModel
 from app.dependencies.database import Database, Redis
 from app.dependencies.storage import StorageService
 from app.dependencies.user import ClientUser
+from app.helpers import api_doc, check_image, utcnow
 from app.models.error import ErrorType, RequestError
 from app.models.notification import (
     TeamApplicationAccept,
@@ -15,7 +21,6 @@ from app.models.notification import (
 from app.models.score import GameMode
 from app.router.notification import server
 from app.service.ranking_cache_service import get_ranking_cache_service
-from app.utils import api_doc, check_image, utcnow
 
 from .router import router
 
@@ -23,25 +28,26 @@ from fastapi import File, Form, Path, Query, Request
 from sqlmodel import col, exists, select
 
 
-@router.post("/team", name="创建战队", response_model=Team, tags=["战队", "g0v0 API"])
+@router.post(
+    "/team",
+    name="Create team",
+    response_model=Team,
+    tags=["Team", "g0v0 API"],
+    description="Create a new team.",
+)
 async def create_team(
     session: Database,
     storage: StorageService,
     current_user: ClientUser,
-    flag: Annotated[bytes, File(..., description="战队图标文件")],
-    cover: Annotated[bytes, File(..., description="战队头图文件")],
-    name: Annotated[str, Form(max_length=100, description="战队名称")],
-    short_name: Annotated[str, Form(max_length=10, description="战队缩写")],
+    flag: Annotated[bytes, File(..., description="Team flag file")],
+    cover: Annotated[bytes, File(..., description="Team cover file")],
+    name: Annotated[str, Form(max_length=100, description="Team name")],
+    short_name: Annotated[str, Form(max_length=10, description="Team short name")],
     redis: Redis,
-    playmode: Annotated[GameMode, Form(description="战队游戏模式")] = GameMode.OSU,
-    description: Annotated[str | None, Form(description="战队简介")] = None,
-    website: Annotated[str | None, Form(description="战队网址")] = None,
+    playmode: Annotated[GameMode, Form(description="Team game mode")] = GameMode.OSU,
+    description: Annotated[str | None, Form(description="Team description")] = None,
+    website: Annotated[str | None, Form(description="Team website")] = None,
 ):
-    """创建战队。
-
-    flag 限制 240x120, 2MB; cover 限制 3000x2000, 10MB
-    支持的图片格式: PNG、JPEG、GIF
-    """
     if await current_user.is_restricted(session):
         raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
 
@@ -99,26 +105,27 @@ async def create_team(
     return team
 
 
-@router.patch("/team/{team_id}", name="修改战队", response_model=Team, tags=["战队", "g0v0 API"])
+@router.patch(
+    "/team/{team_id}",
+    name="Update team",
+    response_model=Team,
+    tags=["Team", "g0v0 API"],
+    description="Update team information.",
+)
 async def update_team(
     team_id: int,
     session: Database,
     storage: StorageService,
     current_user: ClientUser,
-    flag: Annotated[bytes | None, File(description="战队图标文件")] = None,
-    cover: Annotated[bytes | None, File(description="战队头图文件")] = None,
-    name: Annotated[str | None, Form(max_length=100, description="战队名称")] = None,
-    short_name: Annotated[str | None, Form(max_length=10, description="战队缩写")] = None,
-    leader_id: Annotated[int | None, Form(description="战队队长 ID")] = None,
-    playmode: Annotated[GameMode, Form(description="战队游戏模式")] = GameMode.OSU,
-    description: Annotated[str | None, Form(description="战队简介")] = None,
-    website: Annotated[str | None, Form(description="战队网址")] = None,
+    flag: Annotated[bytes | None, File(description="Team flag file")] = None,
+    cover: Annotated[bytes | None, File(description="Team cover file")] = None,
+    name: Annotated[str | None, Form(max_length=100, description="Team name")] = None,
+    short_name: Annotated[str | None, Form(max_length=10, description="Team short name")] = None,
+    leader_id: Annotated[int | None, Form(description="Team leader ID")] = None,
+    playmode: Annotated[GameMode, Form(description="Team game mode")] = GameMode.OSU,
+    description: Annotated[str | None, Form(description="Team description")] = None,
+    website: Annotated[str | None, Form(description="Team website")] = None,
 ):
-    """修改战队。
-
-    flag 限制 240x120, 2MB; cover 限制 3000x2000, 10MB
-    支持的图片格式: PNG、JPEG、GIF
-    """
     if await current_user.is_restricted(session):
         raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
 
@@ -186,10 +193,16 @@ async def update_team(
     return team
 
 
-@router.delete("/team/{team_id}", name="删除战队", status_code=204, tags=["战队", "g0v0 API"])
+@router.delete(
+    "/team/{team_id}",
+    name="Delete team",
+    status_code=204,
+    tags=["Team", "g0v0 API"],
+    description="Delete a team.",
+)
 async def delete_team(
     session: Database,
-    team_id: Annotated[int, Path(..., description="战队 ID")],
+    team_id: Annotated[int, Path(..., description="Team ID")],
     current_user: ClientUser,
     redis: Redis,
 ):
@@ -216,11 +229,11 @@ async def delete_team(
 
 @router.get(
     "/team/{team_id}",
-    name="查询战队",
-    tags=["战队", "g0v0 API"],
+    name="Get team",
+    tags=["Team", "g0v0 API"],
     responses={
         200: api_doc(
-            "战队信息",
+            "Team information",
             {
                 "team": TeamResp,
                 "members": list[UserModel],
@@ -229,11 +242,12 @@ async def delete_team(
             name="TeamQueryResp",
         )
     },
+    description="Get team information.",
 )
 async def get_team(
     session: Database,
-    team_id: Annotated[int, Path(..., description="战队 ID")],
-    gamemode: Annotated[GameMode | None, Query(description="游戏模式")] = None,
+    team_id: Annotated[int, Path(..., description="Team ID")],
+    gamemode: Annotated[GameMode | None, Query(description="Game mode")] = None,
 ):
     members = (
         await session.exec(
@@ -249,10 +263,16 @@ async def get_team(
     }
 
 
-@router.post("/team/{team_id}/request", name="请求加入战队", status_code=204, tags=["战队", "g0v0 API"])
+@router.post(
+    "/team/{team_id}/request",
+    name="Request to join team",
+    status_code=204,
+    tags=["Team", "g0v0 API"],
+    description="Request to join a team.",
+)
 async def request_join_team(
     session: Database,
-    team_id: Annotated[int, Path(..., description="战队 ID")],
+    team_id: Annotated[int, Path(..., description="Team ID")],
     current_user: ClientUser,
 ):
     if await current_user.is_restricted(session):
@@ -278,13 +298,25 @@ async def request_join_team(
     await server.new_private_notification(TeamApplicationStore.init(team_request))
 
 
-@router.post("/team/{team_id}/{user_id}/request", name="接受加入请求", status_code=204, tags=["战队", "g0v0 API"])
-@router.delete("/team/{team_id}/{user_id}/request", name="拒绝加入请求", status_code=204, tags=["战队", "g0v0 API"])
+@router.post(
+    "/team/{team_id}/{user_id}/request",
+    name="Accept join request",
+    status_code=204,
+    tags=["Team", "g0v0 API"],
+    description="Handle team join request (accept or reject).",
+)
+@router.delete(
+    "/team/{team_id}/{user_id}/request",
+    name="Reject join request",
+    status_code=204,
+    tags=["Team", "g0v0 API"],
+    description="Handle team join request (accept or reject).",
+)
 async def handle_request(
     req: Request,
     session: Database,
-    team_id: Annotated[int, Path(..., description="战队 ID")],
-    user_id: Annotated[int, Path(..., description="用户 ID")],
+    team_id: Annotated[int, Path(..., description="Team ID")],
+    user_id: Annotated[int, Path(..., description="User ID")],
     current_user: ClientUser,
     redis: Redis,
 ):
@@ -324,11 +356,17 @@ async def handle_request(
     await session.commit()
 
 
-@router.delete("/team/{team_id}/{user_id}", name="踢出成员 / 退出战队", status_code=204, tags=["战队", "g0v0 API"])
+@router.delete(
+    "/team/{team_id}/{user_id}",
+    name="Kick member / Leave team",
+    status_code=204,
+    tags=["Team", "g0v0 API"],
+    description="Kick a member from team or leave the team.",
+)
 async def kick_member(
     session: Database,
-    team_id: Annotated[int, Path(..., description="战队 ID")],
-    user_id: Annotated[int, Path(..., description="用户 ID")],
+    team_id: Annotated[int, Path(..., description="Team ID")],
+    user_id: Annotated[int, Path(..., description="User ID")],
     current_user: ClientUser,
     redis: Redis,
 ):

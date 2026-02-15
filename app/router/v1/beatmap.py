@@ -1,3 +1,9 @@
+"""Beatmap endpoint module for osu! API v1.
+
+This module provides endpoints for retrieving beatmap information compatible
+with the legacy osu! API v1 specification.
+"""
+
 from datetime import datetime
 from typing import Annotated, Literal
 
@@ -21,6 +27,55 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 
 class V1Beatmap(AllStrModel):
+    """V1 API beatmap response model.
+
+    This model represents a beatmap in the format expected by the legacy osu! API v1.
+    All fields are serialized to strings for compatibility.
+
+    Attributes:
+        approved: Beatmap rank status (ranked, approved, etc.).
+        submit_date: Date the beatmapset was submitted.
+        approved_date: Date the beatmapset was ranked/approved.
+        last_update: Date the beatmap was last updated.
+        artist: Artist name (romanized).
+        artist_unicode: Artist name (original).
+        beatmap_id: Unique beatmap ID.
+        beatmapset_id: Parent beatmapset ID.
+        bpm: Beats per minute.
+        creator: Mapper username.
+        creator_id: Mapper user ID.
+        difficultyrating: Star rating.
+        diff_aim: Aim difficulty (osu! standard only).
+        diff_speed: Speed difficulty (osu! standard only).
+        diff_size: Circle Size (CS).
+        diff_overall: Overall Difficulty (OD).
+        diff_approach: Approach Rate (AR).
+        diff_drain: HP Drain.
+        hit_length: Playable length in seconds.
+        source: Source material.
+        genre_id: Genre classification.
+        language_id: Language classification.
+        title: Song title (romanized).
+        title_unicode: Song title (original).
+        total_length: Total length including breaks.
+        version: Difficulty name.
+        file_md5: Beatmap file checksum.
+        mode: Game mode (0=osu!, 1=taiko, 2=catch, 3=mania).
+        tags: Space-separated tags.
+        favourite_count: Number of favorites.
+        rating: User rating.
+        playcount: Total play count.
+        passcount: Total pass count.
+        count_normal: Number of hit circles.
+        count_slider: Number of sliders.
+        count_spinner: Number of spinners.
+        max_combo: Maximum achievable combo.
+        storyboard: Whether beatmapset has storyboard.
+        video: Whether beatmapset has video.
+        download_unavailable: Whether download is disabled.
+        audio_unavailable: Whether audio is unavailable.
+    """
+
     approved: BeatmapRankStatus
     submit_date: datetime
     approved_date: datetime | None = None
@@ -71,6 +126,17 @@ class V1Beatmap(AllStrModel):
         diff_aim: float | None = None,
         diff_speed: float | None = None,
     ) -> "V1Beatmap":
+        """Create a V1Beatmap instance from a database beatmap record.
+
+        Args:
+            session: Database session for querying related data.
+            db_beatmap: The beatmap database record.
+            diff_aim: Pre-calculated aim difficulty (optional).
+            diff_speed: Pre-calculated speed difficulty (optional).
+
+        Returns:
+            A V1Beatmap instance with all fields populated.
+        """
         return cls(
             approved=db_beatmap.beatmap_status,
             submit_date=db_beatmap.beatmapset.submitted_date,
@@ -139,25 +205,50 @@ class V1Beatmap(AllStrModel):
 
 @router.get(
     "/get_beatmaps",
-    name="获取谱面",
+    name="Get Beatmaps",
     response_model=list[V1Beatmap],
-    description="根据指定条件搜索谱面。",
+    description="Search for beatmaps based on specified criteria.",
 )
 async def get_beatmaps(
     session: Database,
     redis: Redis,
     fetcher: Fetcher,
-    since: Annotated[datetime | None, Query(description="自指定时间后拥有排行榜的谱面")] = None,
-    beatmapset_id: Annotated[int | None, Query(alias="s", description="谱面集 ID")] = None,
-    beatmap_id: Annotated[int | None, Query(alias="b", description="谱面 ID")] = None,
-    user: Annotated[str | None, Query(alias="u", description="谱师")] = None,
-    type: Annotated[Literal["string", "id"] | None, Query(description="用户类型：string 用户名称 / id 用户 ID")] = None,
+    since: Annotated[datetime | None, Query(description="Beatmaps ranked after this date")] = None,
+    beatmapset_id: Annotated[int | None, Query(alias="s", description="Beatmapset ID")] = None,
+    beatmap_id: Annotated[int | None, Query(alias="b", description="Beatmap ID")] = None,
+    user: Annotated[str | None, Query(alias="u", description="Mapper")] = None,
+    type: Annotated[
+        Literal["string", "id"] | None, Query(description="User type: string for username / id for user ID")
+    ] = None,
     ruleset_id: Annotated[int | None, Query(alias="m", description="Ruleset ID")] = None,  # TODO
-    convert: Annotated[bool, Query(alias="a", description="转谱")] = False,  # TODO
-    checksum: Annotated[str | None, Query(alias="h", description="谱面文件 MD5")] = None,
-    limit: Annotated[int, Query(ge=1, le=500, description="返回结果数量限制")] = 500,
-    mods: Annotated[int, Query(description="应用到谱面属性的 MOD")] = 0,
+    convert: Annotated[bool, Query(alias="a", description="Include converts")] = False,  # TODO
+    checksum: Annotated[str | None, Query(alias="h", description="Beatmap file MD5 hash")] = None,
+    limit: Annotated[int, Query(ge=1, le=500, description="Maximum number of results to return")] = 500,
+    mods: Annotated[int, Query(description="Mods to apply to beatmap attributes")] = 0,
 ):
+    """Retrieve beatmaps based on search criteria.
+
+    This endpoint allows searching for beatmaps using various filters such as
+    beatmap ID, beatmapset ID, mapper, or ranking date.
+
+    Args:
+        session: Database session.
+        redis: Redis connection for caching.
+        fetcher: External data fetcher.
+        since: Return beatmaps ranked after this date.
+        beatmapset_id: Filter by beatmapset ID.
+        beatmap_id: Filter by specific beatmap ID.
+        user: Filter by mapper username or ID.
+        type: Interpret user parameter as 'string' (username) or 'id'.
+        ruleset_id: Filter by game mode (not yet implemented).
+        convert: Include converted beatmaps (not yet implemented).
+        checksum: Filter by beatmap file MD5 hash.
+        limit: Maximum number of results (1-500, default 500).
+        mods: Mods to apply when calculating difficulty attributes.
+
+    Returns:
+        List of V1Beatmap objects matching the criteria.
+    """
     beatmaps: list[Beatmap] = []
     results = []
     if beatmap_id is not None:

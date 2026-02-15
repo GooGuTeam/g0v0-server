@@ -1,6 +1,7 @@
-"""
-Scheduled Update Service
-Periodically update the MaxMind GeoIP database
+"""GeoIP database scheduled update service.
+
+Provides automatic MaxMind GeoIP database updates and initialization.
+The database is used for IP-based geolocation of users.
 """
 
 from app.config import settings
@@ -17,9 +18,10 @@ from app.log import logger
     id="geoip_weekly_update",
     name="Weekly GeoIP database update",
 )
-async def update_geoip_database():
-    """
-    Asynchronous task to update the GeoIP database
+async def update_geoip_database() -> None:
+    """Update the GeoIP database on a weekly schedule.
+
+    Downloads the latest MaxMind GeoIP database if an update is available.
     """
     try:
         logger.info("Starting scheduled GeoIP database update...")
@@ -30,9 +32,11 @@ async def update_geoip_database():
         logger.error(f"Scheduled GeoIP database update failed: {exc}")
 
 
-async def init_geoip():
-    """
-    Asynchronously initialize the GeoIP database
+async def init_geoip() -> None:
+    """Initialize the GeoIP database during application startup.
+
+    Downloads the GeoIP database if not present or outdated.
+    Failures are logged but do not block application startup.
     """
     try:
         geoip = get_geoip_helper()

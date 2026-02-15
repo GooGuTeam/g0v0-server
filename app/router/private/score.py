@@ -1,3 +1,8 @@
+"""Score management endpoints.
+
+Provides API for users to delete their own scores (if enabled).
+"""
+
 from app.config import settings
 from app.database.score import Score
 from app.dependencies.database import Database, Redis
@@ -14,9 +19,10 @@ if settings.allow_delete_scores:
 
     @router.delete(
         "/score/{score_id}",
-        name="删除指定ID的成绩",
-        tags=["成绩", "g0v0 API"],
+        name="Delete score by ID",
+        tags=["Score", "g0v0 API"],
         status_code=204,
+        description="Delete a score.",
     )
     async def delete_score(
         session: Database,
@@ -26,18 +32,8 @@ if settings.allow_delete_scores:
         current_user: ClientUser,
         storage_service: StorageService,
     ):
-        """删除成绩
-
-        删除成绩，同时删除对应的统计信息、排行榜分数、pp、回放文件
-
-        参数:
-        - score_id: 成绩ID
-
-        错误情况:
-        - 404: 找不到指定成绩
-        """
         if await current_user.is_restricted(session):
-            # avoid deleting the evidence of cheating
+            # Avoid deleting evidence of cheating
             raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
 
         score = await session.get(Score, score_id)

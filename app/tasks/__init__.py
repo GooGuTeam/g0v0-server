@@ -1,5 +1,11 @@
-# ruff: noqa: F401
+"""Application tasks module.
 
+This module provides scheduled background tasks and startup/shutdown tasks
+for the application, including cache management, database cleanup,
+rank calculation, and various data synchronization jobs.
+"""
+
+# ruff: noqa: F401
 
 from . import (
     beatmapset_update,

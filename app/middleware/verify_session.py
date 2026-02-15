@@ -12,9 +12,9 @@ from app.const import SUPPORT_TOTP_VERIFICATION_VER
 from app.database.user import User
 from app.database.verification import LoginSession
 from app.dependencies.database import get_redis, with_db
+from app.helpers import extract_user_agent
 from app.log import log
 from app.service.verification_service import LoginSessionService
-from app.utils import extract_user_agent
 
 from fastapi import Request, Response, status
 from fastapi.responses import JSONResponse

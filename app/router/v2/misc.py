@@ -1,3 +1,8 @@
+"""Miscellaneous API endpoints.
+
+This module contains various utility endpoints such as seasonal backgrounds.
+"""
+
 from datetime import UTC, datetime
 
 from app.config import settings
@@ -8,16 +13,22 @@ from pydantic import BaseModel
 
 
 class Background(BaseModel):
-    """季节背景图单项。
-    - url: 图片链接地址。"""
+    """Single seasonal background item.
+
+    Attributes:
+        url: The URL of the background image.
+    """
 
     url: str
 
 
 class BackgroundsResp(BaseModel):
-    """季节背景图返回模型。
-    - ends_at: 结束时间（若为远未来表示长期有效）。
-    - backgrounds: 背景图列表。"""
+    """Response model for seasonal backgrounds.
+
+    Attributes:
+        ends_at: End time of the seasonal event (far future indicates permanent availability).
+        backgrounds: List of background images.
+    """
 
     ends_at: datetime = datetime(year=9999, month=12, day=31, tzinfo=UTC)
     backgrounds: list[Background]
@@ -26,9 +37,14 @@ class BackgroundsResp(BaseModel):
 @router.get(
     "/seasonal-backgrounds",
     response_model=BackgroundsResp,
-    tags=["杂项"],
-    name="获取季节背景图列表",
-    description="获取当前季节背景图列表。",
+    tags=["Miscellaneous"],
+    name="Get seasonal backgrounds",
+    description="Get the list of current seasonal background images.",
 )
-async def get_seasonal_backgrounds():
+async def get_seasonal_backgrounds() -> BackgroundsResp:
+    """Retrieve the list of seasonal background images.
+
+    Returns:
+        BackgroundsResp: The seasonal backgrounds response containing image URLs.
+    """
     return BackgroundsResp(backgrounds=[Background(url=url) for url in settings.seasonal_backgrounds])

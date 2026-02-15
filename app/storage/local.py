@@ -1,3 +1,12 @@
+"""Local filesystem storage service implementation.
+
+This module provides a storage service implementation using the local
+filesystem for file storage.
+
+Classes:
+    LocalStorageService: Storage service using local filesystem.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -10,14 +19,39 @@ import aiofiles
 
 
 class LocalStorageService(StorageService):
+    """Storage service implementation using local filesystem.
+
+    Stores files directly on the local filesystem with path-based
+    organization.
+
+    Attributes:
+        storage_path: The root directory for file storage.
+    """
+
     def __init__(
         self,
         storage_path: str,
     ):
+        """Initialize the local storage service.
+
+        Args:
+            storage_path: The root directory for file storage.
+        """
         self.storage_path = Path(storage_path).resolve()
         self.storage_path.mkdir(parents=True, exist_ok=True)
 
     def _get_file_path(self, file_path: str) -> Path:
+        """Get the full filesystem path for a file.
+
+        Args:
+            file_path: The relative file path.
+
+        Returns:
+            The full filesystem path.
+
+        Raises:
+            ValueError: If the path would escape the storage directory.
+        """
         clean_path = file_path.lstrip("/")
         full_path = self.storage_path / clean_path
 

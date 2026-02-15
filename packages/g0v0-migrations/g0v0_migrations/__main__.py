@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 from pathlib import Path
 
-from g0v0_migrations.model import ContextObject, G0v0ServerDatabaseConfig
+from g0v0_migrations.model import ContextObject, G0v0ServerConfig
 from g0v0_migrations.utils import detect_g0v0_server_path, get_plugin_id
 
 import alembic.command
@@ -46,10 +46,12 @@ def _ensure_env(obj: ContextObject, autogenerate: bool = False):
                         ),
                     )
             dest_file.write_text(txt, encoding="utf-8")
-    db_config = G0v0ServerDatabaseConfig(_env_file=obj["g0v0_server_path"] / ".env")  # pyright: ignore[reportCallIssue]
+
     alembic_config = obj["alembic_config"]
     original_url = obj["alembic_config"].get_section_option(alembic_config.config_ini_section, "sqlalchemy.url")
-    alembic_config.set_section_option(alembic_config.config_ini_section, "sqlalchemy.url", db_config.database_url)
+    alembic_config.set_section_option(
+        alembic_config.config_ini_section, "sqlalchemy.url", obj["g0v0_server_config"].database_url
+    )
     try:
         yield
     finally:
@@ -135,11 +137,14 @@ def g0v0_migrate(
             alembic_config.config_ini_section, "script_location", cwd.joinpath("migrations").as_posix()
         )
 
+    g0v0_config = G0v0ServerConfig(_env_file=g0v0_server_path / ".env")  # pyright: ignore[reportCallIssue]
+
     obj: ContextObject = {
         "g0v0_server_path": g0v0_server_path,
         "alembic_config": alembic_config,
         "plugin_path": cwd,
         "plugin_id": plugin_id,
+        "g0v0_server_config": g0v0_config,
     }
     ctx.obj = obj
 
@@ -385,32 +390,34 @@ def upgrade_all(ctx: click.Context):
     click.echo("Upgrading g0v0-server...")
     with _ensure_env(obj):
         alembic.command.upgrade(obj["alembic_config"], "head")
+
     # Upgrade plugins
-    plugins_path = obj["g0v0_server_path"].joinpath("plugins")
-    if not plugins_path.exists():
-        click.echo("No plugins directory found, skipping plugin upgrades.")
-        return
-    for plugin_dir in plugins_path.iterdir():
-        if not plugin_dir.is_dir():
-            continue
-        try:
-            plugin_id = get_plugin_id(plugin_dir)
-        except ValueError as e:
-            click.echo(f"{e}, skipping...")
-            continue
-        click.echo(f"Upgrading plugin {plugin_id}...")
-        alembic_config = obj["alembic_config"]
-        alembic_config.set_section_option(
-            alembic_config.config_ini_section, "script_location", plugin_dir.joinpath("migrations").as_posix()
-        )
-        with _ensure_env(
-            {
-                **obj,
-                "plugin_id": plugin_id,
-                "plugin_path": plugin_dir,
-            }
-        ):
-            alembic.command.upgrade(obj["alembic_config"], "head")
+    for plugin_dir in obj["g0v0_server_config"].plugin_dirs:
+        plugins_path = obj["g0v0_server_path"].joinpath(plugin_dir)
+        if not plugins_path.exists():
+            click.echo("No plugins directory found, skipping plugin upgrades.")
+            return
+        for plugin_dir in plugins_path.iterdir():
+            if not plugin_dir.is_dir():
+                continue
+            try:
+                plugin_id = get_plugin_id(plugin_dir)
+            except ValueError as e:
+                click.echo(f"{e}, skipping...")
+                continue
+            click.echo(f"Upgrading plugin {plugin_id}... (directory: {plugin_dir})")
+            alembic_config = obj["alembic_config"]
+            alembic_config.set_section_option(
+                alembic_config.config_ini_section, "script_location", plugin_dir.joinpath("migrations").as_posix()
+            )
+            with _ensure_env(
+                {
+                    **obj,
+                    "plugin_id": plugin_id,
+                    "plugin_path": plugin_dir,
+                }
+            ):
+                alembic.command.upgrade(obj["alembic_config"], "head")
 
 
 if __name__ == "__main__":

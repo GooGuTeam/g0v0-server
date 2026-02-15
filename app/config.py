@@ -514,7 +514,7 @@ CALCULATOR_CONFIG='{}'
 
     # 表现计算设置
     calculator: Annotated[
-        Literal["rosu", "performance_server"],
+        str,
         Field(default="performance_server", description="表现分计算器"),
         "表现计算设置",
     ]
@@ -713,6 +713,12 @@ CALCULATOR_CONFIG='{}'
         LocalStorageSettings | CloudflareR2Settings | AWSS3StorageSettings,
         Field(default=LocalStorageSettings(), description="存储服务配置 (JSON 格式)"),
         "存储服务设置",
+    ]
+
+    plugin_dirs: Annotated[
+        list[str],
+        Field(default=["./plugins"], description="插件目录列表"),
+        "插件设置",
     ]
 
     @field_validator("storage_settings", mode="after")

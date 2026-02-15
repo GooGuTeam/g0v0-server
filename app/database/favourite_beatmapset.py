@@ -1,3 +1,8 @@
+"""Favourite beatmapset database models.
+
+This module tracks users' favourite/bookmarked beatmapsets.
+"""
+
 import datetime
 
 from .beatmapset import Beatmapset
@@ -16,6 +21,8 @@ from sqlmodel import (
 
 
 class FavouriteBeatmapset(AsyncAttrs, SQLModel, table=True):
+    """Records user favourites for beatmapsets."""
+
     __tablename__: str = "favourite_beatmapset"
 
     id: int = Field(

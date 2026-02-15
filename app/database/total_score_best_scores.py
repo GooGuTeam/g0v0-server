@@ -1,6 +1,11 @@
+"""Total score best scores database models.
+
+This module tracks users' best total scores for each beatmap/mode combination.
+"""
+
 from typing import TYPE_CHECKING
 
-from app.calculator import calculate_score_to_level
+from app.calculating import calculate_score_to_level
 from app.models.score import GameMode, Rank
 
 from .statistics import UserStatistics
@@ -27,6 +32,8 @@ if TYPE_CHECKING:
 
 
 class TotalScoreBestScore(SQLModel, table=True):
+    """Tracks users' best total scores for ranking purposes."""
+
     __tablename__: str = "total_score_best_scores"
     __table_args__ = (
         Index("ix_total_score_best_scores_user_mode_score", "user_id", "gamemode", "score_id"),

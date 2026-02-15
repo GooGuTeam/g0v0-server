@@ -170,7 +170,7 @@ found = await session.scalar(exists_stmt)
 ### 耗时任务
 
 - 如果这个任务来自 API Router，请使用 FastAPI 提供的 [`BackgroundTasks`](https://fastapi.tiangolo.com/tutorial/background-tasks)
-- 其他情况，使用 `app.utils` 的 `bg_tasks`，它提供了与 FastAPI 的 `BackgroundTasks` 类似的功能。
+- 其他情况，使用 `app.helpers` 的 `bg_tasks`，它提供了与 FastAPI 的 `BackgroundTasks` 类似的功能。
 
 ---
 

@@ -1,9 +1,15 @@
+"""User statistics database models.
+
+This module provides models for user performance statistics
+including PP, rank, play counts, and accuracy.
+"""
+
 from datetime import timedelta
 import math
 from typing import TYPE_CHECKING, ClassVar, NotRequired, TypedDict
 
+from app.helpers import utcnow
 from app.models.score import GameMode
-from app.utils import utcnow
 
 from ._base import DatabaseModel, included, ondemand
 from .rank_history import RankHistory
@@ -27,6 +33,8 @@ if TYPE_CHECKING:
 
 
 class UserStatisticsDict(TypedDict):
+    """TypedDict representation of user statistics."""
+
     mode: GameMode
     count_100: int
     count_300: int
@@ -51,6 +59,8 @@ class UserStatisticsDict(TypedDict):
 
 
 class UserStatisticsModel(DatabaseModel[UserStatisticsDict]):
+    """Base model for user statistics with transformation support."""
+
     RANKING_INCLUDES: ClassVar[list[str]] = [
         "user.country",
         "user.cover",
@@ -78,12 +88,12 @@ class UserStatisticsModel(DatabaseModel[UserStatisticsDict]):
     @field_validator("mode", mode="before")
     @classmethod
     def validate_mode(cls, v):
-        """将字符串转换为 GameMode 枚举"""
+        """Convert string to GameMode enum."""
         if isinstance(v, str):
             try:
                 return GameMode(v)
             except ValueError:
-                # 如果转换失败，返回默认值
+                # If conversion fails, return default value
                 return GameMode.OSU
         return v
 
@@ -144,6 +154,8 @@ class UserStatisticsModel(DatabaseModel[UserStatisticsDict]):
 
 
 class UserStatistics(AsyncAttrs, UserStatisticsModel, table=True):
+    """Database table for user statistics per game mode."""
+
     __tablename__: str = "lazer_user_statistics"
     id: int | None = Field(default=None, primary_key=True)
     user_id: int = Field(
@@ -166,6 +178,16 @@ class UserStatistics(AsyncAttrs, UserStatisticsModel, table=True):
 
 
 async def get_rank(session: AsyncSession, statistics: UserStatistics, country: str | None = None) -> int | None:
+    """Get the global or country rank for a user's statistics.
+
+    Args:
+        session: Database session.
+        statistics: The user statistics record.
+        country: Optional country code to get country rank.
+
+    Returns:
+        The rank, or None if unranked.
+    """
     from .user import User
 
     query = select(

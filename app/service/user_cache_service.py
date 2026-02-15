@@ -1,6 +1,6 @@
-"""
-用户缓存服务
-用于缓存用户信息，提供热缓存和实时刷新功能
+"""User cache service.
+
+Caches user information with hot caching and real-time refresh capabilities.
 """
 
 import json
@@ -12,10 +12,9 @@ from app.database import User
 from app.database.score import LegacyScoreResp
 from app.database.user import UserDict, UserModel
 from app.dependencies.database import with_db
-from app.helpers.asset_proxy_helper import replace_asset_urls
+from app.helpers import replace_asset_urls, safe_json_dumps
 from app.log import logger
 from app.models.score import GameMode
-from app.utils import safe_json_dumps
 
 from redis.asyncio import Redis
 from sqlmodel import col, select
@@ -26,7 +25,11 @@ if TYPE_CHECKING:
 
 
 class UserCacheService:
-    """用户缓存服务"""
+    """User cache service.
+
+    Provides caching for user data, scores, and beatmapsets
+    with invalidation support.
+    """
 
     def __init__(self, redis: Redis):
         self.redis = redis
@@ -34,13 +37,13 @@ class UserCacheService:
         self._background_tasks: set = set()
 
     def _get_v1_user_cache_key(self, user_id: int, ruleset: GameMode | None = None) -> str:
-        """生成 V1 用户缓存键"""
+        """Generate V1 user cache key."""
         if ruleset:
             return f"v1_user:{user_id}:ruleset:{ruleset}"
         return f"v1_user:{user_id}"
 
     async def get_v1_user_from_cache(self, user_id: int, ruleset: GameMode | None = None) -> dict | None:
-        """从缓存获取 V1 用户信息"""
+        """Get V1 user info from cache."""
         try:
             cache_key = self._get_v1_user_cache_key(user_id, ruleset)
             cached_data = await self.redis.get(cache_key)
@@ -59,7 +62,7 @@ class UserCacheService:
         ruleset: GameMode | None = None,
         expire_seconds: int | None = None,
     ):
-        """缓存 V1 用户信息"""
+        """Cache V1 user info."""
         try:
             if expire_seconds is None:
                 expire_seconds = settings.user_cache_expire_seconds
@@ -71,9 +74,9 @@ class UserCacheService:
             logger.error(f"Error caching V1 user: {e}")
 
     async def invalidate_v1_user_cache(self, user_id: int):
-        """使 V1 用户缓存失效"""
+        """Invalidate V1 user cache."""
         try:
-            # 删除 V1 用户信息缓存
+            # Delete V1 user info cache
             pattern = f"v1_user:{user_id}*"
             keys = await self.redis.keys(pattern)
             if keys:
@@ -83,7 +86,7 @@ class UserCacheService:
             logger.error(f"Error invalidating V1 user cache: {e}")
 
     def _get_user_cache_key(self, user_id: int, ruleset: GameMode | None = None) -> str:
-        """生成用户缓存键"""
+        """Generate user cache key."""
         if ruleset:
             return f"user:{user_id}:ruleset:{ruleset}"
         return f"user:{user_id}"
@@ -98,7 +101,7 @@ class UserCacheService:
         offset: int = 0,
         is_legacy: bool = False,
     ) -> str:
-        """生成用户成绩缓存键"""
+        """Generate user scores cache key."""
         mode_part = f":{mode}" if mode else ""
         return (
             f"user:{user_id}:scores:{score_type}{mode_part}:limit:{limit}:offset:"
@@ -108,11 +111,11 @@ class UserCacheService:
     def _get_user_beatmapsets_cache_key(
         self, user_id: int, beatmapset_type: str, limit: int = 100, offset: int = 0
     ) -> str:
-        """生成用户谱面集缓存键"""
+        """Generate user beatmapsets cache key."""
         return f"user:{user_id}:beatmapsets:{beatmapset_type}:limit:{limit}:offset:{offset}"
 
     async def get_user_from_cache(self, user_id: int, ruleset: GameMode | None = None) -> UserDict | None:
-        """从缓存获取用户信息"""
+        """Get user info from cache."""
         try:
             cache_key = self._get_user_cache_key(user_id, ruleset)
             cached_data = await self.redis.get(cache_key)
@@ -131,7 +134,7 @@ class UserCacheService:
         ruleset: GameMode | None = None,
         expire_seconds: int | None = None,
     ):
-        """缓存用户信息"""
+        """Cache user info."""
         try:
             if expire_seconds is None:
                 expire_seconds = settings.user_cache_expire_seconds
@@ -152,7 +155,7 @@ class UserCacheService:
         offset: int = 0,
         is_legacy: bool = False,
     ) -> list[UserDict] | list[LegacyScoreResp] | None:
-        """从缓存获取用户成绩"""
+        """Get user scores from cache."""
         try:
             cache_key = self._get_user_scores_cache_key(
                 user_id, score_type, include_fail, mode, limit, offset, is_legacy
@@ -179,7 +182,7 @@ class UserCacheService:
         expire_seconds: int | None = None,
         is_legacy: bool = False,
     ):
-        """缓存用户成绩"""
+        """Cache user scores."""
         try:
             if expire_seconds is None:
                 expire_seconds = settings.user_scores_cache_expire_seconds
@@ -201,7 +204,7 @@ class UserCacheService:
     async def get_user_beatmapsets_from_cache(
         self, user_id: int, beatmapset_type: str, limit: int = 100, offset: int = 0
     ) -> list[Any] | None:
-        """从缓存获取用户谱面集"""
+        """Get user beatmapsets from cache."""
         try:
             cache_key = self._get_user_beatmapsets_cache_key(user_id, beatmapset_type, limit, offset)
             cached_data = await self.redis.get(cache_key)
@@ -222,12 +225,12 @@ class UserCacheService:
         offset: int = 0,
         expire_seconds: int | None = None,
     ):
-        """缓存用户谱面集"""
+        """Cache user beatmapsets."""
         try:
             if expire_seconds is None:
                 expire_seconds = settings.user_beatmapsets_cache_expire_seconds
             cache_key = self._get_user_beatmapsets_cache_key(user_id, beatmapset_type, limit, offset)
-            # 使用 model_dump_json() 处理有 model_dump_json 方法的对象，否则使用 safe_json_dumps
+            # Use model_dump_json() for objects with that method, otherwise use safe_json_dumps
             serialized_beatmapsets = []
             for bms in beatmapsets:
                 if hasattr(bms, "model_dump_json"):
@@ -241,9 +244,9 @@ class UserCacheService:
             logger.error(f"Error caching user beatmapsets: {e}")
 
     async def invalidate_user_cache(self, user_id: int):
-        """使用户缓存失效"""
+        """Invalidate user cache."""
         try:
-            # 删除用户信息缓存
+            # Delete user info cache
             pattern = f"user:{user_id}:ruleset:*"
             keys = await self.redis.keys(pattern)
             if keys:
@@ -253,9 +256,9 @@ class UserCacheService:
             logger.error(f"Error invalidating user cache: {e}")
 
     async def invalidate_user_all_cache(self, user_id: int):
-        """使用户所有缓存失效"""
+        """Invalidate all user caches."""
         try:
-            # 删除用户信息缓存
+            # Delete user info cache
             pattern = f"user:{user_id}*"
             keys = await self.redis.keys(pattern)
             if keys:
@@ -265,9 +268,9 @@ class UserCacheService:
             logger.error(f"Error invalidating user all cache: {e}")
 
     async def invalidate_user_scores_cache(self, user_id: int, mode: GameMode | None = None):
-        """使用户成绩缓存失效"""
+        """Invalidate user scores cache."""
         try:
-            # 删除用户成绩相关缓存
+            # Delete user scores related cache
             mode_pattern = f":{mode}" if mode else "*"
             pattern = f"user:{user_id}:scores:*{mode_pattern}*"
             keys = await self.redis.keys(pattern)
@@ -278,9 +281,9 @@ class UserCacheService:
             logger.error(f"Error invalidating user scores cache: {e}")
 
     async def invalidate_user_beatmapsets_cache(self, user_id: int):
-        """使用户谱面集缓存失效"""
+        """Invalidate user beatmapsets cache."""
         try:
-            # 删除用户谱面集相关缓存
+            # Delete user beatmapsets related cache
             pattern = f"user:{user_id}:beatmapsets:*"
             keys = await self.redis.keys(pattern)
             if keys:
@@ -290,7 +293,7 @@ class UserCacheService:
             logger.error(f"Error invalidating user beatmapsets cache: {e}")
 
     async def preload_user_cache(self, session: AsyncSession, user_ids: list[int]):
-        """预加载用户缓存"""
+        """Preload user cache."""
         if self._refreshing:
             return
 
@@ -298,10 +301,10 @@ class UserCacheService:
         try:
             logger.info(f"Preloading cache for {len(user_ids)} users")
 
-            # 批量获取用户
+            # Batch fetch users
             users = (await session.exec(select(User).where(col(User.id).in_(user_ids)))).all()
 
-            # 串行缓存用户信息，避免并发数据库访问问题
+            # Serialize user info caching to avoid concurrent database access issues
             cached_count = 0
             for user in users:
                 if user.id != BANCHOBOT_ID:
@@ -319,11 +322,11 @@ class UserCacheService:
             self._refreshing = False
 
     async def _cache_single_user(self, user: User):
-        """缓存单个用户"""
+        """Cache a single user."""
         try:
             user_resp = await UserModel.transform(user, includes=User.USER_INCLUDES)
 
-            # 应用资源代理处理
+            # Apply asset proxy processing
             if settings.enable_asset_proxy:
                 try:
                     user_resp = await replace_asset_urls(user_resp)
@@ -335,14 +338,14 @@ class UserCacheService:
             logger.error(f"Error caching single user {user.id}: {e}")
 
     async def refresh_user_cache_on_score_submit(self, session: AsyncSession, user_id: int, mode: GameMode):
-        """成绩提交后刷新用户缓存"""
+        """Refresh user cache after score submission."""
         try:
-            # 使相关缓存失效（包括 v1 和 v2）
+            # Invalidate related caches (both v1 and v2)
             await self.invalidate_user_cache(user_id)
             await self.invalidate_v1_user_cache(user_id)
             await self.invalidate_user_scores_cache(user_id, mode)
 
-            # 立即重新加载用户信息
+            # Immediately reload user info
             user = await session.get(User, user_id)
             if user and user.id != BANCHOBOT_ID:
                 await self._cache_single_user(user)
@@ -351,14 +354,14 @@ class UserCacheService:
             logger.error(f"Error refreshing user cache on score submit: {e}")
 
     async def get_cache_stats(self) -> dict:
-        """获取缓存统计信息"""
+        """Get cache statistics."""
         try:
             user_keys = await self.redis.keys("user:*")
             v1_user_keys = await self.redis.keys("v1_user:*")
             all_keys = user_keys + v1_user_keys
             total_size = 0
 
-            for key in all_keys[:100]:  # 限制检查数量
+            for key in all_keys[:100]:  # Limit check count
                 try:
                     size = await self.redis.memory_usage(key)
                     if size:
@@ -381,12 +384,19 @@ class UserCacheService:
             return {"error": str(e)}
 
 
-# 全局缓存服务实例
+# Global cache service instance
 _user_cache_service: UserCacheService | None = None
 
 
 def get_user_cache_service(redis: Redis) -> UserCacheService:
-    """获取用户缓存服务实例"""
+    """Get the user cache service instance.
+
+    Args:
+        redis: Redis client.
+
+    Returns:
+        The UserCacheService singleton instance.
+    """
     global _user_cache_service
     if _user_cache_service is None:
         _user_cache_service = UserCacheService(redis)
@@ -394,10 +404,16 @@ def get_user_cache_service(redis: Redis) -> UserCacheService:
 
 
 async def refresh_user_cache_background(redis: Redis, user_id: int, mode: GameMode):
-    """后台任务：刷新用户缓存"""
+    """Background task: refresh user cache.
+
+    Args:
+        redis: Redis client.
+        user_id: User ID.
+        mode: Game mode.
+    """
     try:
         user_cache_service = get_user_cache_service(redis)
-        # 创建独立的数据库会话
+        # Create independent database session
         async with with_db() as session:
             await user_cache_service.refresh_user_cache_on_score_submit(session, user_id, mode)
     except Exception as e:

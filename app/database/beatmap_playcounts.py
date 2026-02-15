@@ -1,7 +1,13 @@
+"""Beatmap play count tracking database models.
+
+This module tracks how many times each user has played each beatmap,
+and generates events for playcount milestones.
+"""
+
 from typing import TYPE_CHECKING, NotRequired, TypedDict
 
 from app.config import settings
-from app.utils import utcnow
+from app.helpers import utcnow
 
 from ._base import DatabaseModel, included
 from .events import Event, EventType
@@ -25,6 +31,8 @@ if TYPE_CHECKING:
 
 
 class BeatmapPlaycountsDict(TypedDict):
+    """TypedDict representation of beatmap play counts."""
+
     user_id: int
     beatmap_id: int
     count: NotRequired[int]
@@ -33,6 +41,8 @@ class BeatmapPlaycountsDict(TypedDict):
 
 
 class BeatmapPlaycountsModel(AsyncAttrs, DatabaseModel[BeatmapPlaycountsDict]):
+    """Base model for beatmap play counts with transformation support."""
+
     id: int = Field(default=None, sa_column=Column(BigInteger, primary_key=True, autoincrement=True), exclude=True)
     user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
     beatmap_id: int = Field(foreign_key="beatmaps.id", index=True)
@@ -65,6 +75,8 @@ class BeatmapPlaycountsModel(AsyncAttrs, DatabaseModel[BeatmapPlaycountsDict]):
 
 
 class BeatmapPlaycounts(BeatmapPlaycountsModel, table=True):
+    """Database table for beatmap play counts."""
+
     __tablename__: str = "beatmap_playcounts"
     __table_args__ = (Index("idx_beatmap_playcounts_playcount_id", "playcount", "id"),)
 
@@ -73,6 +85,15 @@ class BeatmapPlaycounts(BeatmapPlaycountsModel, table=True):
 
 
 async def process_beatmap_playcount(session: AsyncSession, user_id: int, beatmap_id: int) -> None:
+    """Increment playcount for a user on a beatmap.
+
+    Creates milestone events every 100 plays.
+
+    Args:
+        session: Database session.
+        user_id: The user ID.
+        beatmap_id: The beatmap ID.
+    """
     existing_playcount = (
         await session.exec(
             select(BeatmapPlaycounts).where(

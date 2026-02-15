@@ -210,7 +210,7 @@ async with with_db() as session:
 - 使用 Annotated-style 的依赖注入
 - 对于已经存在的依赖注入如 Database 和 Redis，使用 `app.dependencies` 中的实现
 - 需要拥有文档
-- 如果返回需要资源代理，使用 `app.helpers.asset_proxy_helper` 的 `asset_proxy_response` 装饰器。
+- 如果返回需要资源代理，使用 `app.helpers` 的 `asset_proxy_response` 装饰器。
 - 如果需要记录日志，请使用 `app.log` 提供的 `log` 函数获取一个 logger 实例
 
 #### 鉴权
@@ -261,7 +261,7 @@ async def _(current_user: ClientUser):
 ### 耗时任务
 
 - 如果这个任务来自 API Router，请使用 FastAPI 提供的 [`BackgroundTasks`](https://fastapi.tiangolo.com/tutorial/background-tasks)
-- 其他情况，使用 `app.utils` 的 `bg_tasks`，它提供了与 FastAPI 的 `BackgroundTasks` 类似的功能。
+- 其他情况，使用 `app.helpers` 的 `bg_tasks`，它提供了与 FastAPI 的 `BackgroundTasks` 类似的功能。
 
 ### 代码质量和代码检查
 

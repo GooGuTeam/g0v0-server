@@ -1,3 +1,8 @@
+"""User profile and preferences management endpoints.
+
+Provides APIs for renaming, updating user pages, and managing user preferences.
+"""
+
 from typing import Annotated, Any
 
 from app.auth import validate_username
@@ -17,6 +22,7 @@ from app.database.user_preference import (
 from app.dependencies.cache import UserCacheService
 from app.dependencies.database import Database
 from app.dependencies.user import ClientUser
+from app.helpers import hex_to_hue, utcnow
 from app.models.error import ErrorType, RequestError
 from app.models.score import GameMode
 from app.models.user import Page
@@ -28,7 +34,6 @@ from app.models.userpage import (
     ValidateBBCodeResponse,
 )
 from app.service.bbcode_service import bbcode_service
-from app.utils import hex_to_hue, utcnow
 
 from .router import router
 
@@ -37,24 +42,13 @@ from pydantic import BaseModel, Field
 from sqlmodel import exists, select
 
 
-@router.post("/rename", name="修改用户名", tags=["用户", "g0v0 API"])
+@router.post("/rename", name="Rename user", tags=["User", "g0v0 API"], description="Rename a user.")
 async def user_rename(
     session: Database,
-    new_name: Annotated[str, Body(..., description="新的用户名")],
+    new_name: Annotated[str, Body(..., description="New username")],
     current_user: ClientUser,
     cache_service: UserCacheService,
 ):
-    """修改用户名
-
-    为指定用户修改用户名，并将原用户名添加到历史用户名列表中
-
-    错误情况:
-    - 404: 找不到指定用户
-    - 409: 新用户名已被占用
-
-    返回:
-    - 成功: None
-    """
     if await current_user.is_restricted(session):
         # https://github.com/ppy/osu-web/blob/cae2fdf03cfb8c30c8e332cfb142e03188ceffef/app/Libraries/ChangeUsername.php#L48-L49
         raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
@@ -91,9 +85,9 @@ async def user_rename(
 @router.put(
     "/user/page",
     response_model=UpdateUserpageResponse,
-    name="更新用户页面",
-    description="更新指定用户的个人页面内容（支持BBCode）。匹配官方osu-web API格式。",
-    tags=["用户", "g0v0 API"],
+    name="Update user page",
+    description="Update the user's profile page content (supports BBCode). Matches official osu-web API format.",
+    tags=["User", "g0v0 API"],
 )
 async def update_userpage(
     request: UpdateUserpageRequest,
@@ -101,7 +95,6 @@ async def update_userpage(
     current_user: ClientUser,
     cache_service: UserCacheService,
 ):
-    """更新用户页面内容"""
     if await current_user.is_restricted(session):
         raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
 
@@ -135,14 +128,13 @@ async def update_userpage(
 @router.post(
     "/user/validate-bbcode",
     response_model=ValidateBBCodeResponse,
-    name="验证BBCode",
-    description="验证BBCode语法并返回预览。",
-    tags=["用户", "g0v0 API"],
+    name="Validate BBCode",
+    description="Validate BBCode syntax and return preview.",
+    tags=["User", "g0v0 API"],
 )
 async def validate_bbcode(
     request: ValidateBBCodeRequest,
 ):
-    """验证BBCode语法"""
     try:
         # 验证BBCode语法
         errors = bbcode_service.validate_bbcode(request.content)
@@ -162,6 +154,12 @@ async def validate_bbcode(
 
 
 class Preferences(BaseModel):
+    """User preferences model.
+
+    Contains all user preference settings including theme, language,
+    audio settings, beatmap display options, and profile settings.
+    """
+
     theme: str | None = None
     language: str | None = None
 
@@ -192,6 +190,12 @@ class Preferences(BaseModel):
 
     @staticmethod
     async def clear(current_user: User, fields: list[str]):
+        """Clear specified preference fields to defaults.
+
+        Args:
+            current_user: The user whose preferences to clear.
+            fields: List of field names to clear. Empty list clears all.
+        """
         await current_user.awaitable_attrs.user_preference
         user_pref: UserPreference | None = current_user.user_preference
         if user_pref is None:
@@ -255,9 +259,9 @@ USER_PROFILE_FIELDS_WITH_WEBSITE = USER_PROFILE_FIELDS | {"website"}
 
 @router.get(
     "/user/preferences",
-    name="获取用户偏好设置",
-    description="获取当前登录用户的偏好设置",
-    tags=["用户", "g0v0 API"],
+    name="Get user preferences",
+    description="Get current user's preference settings",
+    tags=["User", "g0v0 API"],
     response_model=Preferences,
 )
 async def get_user_preference(
@@ -298,9 +302,9 @@ async def get_user_preference(
 
 @router.patch(
     "/user/preferences",
-    name="修改用户偏好设置",
-    description="修改当前登录用户的偏好设置",
-    tags=["用户", "g0v0 API"],
+    name="Update user preferences",
+    description="Update current user's preference settings",
+    tags=["User", "g0v0 API"],
     status_code=204,
 )
 async def change_user_preference(
@@ -356,9 +360,9 @@ async def change_user_preference(
 
 @router.put(
     "/user/preferences",
-    name="覆盖用户偏好设置",
-    description="使用提供的数据完整覆盖当前登录用户的偏好设置，未提供的字段将被重置为默认值。",
-    tags=["用户", "g0v0 API"],
+    name="Overwrite user preferences",
+    description="Completely overwrite user preferences with provided data. Unprovided fields are reset to defaults.",
+    tags=["User", "g0v0 API"],
     status_code=204,
 )
 async def overwrite_user_preference(
@@ -379,9 +383,11 @@ async def overwrite_user_preference(
 
 @router.delete(
     "/user/preferences",
-    name="删除用户偏好设置",
-    description="删除当前登录用户的偏好设置，恢复为默认值\n\n如果未指定字段，则删除所有可删除的偏好设置",
-    tags=["用户", "g0v0 API"],
+    name="Delete user preferences",
+    description=(
+        "Delete user preferences and reset to defaults. If no fields specified, deletes all deletable preferences."
+    ),
+    tags=["User", "g0v0 API"],
     status_code=204,
 )
 async def delete_user_preference(

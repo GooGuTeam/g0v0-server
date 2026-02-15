@@ -1,3 +1,9 @@
+"""Beatmap failtime/exit distribution database models.
+
+This module stores when players fail or exit during a beatmap,
+used for generating fail/exit graphs on beatmap pages.
+"""
+
 from struct import Struct
 from typing import TYPE_CHECKING
 
@@ -12,10 +18,14 @@ from sqlmodel import (
 
 if TYPE_CHECKING:
     from .beatmap import Beatmap
+
 FAILTIME_STRUCT = Struct("<100i")
+"""Struct format for packing/unpacking 100 integers for fail/exit data."""
 
 
 class FailTime(SQLModel, table=True):
+    """Stores fail and exit time distributions for a beatmap."""
+
     __tablename__: str = "failtime"
     beatmap_id: int = Field(primary_key=True, foreign_key="beatmaps.id")
     exit: bytes = Field(sa_column=Column(VARBINARY(400), nullable=False))
@@ -41,6 +51,8 @@ class FailTime(SQLModel, table=True):
 
 
 class FailTimeResp(BaseModel):
+    """Response model for fail/exit time data."""
+
     exit: list[int] = Field(default_factory=lambda: list(FAILTIME_STRUCT.unpack(b"\x00" * 400)))
     fail: list[int] = Field(default_factory=lambda: list(FAILTIME_STRUCT.unpack(b"\x00" * 400)))
 

@@ -1,7 +1,12 @@
+"""Room participation tracking database models.
+
+This module tracks users who have joined/left multiplayer rooms.
+"""
+
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from app.utils import utcnow
+from app.helpers import utcnow
 
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import (
@@ -20,6 +25,8 @@ if TYPE_CHECKING:
 
 
 class RoomParticipatedUser(AsyncAttrs, SQLModel, table=True):
+    """Tracks user participation history in multiplayer rooms."""
+
     __tablename__: str = "room_participated_users"
 
     id: int | None = Field(default=None, sa_column=Column(BigInteger, primary_key=True, autoincrement=True))

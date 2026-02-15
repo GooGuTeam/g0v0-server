@@ -1,3 +1,9 @@
+"""Daily challenge scheduled tasks.
+
+Provides automated creation of daily challenge rooms and
+processing of daily challenge statistics and placements.
+"""
+
 from datetime import UTC, timedelta
 import json
 from math import ceil
@@ -11,11 +17,11 @@ from app.database.score import Score
 from app.database.user import User
 from app.dependencies.database import get_redis, with_db
 from app.dependencies.scheduler import get_scheduler
+from app.helpers import are_same_weeks, utcnow
 from app.log import logger
 from app.models.mods import APIMod, get_available_mods
 from app.models.room import RoomCategory
 from app.service.room import create_playlist_room
-from app.utils import are_same_weeks, utcnow
 
 from sqlmodel import col, select
 
@@ -27,6 +33,18 @@ async def create_daily_challenge_room(
     required_mods: list[APIMod] = [],
     allowed_mods: list[APIMod] = [],
 ) -> Room:
+    """Create a new daily challenge multiplayer room.
+
+    Args:
+        beatmap: The beatmap ID for the challenge.
+        ruleset_id: The game mode/ruleset ID.
+        duration: Room duration in minutes.
+        required_mods: List of required mods for the challenge.
+        allowed_mods: List of allowed optional mods.
+
+    Returns:
+        The created Room object.
+    """
     async with with_db() as session:
         today = utcnow().date()
         return await create_playlist_room(
@@ -50,7 +68,12 @@ async def create_daily_challenge_room(
 
 
 @get_scheduler().scheduled_job("cron", hour=0, minute=0, second=0, id="daily_challenge")
-async def daily_challenge_job():
+async def daily_challenge_job() -> None:
+    """Scheduled job to create daily challenge rooms.
+
+    Runs at midnight to create a new daily challenge room based on
+    pre-configured beatmap data stored in Redis. Retries on failure.
+    """
     now = utcnow()
     redis = get_redis()
     key = f"daily_challenge:{now.date()}"
@@ -117,7 +140,13 @@ async def daily_challenge_job():
 
 
 @get_scheduler().scheduled_job("cron", hour=0, minute=1, second=0, id="daily_challenge_last_top")
-async def process_daily_challenge_top():
+async def process_daily_challenge_top() -> None:
+    """Process daily challenge results and update user statistics.
+
+    Runs shortly after midnight to calculate placements for the previous
+    day's challenge. Updates top 10%/50% placement counts and manages
+    daily/weekly streaks for participating users.
+    """
     async with with_db() as session:
         now = utcnow()
         room = (

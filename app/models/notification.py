@@ -4,7 +4,7 @@ from abc import abstractmethod
 from enum import StrEnum
 from typing import TYPE_CHECKING, ClassVar, Self
 
-from app.utils import truncate
+from app.helpers import truncate
 
 from .achievement import Achievement
 from .score import GameMode

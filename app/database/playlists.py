@@ -1,3 +1,8 @@
+"""Room playlist database models.
+
+This module handles playlist items (beatmap selections) in multiplayer rooms.
+"""
+
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 
@@ -26,6 +31,8 @@ if TYPE_CHECKING:
 
 
 class PlaylistDict(TypedDict):
+    """TypedDict representation of a playlist item."""
+
     id: int
     room_id: int
     beatmap_id: int
@@ -43,6 +50,8 @@ class PlaylistDict(TypedDict):
 
 
 class PlaylistModel(DatabaseModel[PlaylistDict]):
+    """Base model for playlist items with transformation support."""
+
     id: int = Field(index=True)
     room_id: int = Field(foreign_key="rooms.id")
     beatmap_id: int = Field(
@@ -96,6 +105,8 @@ class PlaylistModel(DatabaseModel[PlaylistDict]):
 
 
 class Playlist(PlaylistModel, table=True):
+    """Database table for room playlist items."""
+
     __tablename__: str = "room_playlists"
     db_id: int = Field(default=None, primary_key=True, index=True, exclude=True)
 

@@ -1,8 +1,8 @@
-"""
-基于 Redis 的实时消息系统
-- 消息立即存储到 Redis 并实时返回
-- 定时批量存储到数据库
-- 支持消息状态同步和故障恢复
+"""Redis-based real-time messaging system.
+
+- Messages are immediately stored in Redis and returned in real-time
+- Periodic batch storage to database
+- Supports message state synchronization and failure recovery
 """
 
 import asyncio
@@ -14,19 +14,23 @@ from app.database import ChatMessageDict
 from app.database.chat import ChatMessage, ChatMessageModel, MessageType
 from app.database.user import User, UserModel
 from app.dependencies.database import get_redis_message, with_db
+from app.helpers import bg_tasks, safe_json_dumps
 from app.log import logger
-from app.utils import bg_tasks, safe_json_dumps
 
 
 class RedisMessageSystem:
-    """Redis 消息系统"""
+    """Redis messaging system.
+
+    Provides real-time chat messaging with Redis caching
+    and periodic database persistence.
+    """
 
     def __init__(self):
         self.redis: Any = get_redis_message()
         self._batch_timer: asyncio.Task | None = None
         self._running = False
-        self.batch_interval = 5.0  # 5秒批量存储一次
-        self.max_batch_size = 100  # 每批最多处理100条消息
+        self.batch_interval = 5.0  # Batch storage every 5 seconds
+        self.max_batch_size = 100  # Max 100 messages per batch
 
     async def send_message(
         self,
@@ -36,28 +40,27 @@ class RedisMessageSystem:
         is_action: bool = False,
         user_uuid: str | None = None,
     ) -> "ChatMessageDict":
-        """
-        发送消息 - 立即存储到 Redis 并返回
+        """Send message - store to Redis immediately and return.
 
         Args:
-            channel_id: 频道ID
-            user: 发送用户
-            content: 消息内容
-            is_action: 是否为动作消息
-            user_uuid: 用户UUID
+            channel_id: Channel ID.
+            user: Sender user.
+            content: Message content.
+            is_action: Whether the message is an action.
+            user_uuid: User UUID.
 
         Returns:
-            ChatMessage: 消息响应对象
+            ChatMessage: Message response object.
         """
-        # 生成消息ID和时间戳
+        # Generate message ID and timestamp
         message_id = await self._generate_message_id(channel_id)
         timestamp = datetime.now()
 
-        # 确保用户ID存在
+        # Ensure user ID exists
         if not user.id:
             raise ValueError("User ID is required")
 
-        # 准备消息数据
+        # Prepare message data
         message_data: "ChatMessageDict" = {
             "message_id": message_id,
             "channel_id": channel_id,
@@ -69,10 +72,10 @@ class RedisMessageSystem:
             "is_action": is_action,
         }
 
-        # 立即存储到 Redis
+        # Store to Redis immediately
         await self._store_to_redis(message_id, channel_id, message_data)
 
-        # 创建响应对象
+        # Create response object
         async with with_db() as session:
             user_resp = await UserModel.transform(user, session=session, includes=User.LIST_INCLUDES)
             message_data["sender"] = user_resp
@@ -81,27 +84,26 @@ class RedisMessageSystem:
         return message_data
 
     async def get_messages(self, channel_id: int, limit: int = 50, since: int = 0) -> list[ChatMessageDict]:
-        """
-        获取频道消息 - 优先从 Redis 获取最新消息
+        """Get channel messages - prioritize fetching from Redis.
 
         Args:
-            channel_id: 频道ID
-            limit: 消息数量限制
-            since: 起始消息ID
+            channel_id: Channel ID.
+            limit: Message count limit.
+            since: Starting message ID.
 
         Returns:
-            List[ChatMessageDict]: 消息列表
+            List[ChatMessageDict]: Message list.
         """
         messages: list["ChatMessageDict"] = []
 
         try:
-            # 从 Redis 获取最新消息
+            # Get latest messages from Redis
             redis_messages = await self._get_from_redis(channel_id, limit, since)
 
-            # 为每条消息构建响应对象
+            # Build response object for each message
             async with with_db() as session:
                 for msg_data in redis_messages:
-                    # 获取发送者信息
+                    # Get sender info
                     sender = await session.get(User, msg_data["sender_id"])
                     if sender:
                         user_resp = await UserModel.transform(sender, includes=User.LIST_INCLUDES)
@@ -121,41 +123,41 @@ class RedisMessageSystem:
                         }
                         messages.append(message_resp)
 
-            # 如果 Redis 消息不够，从数据库补充
+            # If Redis messages insufficient, backfill from database
             if len(messages) < limit and since == 0:
                 await self._backfill_from_database(channel_id, messages, limit)
 
         except Exception as e:
             logger.error(f"Failed to get messages from Redis: {e}")
-            # 回退到数据库查询
+            # Fall back to database query
             messages = await self._get_from_database_only(channel_id, limit, since)
 
         return messages[:limit]
 
     async def _generate_message_id(self, channel_id: int) -> int:
-        """生成唯一的消息ID - 确保全局唯一且严格递增"""
-        # 使用全局计数器确保所有频道的消息ID都是严格递增的
+        """Generate unique message ID - ensure globally unique and strictly increasing."""
+        # Use global counter to ensure all channel message IDs are strictly increasing
         message_id = await self.redis.incr("global_message_id_counter")
 
-        # 同时更新频道的最后消息ID，用于客户端状态同步
+        # Also update channel's last message ID for client state sync
         await self.redis.set(f"channel:{channel_id}:last_msg_id", message_id)
 
         return message_id
 
     async def _store_to_redis(self, message_id: int, channel_id: int, message_data: ChatMessageDict):
-        """存储消息到 Redis"""
+        """Store message to Redis."""
         try:
-            # 存储消息数据为 JSON 字符串
+            # Store message data as JSON string
             await self.redis.set(
                 f"msg:{channel_id}:{message_id}",
                 safe_json_dumps(message_data),
-                ex=604800,  # 7天过期
+                ex=604800,  # 7-day expiration
             )
 
-            # 添加到频道消息列表（按时间排序）
+            # Add to channel message list (sorted by time)
             channel_messages_key = f"channel:{channel_id}:messages"
 
-            # 检查并清理错误类型的键
+            # Check and clean up wrong type keys
             try:
                 key_type = await self.redis.type(channel_messages_key)
                 if key_type not in ("none", "zset"):
@@ -165,13 +167,13 @@ class RedisMessageSystem:
                 logger.warning(f"Failed to check key type for {channel_messages_key}: {type_check_error}")
                 await self.redis.delete(channel_messages_key)
 
-            # 添加到频道消息列表（sorted set）
+            # Add to channel message list (sorted set)
             await self.redis.zadd(
                 channel_messages_key,
                 mapping={f"msg:{channel_id}:{message_id}": message_id},
             )
 
-            # 保持频道消息列表大小（最多1000条）
+            # Keep channel message list size (max 1000)
             await self.redis.zremrangebyrank(channel_messages_key, 0, -1001)
 
             await self.redis.lpush("pending_messages", f"{channel_id}:{message_id}")
@@ -182,11 +184,11 @@ class RedisMessageSystem:
             raise
 
     async def _get_from_redis(self, channel_id: int, limit: int = 50, since: int = 0) -> list[ChatMessageDict]:
-        """从 Redis 获取消息"""
+        """Get messages from Redis."""
         try:
-            # 获取消息键列表，按消息ID排序
+            # Get message key list, sorted by message ID
             if since > 0:
-                # 获取指定ID之后的消息（正序）
+                # Get messages after specified ID (ascending order)
                 message_keys = await self.redis.zrangebyscore(
                     f"channel:{channel_id}:messages",
                     since + 1,
@@ -195,26 +197,26 @@ class RedisMessageSystem:
                     num=limit,
                 )
             else:
-                # 获取最新的消息（倒序获取，然后反转）
+                # Get latest messages (reverse order, then reverse)
                 message_keys = await self.redis.zrevrange(f"channel:{channel_id}:messages", 0, limit - 1)
 
             messages = []
             for key in message_keys:
-                # 获取消息数据（JSON 字符串）
+                # Get message data (JSON string)
                 raw_data = await self.redis.get(key)
                 if raw_data:
                     try:
-                        # 解析 JSON 字符串为字典
+                        # Parse JSON string to dict
                         message_data = json.loads(raw_data)
                         messages.append(message_data)
                     except json.JSONDecodeError as e:
                         logger.error(f"Failed to decode message JSON from {key}: {e}")
                         continue
 
-            # 确保消息按ID正序排序（时间顺序）
+            # Ensure messages sorted by ID ascending (chronological order)
             messages.sort(key=lambda x: x.get("message_id", 0))
 
-            # 如果是获取最新消息（since=0），需要保持倒序（最新的在前面）
+            # If getting latest messages (since=0), keep reverse order (newest first)
             if since == 0:
                 messages.reverse()
 
@@ -225,9 +227,9 @@ class RedisMessageSystem:
             return []
 
     async def _backfill_from_database(self, channel_id: int, existing_messages: list[ChatMessageDict], limit: int):
-        """从数据库补充历史消息"""
+        """Backfill historical messages from database."""
         try:
-            # 找到最小的消息ID
+            # Find minimum message ID
             min_id = float("inf")
             if existing_messages:
                 for msg in existing_messages:
@@ -251,7 +253,7 @@ class RedisMessageSystem:
 
                 db_messages = (await session.exec(query)).all()
 
-                for msg in reversed(db_messages):  # 按时间正序插入
+                for msg in reversed(db_messages):  # Insert in chronological order
                     msg_resp = await ChatMessageModel.transform(msg, includes=["sender"])
                     existing_messages.insert(0, msg_resp)
 
@@ -259,7 +261,7 @@ class RedisMessageSystem:
             logger.error(f"Failed to backfill from database: {e}")
 
     async def _get_from_database_only(self, channel_id: int, limit: int, since: int) -> list[ChatMessageDict]:
-        """仅从数据库获取消息（回退方案）"""
+        """Get messages from database only (fallback)."""
         try:
             async with with_db() as session:
                 from sqlmodel import col, select
@@ -267,18 +269,18 @@ class RedisMessageSystem:
                 query = select(ChatMessage).where(ChatMessage.channel_id == channel_id)
 
                 if since > 0:
-                    # 获取指定ID之后的消息，按ID正序
+                    # Get messages after specified ID, ascending order
                     query = query.where(col(ChatMessage.message_id) > since)
                     query = query.order_by(col(ChatMessage.message_id).asc()).limit(limit)
                 else:
-                    # 获取最新消息，按ID倒序（最新的在前面）
+                    # Get latest messages, descending order (newest first)
                     query = query.order_by(col(ChatMessage.message_id).desc()).limit(limit)
 
                 messages = (await session.exec(query)).all()
 
                 results = await ChatMessageModel.transform_many(messages, includes=["sender"])
 
-                # 如果是 since > 0，保持正序；否则反转为时间正序
+                # If since > 0, keep ascending; otherwise reverse to chronological
                 if since == 0:
                     results.reverse()
 
@@ -289,17 +291,17 @@ class RedisMessageSystem:
             return []
 
     async def _batch_persist_to_database(self):
-        """批量持久化消息到数据库"""
+        """Batch persist messages to database."""
         logger.info("Starting batch persistence to database")
 
         while self._running:
             try:
-                # 获取待处理的消息
+                # Get pending messages
                 message_keys = []
                 for _ in range(self.max_batch_size):
                     key = await self.redis.brpop("pending_messages", timeout=1)
                     if key:
-                        # key 是 (queue_name, value) 的元组
+                        # key is a (queue_name, value) tuple
                         _, value = key
                         message_keys.append(value)
                     else:
@@ -317,34 +319,34 @@ class RedisMessageSystem:
         logger.info("Stopped batch persistence to database")
 
     async def _process_message_batch(self, message_keys: list[str]):
-        """处理消息批次"""
+        """Process message batch."""
         async with with_db() as session:
             for key in message_keys:
                 try:
-                    # 解析频道ID和消息ID
+                    # Parse channel ID and message ID
                     channel_id, message_id = map(int, key.split(":"))
 
-                    # 从 Redis 获取消息数据（JSON 字符串）
+                    # Get message data from Redis (JSON string)
                     raw_data = await self.redis.get(f"msg:{channel_id}:{message_id}")
 
                     if not raw_data:
                         continue
 
-                    # 解析 JSON 字符串为字典
+                    # Parse JSON string to dict
                     try:
                         message_data = json.loads(raw_data)
                     except json.JSONDecodeError as e:
                         logger.error(f"Failed to decode message JSON for {channel_id}:{message_id}: {e}")
                         continue
 
-                    # 检查消息是否已存在于数据库
+                    # Check if message already exists in database
                     existing = await session.get(ChatMessage, int(message_id))
                     if existing:
                         continue
 
-                    # 创建数据库消息 - 使用 Redis 生成的正数ID
+                    # Create database message - using Redis generated positive ID
                     db_message = ChatMessage(
-                        message_id=int(message_id),  # 使用 Redis 系统生成的正数ID
+                        message_id=int(message_id),  # Use Redis system generated positive ID
                         channel_id=int(message_data["channel_id"]),
                         sender_id=int(message_data["sender_id"]),
                         content=message_data["content"],
@@ -360,7 +362,7 @@ class RedisMessageSystem:
                 except Exception as e:
                     logger.error(f"Failed to process message {key}: {e}")
 
-            # 提交批次
+            # Commit batch
             try:
                 await session.commit()
                 logger.info(f"Batch of {len(message_keys)} messages committed to database")
@@ -369,34 +371,34 @@ class RedisMessageSystem:
                 await session.rollback()
 
     def start(self):
-        """启动系统"""
+        """Start the system."""
         if not self._running:
             self._running = True
             self._batch_timer = asyncio.create_task(self._batch_persist_to_database())
-            # 启动时初始化消息ID计数器
+            # Initialize message ID counter at startup
             bg_tasks.add_task(self._initialize_message_counter)
-            # 启动定期清理任务
+            # Start periodic cleanup task
             bg_tasks.add_task(self._periodic_cleanup)
             logger.info("Redis message system started")
 
     async def _initialize_message_counter(self):
-        """初始化全局消息ID计数器，确保从数据库最大ID开始"""
+        """Initialize global message ID counter, ensure starting from max database ID."""
         try:
-            # 清理可能存在的问题键
+            # Clean up potentially problematic keys
             await self._cleanup_redis_keys()
 
             async with with_db() as session:
                 from sqlmodel import func, select
 
-                # 获取数据库中最大的消息ID
+                # Get max message ID from database
                 result = await session.exec(select(func.max(ChatMessage.message_id)))
                 max_id = result.one() or 0
 
-                # 检查 Redis 中的计数器值
+                # Check counter value in Redis
                 current_counter = await self.redis.get("global_message_id_counter")
                 current_counter = int(current_counter) if current_counter else 0
 
-                # 设置计数器为两者中的最大值
+                # Set counter to the larger of the two
                 initial_counter = max(max_id, current_counter)
                 await self.redis.set("global_message_id_counter", initial_counter)
 
@@ -404,13 +406,13 @@ class RedisMessageSystem:
 
         except Exception as e:
             logger.error(f"Failed to initialize message counter: {e}")
-            # 如果初始化失败，设置一个安全的起始值
+            # If initialization fails, set a safe starting value
             await self.redis.setnx("global_message_id_counter", 1000000)
 
     async def _cleanup_redis_keys(self):
-        """清理可能存在问题的 Redis 键"""
+        """Clean up potentially problematic Redis keys."""
         try:
-            # 扫描所有 channel:*:messages 键并检查类型
+            # Scan all channel:*:messages keys and check types
             keys_pattern = "channel:*:messages"
             keys = await self.redis.keys(keys_pattern)
 
@@ -419,13 +421,13 @@ class RedisMessageSystem:
                 try:
                     key_type = await self.redis.type(key)
                     if key_type == "none":
-                        # 键不存在，正常情况
+                        # Key doesn't exist, normal case
                         continue
                     elif key_type != "zset":
                         logger.warning(f"Cleaning up Redis key {key} with wrong type: {key_type}")
                         await self.redis.delete(key)
 
-                        # 验证删除是否成功
+                        # Verify deletion was successful
                         verify_type = await self.redis.type(key)
                         if verify_type != "none":
                             logger.error(f"Failed to delete problematic key {key}, trying unlink...")
@@ -434,7 +436,7 @@ class RedisMessageSystem:
                         fixed_count += 1
                 except Exception as cleanup_error:
                     logger.warning(f"Failed to cleanup key {key}: {cleanup_error}")
-                    # 强制删除问题键
+                    # Force delete problematic key
                     try:
                         await self.redis.delete(key)
                         fixed_count += 1
@@ -454,10 +456,10 @@ class RedisMessageSystem:
             logger.error(f"Failed to cleanup Redis keys: {e}")
 
     async def _periodic_cleanup(self):
-        """定期清理任务"""
+        """Periodic cleanup task."""
         while self._running:
             try:
-                # 每5分钟执行一次清理
+                # Execute cleanup every 5 minutes
                 await asyncio.sleep(300)
                 if not self._running:
                     break
@@ -469,11 +471,11 @@ class RedisMessageSystem:
                 break
             except Exception as e:
                 logger.error(f"Periodic cleanup error: {e}")
-                # 出错后等待1分钟再重试
+                # Wait 1 minute before retry on error
                 await asyncio.sleep(60)
 
     def stop(self):
-        """停止系统"""
+        """Stop the system."""
         if self._running:
             self._running = False
             if self._batch_timer:
@@ -482,5 +484,5 @@ class RedisMessageSystem:
             logger.info("Redis message system stopped")
 
 
-# 全局消息系统实例
+# Global message system instance
 redis_message_system = RedisMessageSystem()
