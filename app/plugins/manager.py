@@ -205,5 +205,19 @@ class PluginManager:
 
         return None
 
+    def get_plugin_by_id(self, plugin_id: str) -> ManagedPlugin | None:
+        """Get a plugin by its ID.
+
+        Args:
+            plugin_id: The ID of the plugin.
+
+        Returns:
+            The ManagedPlugin if found, None otherwise.
+        """
+        for plugin in self.plugins:
+            if plugin.meta.id == plugin_id:
+                return plugin
+        return None
+
 
 plugin_manager = PluginManager()

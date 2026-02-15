@@ -1,6 +1,7 @@
 import importlib
 
 from app.config import settings
+from app.plugins import plugin_manager
 
 from ._base import CalculateError, ConvertError, DifficultyError, PerformanceCalculator, PerformanceError
 
@@ -21,7 +22,21 @@ async def init_calculator() -> PerformanceCalculator | None:
     """
     global CALCULATOR
     try:
-        module = importlib.import_module(f".{settings.calculator}", package="app.calculating.calculators")
+        if settings.calculator.startswith("-"):
+            # Calculator is from a plugin, e.g. "-osu_native_calculator"
+            plugin = plugin_manager.get_plugin_by_id(settings.calculator[1:])
+            if plugin is None:
+                raise ImportError(f"Plugin '{settings.calculator[1:]}' not found for performance calculator")
+            module = plugin.module
+            if module is None:
+                raise RuntimeError(f"Plugin '{settings.calculator[1:]}' is not loaded.")
+        elif "." not in settings.calculator:
+            # Built-in calculator, e.g. "performance_server"
+            module = importlib.import_module(f".{settings.calculator}", package="app.calculating.calculators")
+        else:
+            # Absolute package path, e.g. "plugins.osu_native_calculator"
+            module = importlib.import_module(settings.calculator)
+
         CALCULATOR = module.PerformanceCalculator(**settings.calculator_config)
         if CALCULATOR is not None:
             await CALCULATOR.init()

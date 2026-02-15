@@ -514,7 +514,7 @@ CALCULATOR_CONFIG='{}'
 
     # 表现计算设置
     calculator: Annotated[
-        Literal["rosu", "performance_server"],
+        str,
         Field(default="performance_server", description="表现分计算器"),
         "表现计算设置",
     ]
