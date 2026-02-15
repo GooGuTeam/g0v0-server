@@ -96,6 +96,10 @@ STORAGE_SETTINGS='{
 """,
                 "表现计算设置": """配置表现分计算器及其参数。
 
+如果 `CALCULATOR` 以 `-` 开头，服务器将尝试从其后面的 id 对应的插件中加载计算器实现。
+如果 `CALCULATOR` 不存在 `.`，则认为它是一个内置计算器的名称，目前内置了 `performance_server` 和 `rosu` 两个计算器。
+否则，服务器将尝试从 `CALCULATOR` 指定的模块路径加载计算器实现。
+
 ### [osu-performance-server](https://github.com/GooGuTeam/osu-performance-server) (默认)
 
 ```bash
