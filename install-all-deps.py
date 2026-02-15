@@ -1,17 +1,18 @@
-import json
-import os
 from pathlib import Path
 import subprocess
-import sys
+
+from pydantic import Field
+from pydantic_settings import BaseSettings
 
 META_FILENAME = "plugin.json"
 
-plugin_dirs = os.environ.get("PLUGIN_DIRS", "")
-try:
-    plugin_dirs = json.loads(plugin_dirs)
-except json.JSONDecodeError:
-    print("Failed to parse PLUGIN_DIRS environment variable. Ensure it is a valid JSON array.")
-    sys.exit(1)
+
+class Config(BaseSettings):
+    plugin_dirs: list[str] = Field(default=["./plugins"])
+
+
+config = Config()
+plugin_dirs = config.plugin_dirs
 
 for plugin_dir in plugin_dirs:
     plugin_path = Path(plugin_dir)
