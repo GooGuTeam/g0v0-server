@@ -8,7 +8,7 @@ from asyncio import get_event_loop
 from copy import deepcopy
 from typing import TYPE_CHECKING, ClassVar
 
-from app.calculator import clamp
+from app.calculating import clamp
 from app.models.mods import APIMod
 from app.models.performance import (
     DifficultyAttributes,

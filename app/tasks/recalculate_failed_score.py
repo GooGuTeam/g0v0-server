@@ -5,7 +5,7 @@ and retries the calculation. Updates user statistics after
 successful recalculation.
 """
 
-from app.calculator import pre_fetch_and_calculate_pp
+from app.calculating import pre_fetch_and_calculate_pp
 from app.database.score import Score, calculate_user_pp
 from app.database.statistics import UserStatistics
 from app.dependencies.database import get_redis, with_db
@@ -16,7 +16,7 @@ from app.log import logger
 from sqlmodel import select
 
 
-@get_scheduler().scheduled_job("interval", id="recalculate_failed_beatmap", minutes=5)
+@get_scheduler().scheduled_job("interval", id="recalculate_failed_score", minutes=5)
 async def recalculate_failed_score() -> None:
     """Recalculate PP for scores that previously failed calculation.
 

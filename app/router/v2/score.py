@@ -8,7 +8,7 @@ from datetime import UTC, date
 import time
 from typing import Annotated
 
-from app.calculator import clamp
+from app.calculating import clamp
 from app.config import settings
 from app.database import (
     Beatmap,

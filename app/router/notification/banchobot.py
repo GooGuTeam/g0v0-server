@@ -11,7 +11,7 @@ import random
 import shlex
 from typing import TYPE_CHECKING
 
-from app.calculator import calculate_weighted_pp
+from app.calculating import calculate_weighted_pp
 from app.const import BANCHOBOT_ID
 
 if TYPE_CHECKING:

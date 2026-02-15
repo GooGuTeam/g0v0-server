@@ -5,7 +5,7 @@ This module tracks users' best total scores for each beatmap/mode combination.
 
 from typing import TYPE_CHECKING
 
-from app.calculator import calculate_score_to_level
+from app.calculating import calculate_score_to_level
 from app.models.score import GameMode, Rank
 
 from .statistics import UserStatistics

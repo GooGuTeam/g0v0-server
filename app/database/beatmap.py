@@ -9,7 +9,7 @@ from datetime import datetime
 import hashlib
 from typing import TYPE_CHECKING, ClassVar, NotRequired, TypedDict
 
-from app.calculator import get_calculator
+from app.calculating import get_calculator
 from app.config import settings
 from app.models.beatmap import BeatmapRankStatus
 from app.models.mods import APIMod

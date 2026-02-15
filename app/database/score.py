@@ -11,7 +11,7 @@ import math
 import sys
 from typing import TYPE_CHECKING, Any, ClassVar, NotRequired, TypedDict
 
-from app.calculator import (
+from app.calculating import (
     calculate_pp_weight,
     calculate_score_to_level,
     calculate_weighted_acc,

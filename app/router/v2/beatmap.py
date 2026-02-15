@@ -9,8 +9,7 @@ import hashlib
 import json
 from typing import Annotated
 
-from app.calculator import get_calculator
-from app.calculators.performance import ConvertError
+from app.calculating import ConvertError, get_calculator
 from app.database import (
     Beatmap,
     BeatmapModel,

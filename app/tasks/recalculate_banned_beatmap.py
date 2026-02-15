@@ -8,7 +8,7 @@ are unbanned, updating affected user statistics.
 import asyncio
 import json
 
-from app.calculator import calculate_pp
+from app.calculating import calculate_pp
 from app.config import settings
 from app.database.beatmap import BannedBeatmaps, Beatmap
 from app.database.best_scores import BestScore

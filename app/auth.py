@@ -288,18 +288,15 @@ async def invalidate_user_tokens(db: AsyncSession, user_id: int) -> int:
     Returns:
         The number of tokens deleted.
     """
-    # 使用 select 先获取所有令牌
     stmt = select(OAuthToken).where(OAuthToken.user_id == user_id)
     result = await db.exec(stmt)
     tokens = result.all()
 
-    # 逐个删除令牌
     count = 0
     for token in tokens:
         await db.delete(token)
         count += 1
 
-    # Commit changes
     await db.commit()
     return count
 

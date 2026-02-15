@@ -15,8 +15,7 @@ import warnings
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from app.calculator import calculate_pp, calculate_score_to_level, init_calculator
-from app.calculators.performance import CalculateError
+from app.calculating import CalculateError, calculate_pp, calculate_score_to_level, init_calculator
 from app.config import settings
 from app.const import BANCHOBOT_ID
 from app.database import TotalScoreBestScore, UserStatistics

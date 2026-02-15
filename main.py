@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 import json
 from pathlib import Path
 
-from app.calculator import init_calculator
+from app.calculating import init_calculator
 from app.config import settings
 from app.database import User
 from app.dependencies.database import (
