@@ -32,6 +32,7 @@ services:
       - ./logs:/app/logs
       - ./newrelic.ini:/app/newrelic.ini:ro
       - ./config:/app/config
+      - ./plugins:/app/plugins
     restart: unless-stopped
     networks:
       - osu-network
