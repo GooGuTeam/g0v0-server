@@ -164,7 +164,7 @@ class PluginManager:
         from .api_router import plugin_router, plugin_routers
 
         for plugin_id, router in plugin_routers.items():
-            plugin_router.include_router(router, prefix=f"/plugins/{plugin_id}")
+            plugin_router.include_router(router, prefix=f"/{plugin_id}")
             logger.debug(f"Registered API router for plugin '{plugin_id}' at '/api/plugins/{plugin_id}'")
 
     def get_plugin_by_module_name(self, module_name: str) -> ManagedPlugin | None:
