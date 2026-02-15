@@ -35,6 +35,7 @@ from app.dependencies.user_agent import UserAgentInfo
 from app.helpers import utcnow
 from app.log import log
 from app.models.error import ErrorType, RequestError
+from app.models.events.user import UserRegisteredEvent
 from app.models.extended_auth import ExtendedTokenResponse
 from app.models.oauth import (
     OAuthErrorResponse,
@@ -43,6 +44,7 @@ from app.models.oauth import (
     UserRegistrationErrors,
 )
 from app.models.score import GameMode
+from app.plugins import event_hub
 from app.service.login_log_service import LoginLogService
 from app.service.password_reset_service import password_reset_service
 from app.service.turnstile_service import turnstile_service
@@ -220,6 +222,14 @@ async def register_user(
             db.add(statistics_ap)
         daily_challenge_user_stats = DailyChallengeStats(user_id=new_user.id)
         db.add(daily_challenge_user_stats)
+
+        event_hub.emit(
+            UserRegisteredEvent(
+                user_id=new_user.id,
+                username=new_user.username,
+                country_code=new_user.country_code,
+            )
+        )
         await db.commit()
     except Exception:
         await db.rollback()

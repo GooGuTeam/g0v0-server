@@ -25,6 +25,7 @@ from app.dependencies.database import get_redis
 from app.helpers import utcnow
 from app.log import log
 from app.models.beatmap import BeatmapRankStatus
+from app.models.events.score import ScoreDeletedEvent
 from app.models.model import (
     CurrentUserAttributes,
     PinAttributes,
@@ -41,6 +42,7 @@ from app.models.score import (
     SoloScoreSubmissionInfo,
 )
 from app.models.scoring_mode import ScoringMode
+from app.plugins import event_hub
 from app.storage import StorageService
 
 from ._base import DatabaseModel, OnDemand, included, ondemand
@@ -521,6 +523,8 @@ class Score(ScoreModel, table=True):
         session: AsyncSession,
         storage_service: StorageService,
     ):
+        score_id = self.id
+
         if await self.awaitable_attrs.best_score:
             assert self.best_score is not None
             await self.best_score.delete(session)
@@ -534,6 +538,8 @@ class Score(ScoreModel, table=True):
 
         await storage_service.delete_file(self.replay_filename)
         await session.delete(self)
+
+        event_hub.emit(ScoreDeletedEvent(score_id=score_id))
 
 
 MultiplayScoreDict = ScoreModel.generate_typeddict(tuple(Score.MULTIPLAYER_BASE_INCLUDES))  # pyright: ignore[reportGeneralTypeIssues]

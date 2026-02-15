@@ -16,9 +16,11 @@ from app.dependencies.storage import StorageService
 from app.helpers import camel_to_snake, utcnow
 from app.log import log
 from app.models.error import ErrorType, FieldMissingError, RequestError
+from app.models.events.score import ReplayUploadedEvent
 from app.models.playlist import PlaylistItem
 from app.models.room import MatchType, QueueMode, RoomCategory, RoomStatus
 from app.models.score import RULESETS_VERSION_HASH, GameMode, VersionEntry
+from app.plugins import event_hub
 
 from .notification.server import server
 
@@ -738,7 +740,16 @@ async def save_replay(
     """
     replay_data = req.mreplay
     replay_path = f"replays/{req.score_id}_{req.beatmap_id}_{req.user_id}_lazer_replay.osr"
-    await storage_service.write_file(replay_path, base64.b64decode(replay_data), "application/x-osu-replay")
+    replay_bytes = base64.b64decode(replay_data)
+    await storage_service.write_file(replay_path, replay_bytes, "application/x-osu-replay")
+    event_hub.emit(
+        ReplayUploadedEvent(
+            score_id=req.score_id,
+            uploader_user_id=req.user_id,
+            file_path=replay_path,
+            replay_data=replay_bytes,
+        )
+    )
 
 
 @router.get("/ruleset-hashes", response_model=dict[GameMode, VersionEntry])

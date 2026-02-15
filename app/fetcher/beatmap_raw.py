@@ -12,6 +12,8 @@ Classes:
 import asyncio
 
 from app.log import fetcher_logger
+from app.models.events.fetcher import BeatmapRawFetchedEvent, FetchingBeatmapRawEvent
+from app.plugins import event_hub
 
 from ._base import BaseFetcher
 
@@ -107,6 +109,7 @@ class BeatmapRawFetcher(BaseFetcher):
             HTTPError: If all fetch attempts fail.
         """
         future: asyncio.Future[str] | None = None
+        event_hub.emit(FetchingBeatmapRawEvent(beatmap_id=beatmap_id))
 
         # Check if there is an in-progress request
         async with self._request_lock:
@@ -193,6 +196,7 @@ class BeatmapRawFetcher(BaseFetcher):
                     continue
 
                 logger.debug(f"Successfully fetched beatmap {beatmap_id} from {req_url}")
+                event_hub.emit(BeatmapRawFetchedEvent(beatmap_id=beatmap_id, beatmap_raw=resp.text))
                 return resp.text
 
             except Exception as e:

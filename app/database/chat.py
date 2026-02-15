@@ -9,6 +9,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, ClassVar, NotRequired, TypedDict
 
 from app.helpers import utcnow
+from app.models.chat import MessageType
 from app.models.model import UTCBaseModel
 
 from ._base import DatabaseModel, included, ondemand
@@ -57,14 +58,6 @@ class ChannelType(StrEnum):
     SYSTEM = "SYSTEM"
     ANNOUNCE = "ANNOUNCE"
     TEAM = "TEAM"
-
-
-class MessageType(StrEnum):
-    """Types of chat messages."""
-
-    ACTION = "action"
-    MARKDOWN = "markdown"
-    PLAIN = "plain"
 
 
 class ChatChannelDict(TypedDict):

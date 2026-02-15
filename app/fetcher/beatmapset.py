@@ -17,7 +17,9 @@ from app.database import BeatmapsetDict, BeatmapsetModel, SearchBeatmapsetsResp
 from app.helpers import bg_tasks
 from app.log import fetcher_logger
 from app.models.beatmap import SearchQueryModel
+from app.models.events.fetcher import BeatmapsetFetchedEvent, FetchingBeatmapsetEvent
 from app.models.model import Cursor
+from app.plugins import event_hub
 
 from ._base import BaseFetcher
 
@@ -189,10 +191,14 @@ class BeatmapsetFetcher(BaseFetcher):
             A dictionary containing the beatmapset data with extended
             information including beatmaps, availability, and metadata.
         """
+        event_hub.emit(FetchingBeatmapsetEvent(beatmapset_id=beatmap_set_id))
+
         logger.opt(colors=True).debug(f"get_beatmapset: <y>{beatmap_set_id}</y>")
-        return adapter.validate_python(  # pyright: ignore[reportReturnType]
+        beatmapset = adapter.validate_python(
             await self.request_api(f"https://osu.ppy.sh/api/v2/beatmapsets/{beatmap_set_id}")
         )
+        event_hub.emit(BeatmapsetFetchedEvent(beatmapset_id=beatmap_set_id, beatmapset_data=beatmapset))  # pyright: ignore[reportArgumentType]
+        return beatmapset  # pyright: ignore[reportReturnType]
 
     async def search_beatmapset(
         self, query: SearchQueryModel, cursor: Cursor, redis_client: redis.Redis

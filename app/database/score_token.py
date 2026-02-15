@@ -21,7 +21,7 @@ from sqlmodel import BigInteger, Field, ForeignKey, Relationship, SQLModel
 class ScoreTokenBase(SQLModel, UTCBaseModel):
     """Base fields for score tokens."""
 
-    id: int | None = Field(
+    id: int = Field(
         default=None,
         sa_column=Column(
             BigInteger,

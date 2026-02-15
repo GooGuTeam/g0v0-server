@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 import json
 from pathlib import Path
+import time
 
 from app.calculating import init_calculator
 from app.config import settings
@@ -18,9 +19,10 @@ from app.helpers import bg_tasks, utcnow
 from app.log import system_logger
 from app.middleware.verify_session import VerifySessionMiddleware
 from app.models.error import RequestError
+from app.models.events.http import RequestHandledEvent, RequestReceivedEvent
 from app.models.mods import init_mods, init_ranked_mods
 from app.models.score import init_ruleset_version_hash
-from app.plugins import plugin_manager, plugin_router
+from app.plugins import event_hub, plugin_manager, plugin_router
 from app.router import (
     api_v1_router,
     api_v2_router,
@@ -285,6 +287,14 @@ async def request_error_handler(request: Request, exc: RequestError):  # noqa: A
 @app.exception_handler(exc_class_or_status_code=HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):  # noqa: ARG001
     return JSONResponse(status_code=exc.status_code, content={"error": exc.detail})
+
+
+@app.middleware("http")
+async def add_process_time_header(request: Request, call_next):
+    event_hub.emit(RequestReceivedEvent(time=time.time(), request=request))
+    response = await call_next(request)
+    event_hub.emit(RequestHandledEvent(time=time.time(), request=request, response=response))
+    return response
 
 
 if settings.secret_key == "your_jwt_secret_here":  # noqa: S105

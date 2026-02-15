@@ -50,6 +50,15 @@ from app.helpers import api_doc, utcnow
 from app.log import log
 from app.models.beatmap import BeatmapRankStatus
 from app.models.error import ErrorType, RequestError
+from app.models.events.score import (
+    MultiplayerScoreCreatedEvent,
+    MultiplayerScoreSubmittedEvent,
+    ReplayDownloadedEvent,
+    ScoreProcessedEvent,
+    ScoreType,
+    SoloScoreCreatedEvent,
+    SoloScoreSubmittedEvent,
+)
 from app.models.room import RoomCategory
 from app.models.score import (
     GameMode,
@@ -57,6 +66,7 @@ from app.models.score import (
     Rank,
     SoloScoreSubmissionInfo,
 )
+from app.plugins import event_hub
 from app.service.beatmap_cache_service import get_beatmap_cache_service
 from app.service.user_cache_service import refresh_user_cache_background
 
@@ -142,6 +152,7 @@ async def _process_user(score_id: int, user_id: int, redis: Redis, fetcher: Fetc
         await process_user(session, redis, fetcher, user, score, score_token, beatmap[0], BeatmapRankStatus(beatmap[1]))
         await refresh_user_cache_background(redis, user_id, gamemode)
         await redis.publish("osu-channel:score:processed", f'{{"ScoreId": {score_id}}}')
+        event_hub.emit(ScoreProcessedEvent(score_id=score_id))
 
 
 async def submit_score(
@@ -607,6 +618,17 @@ async def create_solo_score(
             mode=ruleset_id,
             client_version=str(client_version),
         )
+
+        event_hub.emit(
+            SoloScoreCreatedEvent(
+                user_id=user_id,
+                beatmap_id=beatmap_id,
+                beatmap_hash=beatmap_hash,
+                gamemode=GameMode.from_int(ruleset_id),
+                score_token=score_token.id,
+            )
+        )
+
         return ScoreTokenResp.from_db(score_token)
 
 
@@ -642,6 +664,13 @@ async def submit_solo_score(
     Returns:
         dict: The submitted score.
     """
+    event_hub.emit(
+        SoloScoreSubmittedEvent(
+            submission_info=info,
+            user_id=current_user.id,
+        )
+    )
+
     return await submit_score(background_task, info, token, current_user, db, redis, fetcher)
 
 
@@ -774,6 +803,19 @@ async def create_playlist_score(
         playlist_id=playlist_id,
         client_version=str(client_version),
     )
+
+    event_hub.emit(
+        MultiplayerScoreCreatedEvent(
+            user_id=user_id,
+            beatmap_id=beatmap_id,
+            beatmap_hash=beatmap_hash,
+            gamemode=GameMode.from_int(ruleset_id),
+            score_token=score_token.id,
+            score_type=ScoreType.MULTIPLAYER,
+            room_id=room_id,
+            playlist_id=playlist_id,
+        )
+    )
     return ScoreTokenResp.from_db(score_token)
 
 
@@ -818,6 +860,15 @@ async def submit_playlist_score(
         raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
 
     user_id = current_user.id
+
+    event_hub.emit(
+        MultiplayerScoreSubmittedEvent(
+            submission_info=info,
+            room_id=room_id,
+            playlist_id=playlist_id,
+            user_id=user_id,
+        )
+    )
 
     item = (await session.exec(select(Playlist).where(Playlist.id == playlist_id, Playlist.room_id == room_id))).first()
     if not item:
@@ -1376,6 +1427,14 @@ async def download_score_replay(
             db.add(replay_watched_count)
         replay_watched_count.count += 1
         await db.commit()
+
+    event_hub.emit(
+        ReplayDownloadedEvent(
+            score_id=score_id,
+            owner_user_id=score.user_id,
+            downloader_user_id=user_id,
+        )
+    )
     return RedirectResponse(
         await storage_service.get_file_url(filepath), 301, headers={"Content-Type": "application/x-osu-replay"}
     )

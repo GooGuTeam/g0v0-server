@@ -22,7 +22,9 @@ from app.dependencies.user import get_current_user_and_token
 from app.helpers import bg_tasks, safe_json_dumps
 from app.log import log
 from app.models.chat import ChatEvent
+from app.models.events.chat import JoinChannelEvent, LeaveChannelEvent, MessageSentEvent
 from app.models.notification import NotificationDetail
+from app.plugins import event_hub
 from app.service.subscribers.chat import ChatSubscriber
 
 from fastapi import APIRouter, Depends, Header, Query, WebSocket, WebSocketDisconnect
@@ -177,6 +179,17 @@ class ChatServer:
             f"{message['message_id']}, is_bot_command: {is_bot_command}"
         )
 
+        event_hub.emit(
+            MessageSentEvent(
+                sender_id=message["sender_id"],
+                channel_id=message["channel_id"],
+                message_content=message["content"],
+                timestamp=message["timestamp"],
+                type=message["type"],
+                is_bot_command=is_bot_command,
+            )
+        )
+
         event = ChatEvent(
             event="chat.message.new",
             data={"messages": [message], "users": [message["sender"]]},  # pyright: ignore[reportTypedDictNotRequiredAccess]
@@ -245,6 +258,13 @@ class ChatServer:
         user_id = user.id
         channel_id = channel.channel_id
 
+        event_hub.emit(
+            JoinChannelEvent(
+                user_id=user_id,
+                channel_id=channel_id,
+            )
+        )
+
         if channel_id not in self.channels:
             self.channels[channel_id] = []
         if user_id not in self.channels[channel_id]:
@@ -273,6 +293,8 @@ class ChatServer:
         """
         user_id = user.id
         channel_id = channel.channel_id
+
+        event_hub.emit(LeaveChannelEvent(user_id=user_id, channel_id=channel_id))
 
         if channel_id in self.channels and user_id in self.channels[channel_id]:
             self.channels[channel_id].remove(user_id)
