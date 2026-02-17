@@ -7,6 +7,7 @@ real-time chat messaging, channel management, and user presence.
 import asyncio
 from typing import Annotated, overload
 
+from app.const import BANCHOBOT_ID
 from app.database import ChatMessageDict
 from app.database.chat import ChannelType, ChatChannel, ChatChannelDict, ChatChannelModel
 from app.database.notification import UserNotification, insert_notification
@@ -179,16 +180,17 @@ class ChatServer:
             f"{message['message_id']}, is_bot_command: {is_bot_command}"
         )
 
-        event_hub.emit(
-            MessageSentEvent(
-                sender_id=message["sender_id"],
-                channel_id=message["channel_id"],
-                message_content=message["content"],
-                timestamp=message["timestamp"],
-                type=message["type"],
-                is_bot_command=is_bot_command,
+        if message["sender_id"] != BANCHOBOT_ID:
+            event_hub.emit(
+                MessageSentEvent(
+                    sender_id=message["sender_id"],
+                    channel_id=message["channel_id"],
+                    message_content=message["content"],
+                    timestamp=message["timestamp"],
+                    type=message["type"],
+                    is_bot_command=is_bot_command,
+                )
             )
-        )
 
         event = ChatEvent(
             event="chat.message.new",

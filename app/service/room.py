@@ -37,7 +37,7 @@ async def create_playlist_room_from_api(session: AsyncSession, room: APIUploaded
     await session.refresh(db_room)
 
     channel = ChatChannel(
-        name=f"room_{db_room.id}",
+        channel_name=f"room_{db_room.id}",
         description="Playlist room",
         type=ChannelType.MULTIPLAYER,
     )
@@ -95,7 +95,7 @@ async def create_playlist_room(
     await session.refresh(db_room)
 
     channel = ChatChannel(
-        name=f"room_{db_room.id}",
+        channel_name=f"room_{db_room.id}",
         description="Playlist room",
         type=ChannelType.MULTIPLAYER,
     )

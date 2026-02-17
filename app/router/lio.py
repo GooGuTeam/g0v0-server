@@ -62,7 +62,7 @@ async def _ensure_room_chat_channel(
 
     if ch is None:
         ch = ChatChannel(
-            name=f"mp_{room.id}",  # Channel name can be customized (ensure uniqueness)
+            channel_name=f"mp_{room.id}",  # Channel name can be customized (ensure uniqueness)
             description=f"Multiplayer room {room.id} chat",
             type=ChannelType.MULTIPLAYER,
         )

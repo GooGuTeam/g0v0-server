@@ -369,7 +369,7 @@ async def create_channel(
 
     if channel is None:
         channel = ChatChannel(
-            name=channel_name,
+            channel_name=channel_name,
             description=req.channel.description if req.channel else "Private message channel",
             type=ChannelType.PM if req.type == "PM" else ChannelType.ANNOUNCE,
         )

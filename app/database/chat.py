@@ -274,7 +274,7 @@ class ChatMessageModel(DatabaseModel[ChatMessageDict]):
     message_id: int = Field(index=True, primary_key=True, default=None)
     sender_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
     timestamp: datetime = Field(sa_column=Column(DateTime, index=True), default_factory=utcnow)
-    type: MessageType = Field(default=MessageType.PLAIN, index=True, exclude=True)
+    type: MessageType = Field(default=MessageType.PLAIN, index=True)
     uuid: str | None = Field(default=None)
 
     @included

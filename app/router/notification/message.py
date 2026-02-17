@@ -382,7 +382,7 @@ async def create_new_pm(
     channel = await ChatChannel.get_pm_channel(user_id, req.target_id, session)
     if channel is None:
         channel = ChatChannel(
-            name=f"pm_{user_id}_{req.target_id}",
+            channel_name=f"pm_{user_id}_{req.target_id}",
             description="Private message channel",
             type=ChannelType.PM,
         )
