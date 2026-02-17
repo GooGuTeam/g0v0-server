@@ -78,7 +78,9 @@ class EventHub:
                 anno = param.annotation
                 typ = anno.__args__[0] if get_origin(anno) is Annotated else anno
 
-                if not inspect.isclass(typ) or not issubclass(typ, PluginEvent) or not isinstance(event, typ):
+                if not inspect.isclass(typ) or not issubclass(typ, PluginEvent):
+                    continue
+                elif not isinstance(event, typ):
                     return
 
                 event_param = param
