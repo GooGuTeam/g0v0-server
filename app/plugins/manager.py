@@ -88,6 +88,10 @@ class PluginManager:
                     continue
                 try:
                     meta = PluginMeta.model_validate_json(meta_files.read_text())
+                    if meta.id in settings.disabled_plugins:
+                        logger.info(f"Plugin '{meta.name}' (ID: {meta.id}) is disabled, skipping.")
+                        continue
+
                     self.plugins.append(
                         ManagedPlugin(meta=meta, path=Path(plugin), module_name=path_to_module_name(Path(plugin)))
                     )

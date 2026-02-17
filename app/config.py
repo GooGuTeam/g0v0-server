@@ -724,6 +724,11 @@ CALCULATOR_CONFIG='{}'
         Field(default=["./plugins"], description="插件目录列表"),
         "插件设置",
     ]
+    disabled_plugins: Annotated[
+        list[str],
+        Field(default=[], description="禁用的插件列表"),
+        "插件设置",
+    ]
 
     @field_validator("storage_settings", mode="after")
     @classmethod
