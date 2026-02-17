@@ -1,11 +1,12 @@
+import asyncio
 import importlib
 
 from app.config import settings
-from app.plugins import plugin_manager
 
 from ._base import CalculateError, ConvertError, DifficultyError, PerformanceCalculator, PerformanceError
 
 CALCULATOR: PerformanceCalculator | None = None
+_init_lock = asyncio.Lock()
 
 
 async def init_calculator() -> PerformanceCalculator | None:
@@ -21,27 +22,33 @@ async def init_calculator() -> PerformanceCalculator | None:
         ImportError: If the calculator module cannot be imported.
     """
     global CALCULATOR
-    try:
-        if settings.calculator.startswith("-"):
-            # Calculator is from a plugin, e.g. "-osu_native_calculator"
-            plugin = plugin_manager.get_plugin_by_id(settings.calculator[1:])
-            if plugin is None:
-                raise ImportError(f"Plugin '{settings.calculator[1:]}' not found for performance calculator")
-            module = plugin.module
-            if module is None:
-                raise RuntimeError(f"Plugin '{settings.calculator[1:]}' is not loaded.")
-        elif "." not in settings.calculator:
-            # Built-in calculator, e.g. "performance_server"
-            module = importlib.import_module(f".{settings.calculator}", package="app.calculating.calculators")
-        else:
-            # Absolute package path, e.g. "plugins.osu_native_calculator"
-            module = importlib.import_module(settings.calculator)
+    if CALCULATOR is not None:
+        return CALCULATOR
 
-        CALCULATOR = module.PerformanceCalculator(**settings.calculator_config)
-        if CALCULATOR is not None:
-            await CALCULATOR.init()
-    except (ImportError, AttributeError) as e:
-        raise ImportError(f"Failed to import performance calculator for {settings.calculator}") from e
+    async with _init_lock:
+        try:
+            if settings.calculator.startswith("-"):
+                from app.plugins import plugin_manager
+
+                # Calculator is from a plugin, e.g. "-osu_native_calculator"
+                plugin = plugin_manager.get_plugin_by_id(settings.calculator[1:])
+                if plugin is None:
+                    raise ImportError(f"Plugin '{settings.calculator[1:]}' not found for performance calculator")
+                module = plugin.module
+                if module is None:
+                    raise RuntimeError(f"Plugin '{settings.calculator[1:]}' is not loaded.")
+            elif "." not in settings.calculator:
+                # Built-in calculator, e.g. "performance_server"
+                module = importlib.import_module(f".{settings.calculator}", package="app.calculating.calculators")
+            else:
+                # Absolute package path, e.g. "plugins.osu_native_calculator"
+                module = importlib.import_module(settings.calculator)
+
+            CALCULATOR = module.PerformanceCalculator(**settings.calculator_config)
+            if CALCULATOR is not None:
+                await CALCULATOR.init()
+        except (ImportError, AttributeError) as e:
+            raise ImportError(f"Failed to import performance calculator for {settings.calculator}") from e
     return CALCULATOR
 
 
