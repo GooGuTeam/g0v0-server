@@ -10,7 +10,7 @@ Classes:
 from app.database.beatmap import BeatmapDict, BeatmapModel
 from app.log import fetcher_logger
 from app.models.events.fetcher import BeatmapFetchedEvent, FetchingBeatmapEvent
-from app.plugins import event_hub
+from app.plugins import hub
 
 from ._base import BaseFetcher
 
@@ -68,7 +68,7 @@ class BeatmapFetcher(BaseFetcher):
         Raises:
             ValueError: If neither beatmap_id nor beatmap_checksum is provided.
         """
-        event_hub.emit(FetchingBeatmapEvent(beatmap_id=beatmap_id, beatmap_checksum=beatmap_checksum))
+        hub.emit(FetchingBeatmapEvent(beatmap_id=beatmap_id, beatmap_checksum=beatmap_checksum))
 
         if beatmap_id:
             params = {"id": beatmap_id}
@@ -84,5 +84,5 @@ class BeatmapFetcher(BaseFetcher):
                 params=params,
             )
         )
-        event_hub.emit(BeatmapFetchedEvent(beatmap_id=beatmap["id"], beatmap_data=beatmap))  # pyright: ignore[reportArgumentType]
+        hub.emit(BeatmapFetchedEvent(beatmap_id=beatmap["id"], beatmap_data=beatmap))  # pyright: ignore[reportArgumentType]
         return beatmap  # pyright: ignore[reportReturnType]

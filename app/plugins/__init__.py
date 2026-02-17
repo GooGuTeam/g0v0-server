@@ -12,8 +12,8 @@ Functions:
     register_api: Register API routes for a plugin.
 
 Variables:
-    event_hub: Global EventHub instance.
-    plugin_manager: Global PluginManager instance.
+    hub: Global EventHub instance.
+    manager: Global PluginManager instance.
     plugin_router: FastAPI router for all plugin routes.
     plugin_routers: Registry of plugin-specific routers.
 
@@ -24,8 +24,8 @@ References:
 from .api_router import plugin_router, plugin_routers, register_api
 from .event_hub import (
     EventHub,
-    hub as event_hub,
+    hub,
 )
-from .manager import plugin_manager as plugin_manager
+from .manager import manager as manager
 
-__all__ = ["EventHub", "event_hub", "plugin_manager", "plugin_router", "plugin_routers", "register_api"]
+__all__ = ["EventHub", "hub", "manager", "plugin_router", "plugin_routers", "register_api"]

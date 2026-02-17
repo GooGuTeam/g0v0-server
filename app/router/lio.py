@@ -20,7 +20,7 @@ from app.models.events.score import ReplayUploadedEvent
 from app.models.playlist import PlaylistItem
 from app.models.room import MatchType, QueueMode, RoomCategory, RoomStatus
 from app.models.score import RULESETS_VERSION_HASH, GameMode, VersionEntry
-from app.plugins import event_hub
+from app.plugins import hub
 
 from .notification.server import server
 
@@ -742,7 +742,7 @@ async def save_replay(
     replay_path = f"replays/{req.score_id}_{req.beatmap_id}_{req.user_id}_lazer_replay.osr"
     replay_bytes = base64.b64decode(replay_data)
     await storage_service.write_file(replay_path, replay_bytes, "application/x-osu-replay")
-    event_hub.emit(
+    hub.emit(
         ReplayUploadedEvent(
             score_id=req.score_id,
             uploader_user_id=req.user_id,

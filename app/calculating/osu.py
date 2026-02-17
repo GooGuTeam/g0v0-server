@@ -8,7 +8,7 @@ from app.log import log
 from app.models.events.calculating import AfterCalculatingPPEvent, BeforeCalculatingPPEvent
 from app.models.score import HitResult, ScoreStatistics
 from app.models.scoring_mode import ScoringMode
-from app.plugins import event_hub
+from app.plugins import hub
 
 from .calculators import get_calculator
 from .math import clamp
@@ -323,7 +323,7 @@ async def calculate_pp(score: "Score", beatmap: str, session: AsyncSession) -> f
     """
     from app.database.beatmap import BannedBeatmaps
 
-    event_hub.emit(BeforeCalculatingPPEvent(score_id=score.id, beatmap_raw=beatmap))
+    hub.emit(BeforeCalculatingPPEvent(score_id=score.id, beatmap_raw=beatmap))
 
     if settings.suspicious_score_check:
         beatmap_banned = (
@@ -352,7 +352,7 @@ async def calculate_pp(score: "Score", beatmap: str, session: AsyncSession) -> f
     else:
         attrs = await get_calculator().calculate_performance(beatmap, score)
         pp = attrs.pp
-        event_hub.emit(AfterCalculatingPPEvent(score_id=score.id, beatmap_raw=beatmap, performance_attribute=attrs))
+        hub.emit(AfterCalculatingPPEvent(score_id=score.id, beatmap_raw=beatmap, performance_attribute=attrs))
 
     if settings.suspicious_score_check and (pp > 3000):
         logger.warning(

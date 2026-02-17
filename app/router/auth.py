@@ -44,7 +44,7 @@ from app.models.oauth import (
     UserRegistrationErrors,
 )
 from app.models.score import GameMode
-from app.plugins import event_hub
+from app.plugins import hub
 from app.service.login_log_service import LoginLogService
 from app.service.password_reset_service import password_reset_service
 from app.service.turnstile_service import turnstile_service
@@ -223,7 +223,7 @@ async def register_user(
         daily_challenge_user_stats = DailyChallengeStats(user_id=new_user.id)
         db.add(daily_challenge_user_stats)
 
-        event_hub.emit(
+        hub.emit(
             UserRegisteredEvent(
                 user_id=new_user.id,
                 username=new_user.username,

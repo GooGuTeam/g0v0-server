@@ -22,7 +22,7 @@ from app.models.error import RequestError
 from app.models.events.http import RequestHandledEvent, RequestReceivedEvent
 from app.models.mods import init_mods, init_ranked_mods
 from app.models.score import init_ruleset_version_hash
-from app.plugins import event_hub, plugin_manager, plugin_router
+from app.plugins import hub, manager, plugin_router
 from app.router import (
     api_v1_router,
     api_v2_router,
@@ -65,7 +65,7 @@ import sentry_sdk
 async def lifespan(app: FastAPI):
     # === on startup ===
     # init mods, achievements and performance calculator
-    plugin_manager.load_all_plugins()
+    manager.load_all_plugins()
     app.include_router(plugin_router)
 
     init_mods()
@@ -291,9 +291,9 @@ async def http_exception_handler(request: Request, exc: HTTPException):  # noqa:
 
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
-    event_hub.emit(RequestReceivedEvent(time=time.time(), request=request))
+    hub.emit(RequestReceivedEvent(time=time.time(), request=request))
     response = await call_next(request)
-    event_hub.emit(RequestHandledEvent(time=time.time(), request=request, response=response))
+    hub.emit(RequestHandledEvent(time=time.time(), request=request, response=response))
     return response
 
 

@@ -29,7 +29,7 @@ from app.fetcher.beatmap_raw import NoBeatmapError
 from app.log import log
 from app.models.mods import init_mods, init_ranked_mods, mod_to_save, mods_can_get_pp
 from app.models.score import GameMode, Rank
-from app.plugins import plugin_manager
+from app.plugins import manager
 
 from httpx import HTTPError
 from redis.asyncio import Redis
@@ -1187,7 +1187,7 @@ async def recalculate_performance(
 
     init_mods()
     init_ranked_mods()
-    plugin_manager.load_all_plugins()
+    manager.load_all_plugins()
     await init_calculator()
 
     targets = await determine_targets(config)
@@ -1262,7 +1262,7 @@ async def recalculate_rating(
     fetcher = await get_fetcher()
     redis = get_redis()
 
-    plugin_manager.load_all_plugins()
+    manager.load_all_plugins()
     await init_calculator()
 
     # Determine beatmaps to recalculate

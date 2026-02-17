@@ -28,10 +28,10 @@ async def init_calculator() -> PerformanceCalculator | None:
     async with _init_lock:
         try:
             if settings.calculator.startswith("-"):
-                from app.plugins import plugin_manager
+                from app.plugins import manager
 
                 # Calculator is from a plugin, e.g. "-osu_native_calculator"
-                plugin = plugin_manager.get_plugin_by_id(settings.calculator[1:])
+                plugin = manager.get_plugin_by_id(settings.calculator[1:])
                 if plugin is None:
                     raise ImportError(f"Plugin '{settings.calculator[1:]}' not found for performance calculator")
                 module = plugin.module

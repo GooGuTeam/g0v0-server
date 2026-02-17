@@ -42,7 +42,7 @@ from app.models.score import (
     SoloScoreSubmissionInfo,
 )
 from app.models.scoring_mode import ScoringMode
-from app.plugins import event_hub
+from app.plugins import hub
 from app.storage import StorageService
 
 from ._base import DatabaseModel, OnDemand, included, ondemand
@@ -539,7 +539,7 @@ class Score(ScoreModel, table=True):
         await storage_service.delete_file(self.replay_filename)
         await session.delete(self)
 
-        event_hub.emit(ScoreDeletedEvent(score_id=score_id))
+        hub.emit(ScoreDeletedEvent(score_id=score_id))
 
 
 MultiplayScoreDict = ScoreModel.generate_typeddict(tuple(Score.MULTIPLAYER_BASE_INCLUDES))  # pyright: ignore[reportGeneralTypeIssues]

@@ -25,7 +25,7 @@ from app.log import log
 from app.models.chat import ChatEvent
 from app.models.events.chat import JoinChannelEvent, LeaveChannelEvent, MessageSentEvent
 from app.models.notification import NotificationDetail
-from app.plugins import event_hub
+from app.plugins import hub
 from app.service.subscribers.chat import ChatSubscriber
 
 from fastapi import APIRouter, Depends, Header, Query, WebSocket, WebSocketDisconnect
@@ -181,7 +181,7 @@ class ChatServer:
         )
 
         if message["sender_id"] != BANCHOBOT_ID:
-            event_hub.emit(
+            hub.emit(
                 MessageSentEvent(
                     sender_id=message["sender_id"],
                     channel_id=message["channel_id"],
@@ -260,7 +260,7 @@ class ChatServer:
         user_id = user.id
         channel_id = channel.channel_id
 
-        event_hub.emit(
+        hub.emit(
             JoinChannelEvent(
                 user_id=user_id,
                 channel_id=channel_id,
@@ -296,7 +296,7 @@ class ChatServer:
         user_id = user.id
         channel_id = channel.channel_id
 
-        event_hub.emit(LeaveChannelEvent(user_id=user_id, channel_id=channel_id))
+        hub.emit(LeaveChannelEvent(user_id=user_id, channel_id=channel_id))
 
         if channel_id in self.channels and user_id in self.channels[channel_id]:
             self.channels[channel_id].remove(user_id)

@@ -16,7 +16,7 @@ from app.models.error import ErrorType, RequestError
 from app.models.events.score import ReplayDownloadedEvent
 from app.models.mods import int_to_mods
 from app.models.score import GameMode
-from app.plugins import event_hub
+from app.plugins import hub
 
 from .router import router
 
@@ -131,7 +131,7 @@ async def download_replay(
         session.add(replay_watched_count)
     replay_watched_count.count += 1
 
-    event_hub.emit(ReplayDownloadedEvent(score_id=score_record.id, owner_user_id=score_record.user_id))
+    hub.emit(ReplayDownloadedEvent(score_id=score_record.id, owner_user_id=score_record.user_id))
 
     await session.commit()
 

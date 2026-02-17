@@ -228,4 +228,4 @@ class PluginManager:
         return None
 
 
-plugin_manager = PluginManager()
+manager = PluginManager()

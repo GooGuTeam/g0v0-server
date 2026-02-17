@@ -13,7 +13,7 @@ Variables:
 
 from typing import Any
 
-from .manager import plugin_manager
+from .manager import manager
 
 from fastapi import APIRouter
 
@@ -38,7 +38,7 @@ def register_api(**kwargs: Any) -> APIRouter:
         RuntimeError: If the calling plugin cannot be determined.
     """
     router = APIRouter(**kwargs)
-    plugin = plugin_manager.get_plugin_from_frame()
+    plugin = manager.get_plugin_from_frame()
     if plugin is None:
         raise RuntimeError("Failed to get plugin from frame when registering API route")
     plugin_routers[plugin.meta.id] = router

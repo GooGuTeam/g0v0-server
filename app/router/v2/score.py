@@ -66,7 +66,7 @@ from app.models.score import (
     Rank,
     SoloScoreSubmissionInfo,
 )
-from app.plugins import event_hub
+from app.plugins import hub
 from app.service.beatmap_cache_service import get_beatmap_cache_service
 from app.service.user_cache_service import refresh_user_cache_background
 
@@ -152,7 +152,7 @@ async def _process_user(score_id: int, user_id: int, redis: Redis, fetcher: Fetc
         await process_user(session, redis, fetcher, user, score, score_token, beatmap[0], BeatmapRankStatus(beatmap[1]))
         await refresh_user_cache_background(redis, user_id, gamemode)
         await redis.publish("osu-channel:score:processed", f'{{"ScoreId": {score_id}}}')
-        event_hub.emit(ScoreProcessedEvent(score_id=score_id))
+        hub.emit(ScoreProcessedEvent(score_id=score_id))
 
 
 async def submit_score(
@@ -619,7 +619,7 @@ async def create_solo_score(
             client_version=str(client_version),
         )
 
-        event_hub.emit(
+        hub.emit(
             SoloScoreCreatedEvent(
                 user_id=user_id,
                 beatmap_id=beatmap_id,
@@ -664,7 +664,7 @@ async def submit_solo_score(
     Returns:
         dict: The submitted score.
     """
-    event_hub.emit(
+    hub.emit(
         SoloScoreSubmittedEvent(
             submission_info=info,
             user_id=current_user.id,
@@ -804,7 +804,7 @@ async def create_playlist_score(
         client_version=str(client_version),
     )
 
-    event_hub.emit(
+    hub.emit(
         MultiplayerScoreCreatedEvent(
             user_id=user_id,
             beatmap_id=beatmap_id,
@@ -861,7 +861,7 @@ async def submit_playlist_score(
 
     user_id = current_user.id
 
-    event_hub.emit(
+    hub.emit(
         MultiplayerScoreSubmittedEvent(
             submission_info=info,
             room_id=room_id,
@@ -1428,7 +1428,7 @@ async def download_score_replay(
         replay_watched_count.count += 1
         await db.commit()
 
-    event_hub.emit(
+    hub.emit(
         ReplayDownloadedEvent(
             score_id=score_id,
             owner_user_id=score.user_id,
