@@ -360,7 +360,8 @@ async def call_awaitable_with_context(
     return await func(session, instance, **call_params)
 
 
-_META_CACHE: dict[str, str] = {}
+# None means caller isn't a plugin
+_META_CACHE: dict[str, str | None] = {}
 
 
 class DatabaseModel[TDict](SQLModel, UTCBaseModel, metaclass=DatabaseModelMetaclass):
@@ -396,7 +397,6 @@ class DatabaseModel[TDict](SQLModel, UTCBaseModel, metaclass=DatabaseModelMetacl
                         meta_content = meta_file.read_text(encoding="utf-8")
                         plugin_id = json.loads(meta_content).get("id")
                         if plugin_id:
-                            _META_CACHE[file_path] = plugin_id
                             break
                     except Exception:
                         logger.warning(f"Failed to read plugin metadata from {meta_file}: {sys.exc_info()[1]}")
@@ -409,6 +409,7 @@ class DatabaseModel[TDict](SQLModel, UTCBaseModel, metaclass=DatabaseModelMetacl
                             break
                     except Exception:
                         logger.warning(f"Failed to read plugin metadata from {meta_file}: {sys.exc_info()[1]}")
+        _META_CACHE[file_path] = plugin_id
 
         if "__tablename__" not in cls.__dict__:
             if plugin_id is not None:
