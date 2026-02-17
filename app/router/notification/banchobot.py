@@ -9,10 +9,12 @@ from collections.abc import Awaitable, Callable
 from math import ceil
 import random
 import shlex
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from app.calculating import calculate_weighted_pp
 from app.const import BANCHOBOT_ID
+
+from sqlalchemy.ext.asyncio import async_object_session
 
 if TYPE_CHECKING:
     pass
@@ -88,6 +90,23 @@ class Bot:
         args = parts[1:]
         return cmd, args
 
+    @staticmethod
+    def make_link(url: str, text: str = "") -> str:
+        """Format a message with a link.
+
+        Args:
+            url: The URL of the link.
+            text: The display text for the link.
+
+        Returns:
+            Formatted string with the link.
+        """
+        if not url.startswith("http://") and not url.startswith("https://"):
+            url = "https://" + url
+        if not text:
+            return f"{url}"
+        return f"[{url} {text}]"
+
     async def try_handle(
         self,
         user: User,
@@ -121,9 +140,9 @@ class Bot:
             except Exception:
                 reply = "Unknown error occured."
         if reply:
-            await self._send_reply(user, channel, reply, session)
+            await self.send_reply(user, reply, session, src_channel=channel)
 
-    async def _send_message(self, channel: ChatChannel, content: str, session: AsyncSession) -> None:
+    async def send_message(self, channel: ChatChannel, content: str, session: AsyncSession | None = None) -> None:
         """Send a message from the bot to a channel.
 
         Args:
@@ -131,9 +150,9 @@ class Bot:
             content: Message content to send.
             session: Database session.
         """
-        bot = await session.get(User, self.bot_user_id)
-        if bot is None:
-            return
+        if session is None:
+            session = cast(AsyncSession, async_object_session(channel))
+
         channel_id = channel.channel_id
         if channel_id is None:
             return
@@ -141,13 +160,12 @@ class Bot:
         msg = ChatMessage(
             channel_id=channel_id,
             content=content,
-            sender_id=bot.id,
+            sender_id=self.bot_user_id,
             type=MessageType.PLAIN,
         )
         session.add(msg)
         await session.commit()
         await session.refresh(msg)
-        await session.refresh(bot)
         resp = await ChatMessageModel.transform(msg, includes=["sender"])
         await server.send_message_to_channel(resp)
 
@@ -172,7 +190,7 @@ class Bot:
         channel = await ChatChannel.get_pm_channel(user_id, bot.id, session)
         if channel is None:
             channel = ChatChannel(
-                name=f"pm_{user_id}_{bot.id}",
+                channel_name=f"pm_{user_id}_{bot.id}",
                 description="Private message channel",
                 type=ChannelType.PM,
             )
@@ -184,27 +202,43 @@ class Bot:
         await server.batch_join_channel([user, bot], channel)
         return channel
 
-    async def _send_reply(
+    async def send_reply(
         self,
-        user: User,
-        src_channel: ChatChannel,
+        user: User | int,
         content: str,
-        session: AsyncSession,
+        session: AsyncSession | None = None,
+        *,
+        src_channel: ChatChannel | None = None,
     ) -> None:
         """Send a reply to a user, using PM for public channels.
 
         Args:
             user: The user to reply to.
-            src_channel: The source channel of the original message.
             content: Reply message content.
             session: Database session.
+            src_channel: The source channel of the original message.
         """
-        target_channel = src_channel
-        if src_channel.type == ChannelType.PUBLIC:
-            pm = await self._ensure_pm_channel(user, session)
+        if isinstance(user, int):
+            if session is None:
+                raise ValueError("Session is required when user is an ID")
+            target = await session.get(User, user)
+            if target is None:
+                raise ValueError(f"User with ID {user} not found for bot reply")
+        else:
+            target = user
+
+        if session is None:
+            session = cast(AsyncSession, async_object_session(target))
+
+        if src_channel is None or src_channel.type == ChannelType.PUBLIC:
+            pm = await self._ensure_pm_channel(target, session)
             if pm is not None:
                 target_channel = pm
-        await self._send_message(target_channel, content, session)
+            else:
+                raise RuntimeError("Failed to get or create PM channel for bot reply")
+        else:
+            target_channel = src_channel
+        await self.send_message(target_channel, content, session)
 
 
 bot = Bot()
