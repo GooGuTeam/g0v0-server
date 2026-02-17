@@ -3,6 +3,7 @@ from pathlib import Path
 import re
 import tomllib
 
+REGEX_PLUGIN_ID = re.compile(r"^[a-z0-9\-_]+$")
 
 def detect_g0v0_server_path() -> Path | None:
     """Detect the g0v0 server path from the current working directory to parents.
@@ -43,8 +44,8 @@ def get_plugin_id(plugin_path: Path) -> str:
     plugin_id = meta.get("id")
     if plugin_id is None:
         raise ValueError(f"Could not detect plugin id from {plugin_path / 'plugin.json'}.")
-    if re.match(r"^[a-z0-9\-]+$", plugin_id) is None:
+    if REGEX_PLUGIN_ID.match(plugin_id) is None:
         raise ValueError(
-            f"Invalid plugin id '{plugin_id}' in {plugin_path / 'plugin.json'}. Must match '^[a-z0-9\\-]+$'."
+            f"Invalid plugin id '{plugin_id}' in {plugin_path / 'plugin.json'}. Must match '^[a-z0-9\\-_]+$'."
         )
     return plugin_id
