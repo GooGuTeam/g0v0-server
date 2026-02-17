@@ -79,10 +79,14 @@ class PluginManager:
         a plugin metadata file) and registers them.
         """
         for plugin_dir in settings.plugin_dirs:
-            for plugin in Path(plugin_dir).iterdir():
+            plugin_path = Path(plugin_dir)
+            if not plugin_path.is_dir():
+                logger.warning(f"Plugin directory '{plugin_dir}' does not exist or is not a directory, skipping.")
+                continue
+            for plugin in plugin_path.iterdir():
                 if not plugin.is_dir():
                     continue
-                meta_files = Path(plugin) / META_FILENAME
+                meta_files = plugin / META_FILENAME
                 if not meta_files.exists():
                     logger.warning(f"Plugin directory '{plugin}' does not contain '{META_FILENAME}', skipping.")
                     continue
