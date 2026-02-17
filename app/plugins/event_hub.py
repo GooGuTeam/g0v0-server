@@ -17,14 +17,13 @@ Variables:
 """
 
 from collections.abc import Awaitable, Callable
-import contextlib
 import inspect
-from typing import Annotated, Any
+from typing import Annotated, Any, get_origin
 
 from app.helpers import bg_tasks
 from app.models.events import PluginEvent
 
-from fast_depends import Depends, ValidationError, inject
+from fast_depends import inject
 
 
 class EventHub:
@@ -72,26 +71,24 @@ class EventHub:
         """
 
         async def _task(listener):
+            # find event parameter
             sig = inspect.signature(listener)
-            params = []
+            event_param = None
+            for param in sig.parameters.values():
+                anno = param.annotation
+                typ = anno.__args__[0] if get_origin(anno) is Annotated else anno
 
-            for name, param in sig.parameters.items():
-                if (
-                    isinstance(param.annotation, type)
-                    and issubclass(param.annotation, PluginEvent)
-                    and isinstance(event, param.annotation)
-                ):
-                    # convert to Depends
-                    dep = Depends(lambda: event)
-                    params.append(param.replace(annotation=Annotated[param.annotation, dep]))
-                else:
-                    params.append(param)
+                if not inspect.isclass(typ) or not issubclass(typ, PluginEvent) or not isinstance(event, typ):
+                    return
 
-            listener.__signature__ = sig.replace(parameters=params)
+                event_param = param
+                break
 
-            # Now call inject
-            with contextlib.suppress(StopIteration, ValidationError):
-                await inject(listener)()
+            func = inject(listener)
+            if event_param is not None:
+                await func(**{event_param.name: event})
+            else:
+                await func()
 
         for listener in self._listeners:
             bg_tasks.add_task(_task, listener)
