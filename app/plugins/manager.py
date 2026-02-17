@@ -122,12 +122,12 @@ class PluginManager:
             rec_stack.add(meta.id)
             max_dep_order = 0
 
-            for dep in meta.dependencies:
-                dep = plugin_map.get(dep)
-                if dep:
-                    max_dep_order = max(max_dep_order, dfs(dep.meta, depth + 1))
+            for dep_id in meta.dependencies:
+                dep_plugin = plugin_map.get(dep_id)
+                if dep_plugin:
+                    max_dep_order = max(max_dep_order, dfs(dep_plugin.meta, depth + 1))
                 else:
-                    raise RuntimeError(f"Plugin '{meta.id}' depends on '{dep}' which is not detected.")
+                    raise RuntimeError(f"Plugin '{meta.id}' depends on '{dep_id}' which is not detected.")
 
             rec_stack.remove(meta.id)
             visited.add(meta.id)
