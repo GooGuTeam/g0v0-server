@@ -39,7 +39,7 @@ async def run_in_threadpool[**P, T](func: Callable[P, T], *args: P.args, **kwarg
         The result of the function.
     """
     func = functools.partial(func, *args, **kwargs)
-    return await asyncio.get_event_loop().run_in_executor(None, func)
+    return await asyncio.get_running_loop().run_in_executor(None, func)
 
 
 class BackgroundTasks:
