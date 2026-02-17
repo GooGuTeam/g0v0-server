@@ -1,12 +1,20 @@
+"""BanchoBot module for handling chat bot commands.
+
+This module implements a simple command-based chat bot that responds
+to user commands prefixed with '!' in chat channels.
+"""
+
 import asyncio
 from collections.abc import Awaitable, Callable
 from math import ceil
 import random
 import shlex
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
-from app.calculator import calculate_weighted_pp
+from app.calculating import calculate_weighted_pp
 from app.const import BANCHOBOT_ID
+
+from sqlalchemy.ext.asyncio import async_object_session
 
 if TYPE_CHECKING:
     pass
@@ -28,12 +36,33 @@ Handler = Callable[[User, list[str], AsyncSession, ChatChannel], HandlerResult]
 
 
 class Bot:
+    """Chat bot handler for processing user commands.
+
+    Handles commands prefixed with '!' and routes them to registered handlers.
+
+    Attributes:
+        bot_user_id: The user ID of the bot account.
+    """
+
     def __init__(self, bot_user_id: int = BANCHOBOT_ID) -> None:
+        """Initialize the bot with a user ID.
+
+        Args:
+            bot_user_id: The database user ID for the bot.
+        """
         self._handlers: dict[str, Handler] = {}
         self.bot_user_id = bot_user_id
 
-    # decorator: @bot.command("ping")
     def command(self, name: str) -> Callable[[Handler], Handler]:
+        """Decorator to register a command handler.
+
+        Args:
+            name: The command name (without the '!' prefix).
+
+        Returns:
+            Decorator function that registers the handler.
+        """
+
         def _decorator(func: Handler) -> Handler:
             self._handlers[name.lower()] = func
             return func
@@ -41,6 +70,14 @@ class Bot:
         return _decorator
 
     def parse(self, content: str) -> tuple[str, list[str]] | None:
+        """Parse a message for a command.
+
+        Args:
+            content: The message content to parse.
+
+        Returns:
+            Tuple of (command_name, arguments) if valid command, None otherwise.
+        """
         if not content or not content.startswith("!"):
             return None
         try:
@@ -53,6 +90,23 @@ class Bot:
         args = parts[1:]
         return cmd, args
 
+    @staticmethod
+    def make_link(url: str, text: str = "") -> str:
+        """Format a message with a link.
+
+        Args:
+            url: The URL of the link.
+            text: The display text for the link.
+
+        Returns:
+            Formatted string with the link.
+        """
+        if not url.startswith("http://") and not url.startswith("https://"):
+            url = "https://" + url
+        if not text:
+            return f"{url}"
+        return f"[{url} {text}]"
+
     async def try_handle(
         self,
         user: User,
@@ -60,6 +114,14 @@ class Bot:
         content: str,
         session: AsyncSession,
     ) -> None:
+        """Attempt to handle a message as a bot command.
+
+        Args:
+            user: The user who sent the message.
+            channel: The chat channel where the message was sent.
+            content: The message content.
+            session: Database session for queries.
+        """
         parsed = self.parse(content)
         if not parsed:
             return
@@ -78,12 +140,19 @@ class Bot:
             except Exception:
                 reply = "Unknown error occured."
         if reply:
-            await self._send_reply(user, channel, reply, session)
+            await self.send_reply(user, reply, session, src_channel=channel)
 
-    async def _send_message(self, channel: ChatChannel, content: str, session: AsyncSession) -> None:
-        bot = await session.get(User, self.bot_user_id)
-        if bot is None:
-            return
+    async def send_message(self, channel: ChatChannel, content: str, session: AsyncSession | None = None) -> None:
+        """Send a message from the bot to a channel.
+
+        Args:
+            channel: Target chat channel.
+            content: Message content to send.
+            session: Database session.
+        """
+        if session is None:
+            session = cast(AsyncSession, async_object_session(channel))
+
         channel_id = channel.channel_id
         if channel_id is None:
             return
@@ -91,17 +160,25 @@ class Bot:
         msg = ChatMessage(
             channel_id=channel_id,
             content=content,
-            sender_id=bot.id,
+            sender_id=self.bot_user_id,
             type=MessageType.PLAIN,
         )
         session.add(msg)
         await session.commit()
         await session.refresh(msg)
-        await session.refresh(bot)
         resp = await ChatMessageModel.transform(msg, includes=["sender"])
         await server.send_message_to_channel(resp)
 
     async def _ensure_pm_channel(self, user: User, session: AsyncSession) -> ChatChannel | None:
+        """Ensure a PM channel exists between the bot and a user.
+
+        Args:
+            user: The user to create/get PM channel with.
+            session: Database session.
+
+        Returns:
+            The PM channel if successful, None otherwise.
+        """
         user_id = user.id
         if user_id is None:
             return None
@@ -113,7 +190,7 @@ class Bot:
         channel = await ChatChannel.get_pm_channel(user_id, bot.id, session)
         if channel is None:
             channel = ChatChannel(
-                name=f"pm_{user_id}_{bot.id}",
+                channel_name=f"pm_{user_id}_{bot.id}",
                 description="Private message channel",
                 type=ChannelType.PM,
             )
@@ -125,19 +202,43 @@ class Bot:
         await server.batch_join_channel([user, bot], channel)
         return channel
 
-    async def _send_reply(
+    async def send_reply(
         self,
-        user: User,
-        src_channel: ChatChannel,
+        user: User | int,
         content: str,
-        session: AsyncSession,
+        session: AsyncSession | None = None,
+        *,
+        src_channel: ChatChannel | None = None,
     ) -> None:
-        target_channel = src_channel
-        if src_channel.type == ChannelType.PUBLIC:
-            pm = await self._ensure_pm_channel(user, session)
+        """Send a reply to a user, using PM for public channels.
+
+        Args:
+            user: The user to reply to.
+            content: Reply message content.
+            session: Database session.
+            src_channel: The source channel of the original message.
+        """
+        if isinstance(user, int):
+            if session is None:
+                raise ValueError("Session is required when user is an ID")
+            target = await session.get(User, user)
+            if target is None:
+                raise ValueError(f"User with ID {user} not found for bot reply")
+        else:
+            target = user
+
+        if session is None:
+            session = cast(AsyncSession, async_object_session(target))
+
+        if src_channel is None or src_channel.type == ChannelType.PUBLIC:
+            pm = await self._ensure_pm_channel(target, session)
             if pm is not None:
                 target_channel = pm
-        await self._send_message(target_channel, content, session)
+            else:
+                raise RuntimeError("Failed to get or create PM channel for bot reply")
+        else:
+            target_channel = src_channel
+        await self.send_message(target_channel, content, session)
 
 
 bot = Bot()
@@ -145,6 +246,7 @@ bot = Bot()
 
 @bot.command("help")
 async def _help(user: User, args: list[str], _session: AsyncSession, channel: ChatChannel) -> str:
+    """Show available commands or usage for a specific command."""
     cmds = sorted(bot._handlers.keys())
     if args:
         target = args[0].lower()
@@ -158,12 +260,14 @@ async def _help(user: User, args: list[str], _session: AsyncSession, channel: Ch
 
 @bot.command("roll")
 def _roll(user: User, args: list[str], _session: AsyncSession, channel: ChatChannel) -> str:
+    """Roll a random number between 1 and the specified max (default 100)."""
     r = random.randint(1, int(args[0])) if len(args) > 0 and args[0].isdigit() else random.randint(1, 100)
     return f"{user.username} rolls {r} point(s)"
 
 
 @bot.command("stats")
 async def _stats(user: User, args: list[str], session: AsyncSession, channel: ChatChannel) -> str:
+    """Show statistics for a user in a specific game mode."""
     if len(args) >= 1:
         target_user = (await session.exec(select(User).where(User.username == args[0]))).first()
         if not target_user:
@@ -204,6 +308,17 @@ async def _score(
     include_fail: bool = False,
     gamemode: GameMode | None = None,
 ) -> str:
+    """Get the most recent score for a user.
+
+    Args:
+        user_id: The user's database ID.
+        session: Database session.
+        include_fail: Whether to include failed scores.
+        gamemode: Optional game mode filter.
+
+    Returns:
+        Formatted string with score details.
+    """
     q = select(Score).where(Score.user_id == user_id).order_by(col(Score.id).desc()).options(joinedload(Score.beatmap))
     if not include_fail:
         q = q.where(col(Score.passed).is_(True))
@@ -233,6 +348,7 @@ Great: {score.n300}, Good: {score.n100}, Meh: {score.n50}, Miss: {score.nmiss}""
 
 @bot.command("re")
 async def _re(user: User, args: list[str], session: AsyncSession, channel: ChatChannel):
+    """Show the user's most recent score (including failed attempts)."""
     gamemode = None
     if len(args) >= 1:
         gamemode = GameMode.parse(args[0])
@@ -241,6 +357,7 @@ async def _re(user: User, args: list[str], session: AsyncSession, channel: ChatC
 
 @bot.command("pr")
 async def _pr(user: User, args: list[str], session: AsyncSession, channel: ChatChannel):
+    """Show the user's most recent passed score."""
     gamemode = None
     if len(args) >= 1:
         gamemode = GameMode.parse(args[0])

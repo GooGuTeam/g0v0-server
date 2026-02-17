@@ -1,6 +1,6 @@
-"""
-Beatmap缓存预取服务
-用于提前缓存热门beatmap，减少成绩计算时的获取延迟
+"""Beatmap cache prefetch service.
+
+Pre-caches popular beatmaps to reduce latency during score calculation.
 """
 
 import asyncio
@@ -8,8 +8,8 @@ from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from app.config import settings
+from app.helpers import utcnow
 from app.log import logger
-from app.utils import utcnow
 
 from redis.asyncio import Redis
 from sqlmodel import col, func, select
@@ -20,6 +20,13 @@ if TYPE_CHECKING:
 
 
 class BeatmapCacheService:
+    """Service for prefetching and caching popular beatmaps.
+
+    Attributes:
+        redis: Redis client for caching.
+        fetcher: Beatmap fetcher service.
+    """
+
     def __init__(self, redis: Redis, fetcher: "Fetcher"):
         self.redis = redis
         self.fetcher = fetcher
@@ -27,8 +34,11 @@ class BeatmapCacheService:
         self._background_tasks: set = set()
 
     async def preload_popular_beatmaps(self, session: AsyncSession, limit: int = 100):
-        """
-        预加载热门beatmap到Redis缓存
+        """Preload popular beatmaps into Redis cache.
+
+        Args:
+            session: Database session.
+            limit: Maximum number of beatmaps to preload.
         """
         if self._preloading:
             logger.info("Beatmap preloading already in progress")
@@ -38,7 +48,7 @@ class BeatmapCacheService:
         try:
             logger.info(f"Starting preload of top {limit} popular beatmaps")
 
-            # 获取过去24小时内最热门的beatmap
+            # Get most popular beatmaps from past 24 hours
             recent_time = utcnow() - timedelta(hours=24)
 
             from app.database.score import Score
@@ -53,7 +63,7 @@ class BeatmapCacheService:
                 )
             ).all()
 
-            # 并发预取这些beatmap
+            # Concurrently preload these beatmaps
             preload_tasks = []
             for beatmap_id, _ in popular_beatmaps:
                 task = self._preload_single_beatmap(beatmap_id)
@@ -70,17 +80,22 @@ class BeatmapCacheService:
             self._preloading = False
 
     async def _preload_single_beatmap(self, beatmap_id: int) -> bool:
-        """
-        预加载单个beatmap
+        """Preload a single beatmap.
+
+        Args:
+            beatmap_id: The beatmap ID to preload.
+
+        Returns:
+            True if successful, False otherwise.
         """
         try:
             cache_key = f"beatmap:{beatmap_id}:raw"
             if await self.redis.exists(cache_key):
-                # 已经在缓存中，延长过期时间
+                # Already in cache, extend expiration time
                 await self.redis.expire(cache_key, 60 * 60 * 24)
                 return True
 
-            # 获取并缓存beatmap
+            # Get and cache beatmap
             content = await self.fetcher.get_beatmap_raw(beatmap_id)
             await self.redis.set(cache_key, content, ex=60 * 60 * 24)
             return True
@@ -90,22 +105,26 @@ class BeatmapCacheService:
             return False
 
     async def smart_preload_for_score(self, beatmap_id: int):
-        """
-        智能预加载：为即将提交的成绩预加载beatmap
+        """Smart preload: preload beatmap for upcoming score submission.
+
+        Args:
+            beatmap_id: The beatmap ID to preload.
         """
         task = asyncio.create_task(self._preload_single_beatmap(beatmap_id))
         self._background_tasks.add(task)
         task.add_done_callback(self._background_tasks.discard)
 
     async def get_cache_stats(self) -> dict:
-        """
-        获取缓存统计信息
+        """Get cache statistics.
+
+        Returns:
+            Dictionary containing cache statistics.
         """
         try:
             keys = await self.redis.keys("beatmap:*:raw")
             total_size = 0
 
-            for key in keys[:100]:  # 限制检查数量以避免性能问题
+            for key in keys[:100]:  # Limit check count to avoid performance issues
                 try:
                     size = await self.redis.memory_usage(key)
                     if size:
@@ -124,25 +143,33 @@ class BeatmapCacheService:
             return {"error": str(e)}
 
     async def cleanup_old_cache(self, max_age_hours: int = 48):
-        """
-        清理过期的缓存
+        """Clean up expired cache entries.
+
+        Args:
+            max_age_hours: Maximum cache age in hours.
         """
         try:
             logger.info(f"Cleaning up beatmap cache older than {max_age_hours} hours")
-            # Redis会自动清理过期的key，这里主要是记录日志
+            # Redis auto-cleans expired keys, this is mainly for logging
             keys = await self.redis.keys("beatmap:*:raw")
             logger.info(f"Current cache contains {len(keys)} beatmaps")
         except Exception as e:
             logger.error(f"Error during cache cleanup: {e}")
 
 
-# 全局缓存服务实例
+# Global cache service instance
 _cache_service: BeatmapCacheService | None = None
 
 
 def get_beatmap_cache_service(redis: Redis, fetcher: "Fetcher") -> BeatmapCacheService:
-    """
-    获取beatmap缓存服务实例
+    """Get the beatmap cache service instance.
+
+    Args:
+        redis: Redis client.
+        fetcher: Beatmap fetcher.
+
+    Returns:
+        The BeatmapCacheService singleton instance.
     """
     global _cache_service
     if _cache_service is None:
@@ -151,10 +178,14 @@ def get_beatmap_cache_service(redis: Redis, fetcher: "Fetcher") -> BeatmapCacheS
 
 
 async def schedule_preload_task(session: AsyncSession, redis: Redis, fetcher: "Fetcher"):
+    """Scheduled preload task.
+
+    Args:
+        session: Database session.
+        redis: Redis client.
+        fetcher: Beatmap fetcher.
     """
-    定时预加载任务
-    """
-    # 默认启用预加载，除非明确禁用
+    # Preloading enabled by default unless explicitly disabled
     if not settings.enable_beatmap_preload:
         return
 

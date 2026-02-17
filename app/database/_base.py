@@ -1,7 +1,19 @@
+"""Base database model classes and utilities for the ORM layer.
+
+This module provides the foundational classes for database models including:
+- OnDemand and Exclude type wrappers for field access control
+- DatabaseModel base class with transformation and serialization support
+- included and ondemand decorators for computed fields
+- Metaclass for automatic field registration and plugin support
+"""
+
 from collections.abc import Awaitable, Callable, Sequence
 from functools import lru_cache, wraps
 import inspect
+import json
+from pathlib import Path
 import sys
+import tomllib
 from types import NoneType, get_original_bases
 from typing import (
     TYPE_CHECKING,
@@ -17,19 +29,30 @@ from typing import (
     overload,
 )
 
+from app.helpers import type_is_optional
+from app.log import log
 from app.models.model import UTCBaseModel
-from app.utils import type_is_optional
+from app.models.plugin import META_FILENAME
 
 from sqlalchemy.ext.asyncio import async_object_session
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel.main import SQLModelMetaclass
 
+logger = log("Database")
 _dict_to_model: dict[type, type["DatabaseModel"]] = {}
 
 
 def _safe_evaluate_forwardref(type_: str | ForwardRef, module_name: str) -> Any:
-    """Safely evaluate a ForwardRef, with fallback to app.database module"""
+    """Safely evaluate a ForwardRef with fallback to app.database module.
+
+    Args:
+        type_: A string or ForwardRef to evaluate.
+        module_name: The module name for resolving the reference.
+
+    Returns:
+        The resolved type, or None if resolution fails.
+    """
     if isinstance(type_, str):
         type_ = ForwardRef(type_)
 
@@ -54,6 +77,12 @@ def _safe_evaluate_forwardref(type_: str | ForwardRef, module_name: str) -> Any:
 
 
 class OnDemand[T]:
+    """Type wrapper for fields that are loaded on-demand.
+
+    Fields wrapped with OnDemand are not included in default transformations
+    but can be explicitly requested via the 'includes' parameter.
+    """
+
     if TYPE_CHECKING:
 
         def __get__(self, instance: object | None, owner: Any) -> T: ...
@@ -64,6 +93,12 @@ class OnDemand[T]:
 
 
 class Exclude[T]:
+    """Type wrapper for fields that are excluded from serialization.
+
+    Fields wrapped with Exclude are stored in the database but never
+    included in API responses or transformations.
+    """
+
     if TYPE_CHECKING:
 
         def __get__(self, instance: object | None, owner: Any) -> T: ...
@@ -108,6 +143,8 @@ else:
 
 
 class DatabaseModelMetaclass(SQLModelMetaclass):
+    """Metaclass for DatabaseModel that handles OnDemand/Exclude fields and computed properties."""
+
     def __new__(
         cls,
         name: str,
@@ -223,6 +260,20 @@ DecoratorTarget = CalculatedField | staticmethod | classmethod
 
 
 def included(func: DecoratorTarget) -> DecoratorTarget:
+    """Decorator to mark a method as an included computed field.
+
+    Included fields are always computed and included in model transformations.
+    The decorated method receives the database session and model instance.
+
+    Args:
+        func: The method to mark as included.
+
+    Returns:
+        The wrapped method.
+
+    Raises:
+        RuntimeError: If applied to a non-callable.
+    """
     marker = _mark_callable(func, "__included__")
     if marker is None:
         raise RuntimeError("@included is only usable on callables.")
@@ -239,6 +290,20 @@ def included(func: DecoratorTarget) -> DecoratorTarget:
 
 
 def ondemand(func: DecoratorTarget) -> DecoratorTarget:
+    """Decorator to mark a method as an on-demand computed field.
+
+    On-demand fields are only computed when explicitly requested via
+    the 'includes' parameter in model transformations.
+
+    Args:
+        func: The method to mark as on-demand.
+
+    Returns:
+        The wrapped method.
+
+    Raises:
+        RuntimeError: If applied to a non-callable.
+    """
     marker = _mark_callable(func, "__calculated_ondemand__")
     if marker is None:
         raise RuntimeError("@ondemand is only usable on callables.")
@@ -260,6 +325,17 @@ async def call_awaitable_with_context(
     instance: Any,
     context: dict[str, Any],
 ) -> Any:
+    """Call a computed field method with context parameters.
+
+    Args:
+        func: The computed field method to call.
+        session: The database session.
+        instance: The model instance.
+        context: Additional context parameters to pass to the method.
+
+    Returns:
+        The result of calling the computed field method.
+    """
     context_params: list[str] | None = getattr(func, "__context_params__", None)
 
     if context_params is None:
@@ -284,13 +360,65 @@ async def call_awaitable_with_context(
     return await func(session, instance, **call_params)
 
 
+# None means caller isn't a plugin
+_META_CACHE: dict[str, str | None] = {}
+
+
 class DatabaseModel[TDict](SQLModel, UTCBaseModel, metaclass=DatabaseModelMetaclass):
+    """Base class for database models with transformation support.
+
+    Provides functionality for:
+    - Transforming database instances to TypedDict representations
+    - On-demand and computed field handling
+    - Automatic plugin table name prefixing
+    - TypedDict generation for type checking
+
+    Type Parameters:
+        TDict: The TypedDict type for the transformed output.
+    """
+
     _CALCULATED_FIELDS: ClassVar[dict[str, type]] = {}
 
     _ONDEMAND_DATABASE_FIELDS: ClassVar[list[str]] = []
     _ONDEMAND_CALCULATED_FIELDS: ClassVar[dict[str, type]] = {}
 
     _EXCLUDED_DATABASE_FIELDS: ClassVar[list[str]] = []
+
+    @classmethod
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        # get plugin metadata from file
+        file_path = inspect.getfile(cls)
+        plugin_id = _META_CACHE.get(file_path)
+        if plugin_id is None:
+            for path in [Path(file_path), *list(Path(file_path).parents)]:
+                if (meta_file := path / META_FILENAME).exists():
+                    try:
+                        meta_content = meta_file.read_text(encoding="utf-8")
+                        plugin_id = json.loads(meta_content).get("id")
+                        if plugin_id:
+                            break
+                    except Exception:
+                        logger.warning(f"Failed to read plugin metadata from {meta_file}: {sys.exc_info()[1]}")
+                        continue
+                elif (meta_file := path / "pyproject.toml").exists():
+                    try:
+                        content = tomllib.loads(meta_file.read_text(encoding="utf-8"))
+                        if "project" in content and content["project"].get("name") == "g0v0-server":
+                            plugin_id = None
+                            break
+                    except Exception:
+                        logger.warning(f"Failed to read plugin metadata from {meta_file}: {sys.exc_info()[1]}")
+        _META_CACHE[file_path] = plugin_id
+
+        if "__tablename__" not in cls.__dict__:
+            if plugin_id is not None:
+                cls.__tablename__ = f"plugin_{plugin_id}_{cls.__name__.lower()}"
+            else:
+                cls.__tablename__ = cls.__name__.lower()
+        else:
+            if plugin_id is not None and not getattr(cls, "__tablename__", "").startswith(f"plugin_{plugin_id}_"):
+                cls.__tablename__ = f"plugin_{plugin_id}_{getattr(cls, '__tablename__', cls.__name__.lower())}"
 
     @overload
     @classmethod

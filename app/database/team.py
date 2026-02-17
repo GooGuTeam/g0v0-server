@@ -1,9 +1,15 @@
+"""Team database models.
+
+This module provides models for teams, team members,
+and team join requests.
+"""
+
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from app.helpers import utcnow
 from app.models.model import UTCBaseModel
 from app.models.score import GameMode
-from app.utils import utcnow
 
 from sqlalchemy import Column, DateTime
 from sqlmodel import BigInteger, Field, ForeignKey, Relationship, SQLModel, Text, col, func, select
@@ -14,6 +20,8 @@ if TYPE_CHECKING:
 
 
 class TeamBase(SQLModel, UTCBaseModel):
+    """Base fields for teams."""
+
     id: int = Field(default=None, primary_key=True, index=True)
     name: str = Field(max_length=100)
     short_name: str = Field(max_length=10)
@@ -27,6 +35,8 @@ class TeamBase(SQLModel, UTCBaseModel):
 
 
 class Team(TeamBase, table=True):
+    """Database table for teams."""
+
     __tablename__: str = "teams"
 
     leader: "User" = Relationship()
@@ -34,6 +44,8 @@ class Team(TeamBase, table=True):
 
 
 class TeamResp(TeamBase):
+    """Response model for teams with computed statistics."""
+
     rank: int = 0
     pp: float = 0.0
     ranked_score: int = 0
@@ -123,6 +135,8 @@ class TeamResp(TeamBase):
 
 
 class TeamMember(SQLModel, UTCBaseModel, table=True):
+    """Database table for team membership."""
+
     __tablename__: str = "team_members"
 
     user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), primary_key=True))
@@ -134,6 +148,8 @@ class TeamMember(SQLModel, UTCBaseModel, table=True):
 
 
 class TeamRequest(SQLModel, UTCBaseModel, table=True):
+    """Database table for team join requests."""
+
     __tablename__: str = "team_requests"
 
     user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), primary_key=True))

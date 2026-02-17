@@ -1,7 +1,14 @@
+"""Banned beatmap recalculation scheduled task.
+
+Handles PP recalculation when beatmaps are banned or unbanned.
+Zeroes PP for banned beatmaps and recalculates PP when beatmaps
+are unbanned, updating affected user statistics.
+"""
+
 import asyncio
 import json
 
-from app.calculator import calculate_pp
+from app.calculating import calculate_pp
 from app.config import settings
 from app.database.beatmap import BannedBeatmaps, Beatmap
 from app.database.best_scores import BestScore
@@ -17,7 +24,12 @@ from sqlmodel import col, delete, select
 
 
 @get_scheduler().scheduled_job("interval", id="recalculate_banned_beatmap", hours=1)
-async def recalculate_banned_beatmap():
+async def recalculate_banned_beatmap() -> None:
+    """Recalculate PP for newly banned or unbanned beatmaps.
+
+    Runs hourly to detect beatmap ban status changes and update
+    scores and user statistics accordingly.
+    """
     redis = get_redis()
     last_banned_beatmaps = set()
     last_banned = await redis.get("last_banned_beatmap")

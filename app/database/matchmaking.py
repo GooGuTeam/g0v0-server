@@ -1,3 +1,9 @@
+"""Matchmaking system database models.
+
+This module provides models for matchmaking pools, user stats,
+and pool beatmap configurations.
+"""
+
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -20,6 +26,8 @@ if TYPE_CHECKING:
 
 
 class MatchmakingUserStatsBase(SQLModel, UTCBaseModel):
+    """Base fields for matchmaking user statistics."""
+
     user_id: int = Field(
         default=None,
         sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), primary_key=True),
@@ -42,6 +50,8 @@ class MatchmakingUserStatsBase(SQLModel, UTCBaseModel):
 
 
 class MatchmakingUserStats(MatchmakingUserStatsBase, table=True):
+    """Database table for matchmaking user statistics."""
+
     __tablename__: str = "matchmaking_user_stats"
     __table_args__ = (
         Index("matchmaking_user_stats_pool_first_idx", "pool_id", "first_placements"),
@@ -53,6 +63,8 @@ class MatchmakingUserStats(MatchmakingUserStatsBase, table=True):
 
 
 class MatchmakingPoolBase(SQLModel, UTCBaseModel):
+    """Base fields for matchmaking pools."""
+
     id: int | None = Field(default=None, primary_key=True)
     ruleset_id: int = Field(
         default=0,
@@ -74,6 +86,8 @@ class MatchmakingPoolBase(SQLModel, UTCBaseModel):
 
 
 class MatchmakingPool(MatchmakingPoolBase, table=True):
+    """Database table for matchmaking pools."""
+
     __tablename__: str = "matchmaking_pools"
     __table_args__ = (Index("matchmaking_pools_ruleset_active_idx", "ruleset_id", "active"),)
 
@@ -86,6 +100,8 @@ class MatchmakingPool(MatchmakingPoolBase, table=True):
 
 
 class MatchmakingPoolBeatmapBase(SQLModel, UTCBaseModel):
+    """Base fields for beatmaps in matchmaking pools."""
+
     id: int | None = Field(default=None, primary_key=True)
     pool_id: int = Field(
         default=None,

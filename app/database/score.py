@@ -1,3 +1,9 @@
+"""Score database models and related utilities.
+
+This module provides models for player scores including solo and multiplayer
+scores, with support for PP calculations, leaderboards, and transformations.
+"""
+
 from collections.abc import Sequence
 from datetime import date, datetime
 import json
@@ -5,7 +11,7 @@ import math
 import sys
 from typing import TYPE_CHECKING, Any, ClassVar, NotRequired, TypedDict
 
-from app.calculator import (
+from app.calculating import (
     calculate_pp_weight,
     calculate_score_to_level,
     calculate_weighted_acc,
@@ -16,8 +22,10 @@ from app.calculator import (
 )
 from app.config import settings
 from app.dependencies.database import get_redis
+from app.helpers import utcnow
 from app.log import log
 from app.models.beatmap import BeatmapRankStatus
+from app.models.events.score import ScoreDeletedEvent
 from app.models.model import (
     CurrentUserAttributes,
     PinAttributes,
@@ -34,8 +42,8 @@ from app.models.score import (
     SoloScoreSubmissionInfo,
 )
 from app.models.scoring_mode import ScoringMode
+from app.plugins import hub
 from app.storage import StorageService
-from app.utils import utcnow
 
 from ._base import DatabaseModel, OnDemand, included, ondemand
 from .beatmap import Beatmap, BeatmapDict, BeatmapModel
@@ -82,6 +90,8 @@ logger = log("Score")
 
 
 class ScoreDict(TypedDict):
+    """TypedDict representation of a score for API responses."""
+
     beatmap_id: int
     id: int
     rank: Rank
@@ -119,11 +129,13 @@ class ScoreDict(TypedDict):
     user: NotRequired[UserDict]
     weight: NotRequired[float | None]
 
-    # ScoreResp 字段
+    # ScoreResp fields
     legacy_total_score: NotRequired[int]
 
 
 class ScoreModel(AsyncAttrs, DatabaseModel[ScoreDict]):
+    """Base model for scores with transformation support."""
+
     # https://github.com/ppy/osu-web/blob/master/app/Transformers/ScoreTransformer.php#L72-L84
     MULTIPLAYER_SCORE_INCLUDE: ClassVar[list[str]] = ["playlist_item_id", "room_id", "solo_score_id"]
     MULTIPLAYER_BASE_INCLUDES: ClassVar[list[str]] = [
@@ -369,7 +381,6 @@ class ScoreModel(AsyncAttrs, DatabaseModel[ScoreDict]):
     @field_validator("maximum_statistics", mode="before")
     @classmethod
     def validate_maximum_statistics(cls, v):
-        """处理 maximum_statistics 字段中的字符串键，转换为 HitResult 枚举"""
         if isinstance(v, dict):
             converted = {}
             for key, value in v.items():
@@ -388,7 +399,6 @@ class ScoreModel(AsyncAttrs, DatabaseModel[ScoreDict]):
 
     @field_serializer("maximum_statistics", when_used="json")
     def serialize_maximum_statistics(self, v):
-        """序列化 maximum_statistics 字段，确保枚举值正确转换为字符串"""
         if isinstance(v, dict):
             serialized = {}
             for key, value in v.items():
@@ -403,7 +413,6 @@ class ScoreModel(AsyncAttrs, DatabaseModel[ScoreDict]):
 
     @field_serializer("rank", when_used="json")
     def serialize_rank(self, v):
-        """序列化等级，确保枚举值正确转换为字符串"""
         if hasattr(v, "value"):
             return v.value
         return str(v)
@@ -438,7 +447,6 @@ class Score(ScoreModel, table=True):
     @field_validator("gamemode", mode="before")
     @classmethod
     def validate_gamemode(cls, v):
-        """将字符串转换为 GameMode 枚举"""
         if isinstance(v, str):
             try:
                 return GameMode(v)
@@ -449,7 +457,6 @@ class Score(ScoreModel, table=True):
 
     @field_serializer("gamemode", when_used="json")
     def serialize_gamemode(self, v):
-        """序列化游戏模式，确保枚举值正确转换为字符串"""
         if hasattr(v, "value"):
             return v.value
         return str(v)
@@ -516,6 +523,8 @@ class Score(ScoreModel, table=True):
         session: AsyncSession,
         storage_service: StorageService,
     ):
+        score_id = self.id
+
         if await self.awaitable_attrs.best_score:
             assert self.best_score is not None
             await self.best_score.delete(session)
@@ -529,6 +538,8 @@ class Score(ScoreModel, table=True):
 
         await storage_service.delete_file(self.replay_filename)
         await session.delete(self)
+
+        hub.emit(ScoreDeletedEvent(score_id=score_id))
 
 
 MultiplayScoreDict = ScoreModel.generate_typeddict(tuple(Score.MULTIPLAYER_BASE_INCLUDES))  # pyright: ignore[reportGeneralTypeIssues]
@@ -602,6 +613,15 @@ class ScoreAround(SQLModel):
 
 
 async def get_best_id(session: AsyncSession, score_id: int) -> int | None:
+    """Get the best score ID associated with a given score ID.
+
+    Args:
+        session: The database session to use for the query.
+        score_id: The ID of the score for which to find the best score ID.
+
+    Returns:
+        The best score ID if found, otherwise None.
+    """
     rownum = (
         func.row_number()
         .over(partition_by=(col(BestScore.user_id), col(BestScore.gamemode)), order_by=col(BestScore.pp).desc())
@@ -673,6 +693,20 @@ async def get_leaderboard(
     user: User | None = None,
     limit: int = 50,
 ) -> tuple[list[Score], Score | None, int]:
+    """Get the leaderboard scores for a specific beatmap, mode, and leaderboard type.
+
+    Args:
+        session: The database session to use for the query.
+        beatmap: The ID of the beatmap for which to retrieve the leaderboard.
+        mode: The game mode for which to retrieve the leaderboard.
+        type: The type of leaderboard to retrieve (global, friends, country, team).
+        mods: Optional list of mods to filter the leaderboard by.
+        user: The user for whom to retrieve the leaderboard (required for friends, country, and team leaderboards).
+        limit: The maximum number of scores to return.
+
+    Returns:
+        A tuple containing the list of scores on the leaderboard, the user's score if applicable, and the total count of scores.
+    """  # noqa: E501
     mods = mods or []
     mode = mode.to_special_mode(mods)
 
@@ -738,6 +772,20 @@ async def get_score_position_by_user(
     type: LeaderboardType = LeaderboardType.GLOBAL,
     mods: list[str] | None = None,
 ) -> int:
+    """
+    Get the position of a user's score on the leaderboard for a specific beatmap and mode.
+
+    Args:
+        session: The database session to use for the query.
+        beatmap: The ID of the beatmap for which to retrieve the leaderboard.
+        user: The user for whom to retrieve the leaderboard position.
+        mode: The game mode for which to retrieve the leaderboard position.
+        type: The type of leaderboard to retrieve (global, friends, country, team).
+        mods: Optional list of mods to filter the leaderboard by.
+
+    Returns:
+        The position of the user's score on the leaderboard, or 0 if not found.
+    """
     wheres = await _score_where(type, beatmap, mode, mods, user=user)
     if wheres is None:
         return 0
@@ -768,6 +816,21 @@ async def get_score_position_by_id(
     type: LeaderboardType = LeaderboardType.GLOBAL,
     mods: list[str] | None = None,
 ) -> int:
+    """
+    Get the position of a score on the leaderboard for a specific beatmap and mode.
+
+    Args:
+        session: The database session to use for the query.
+        beatmap: The ID of the beatmap for which to retrieve the leaderboard.
+        score_id: The ID of the score for which to retrieve the leaderboard position.
+        mode: The game mode for which to retrieve the leaderboard position.
+        type: The type of leaderboard to retrieve (global, friends, country, team).
+        mods: Optional list of mods to filter the leaderboard by.
+        user: The user for whom to retrieve the leaderboard (required for friends, country, and team leaderboards).
+
+    Returns:
+        The position of the score on the leaderboard, or 0 if not found.
+    """
     wheres = await _score_where(type, beatmap, mode, mods, user=user)
     if wheres is None:
         return 0
@@ -795,6 +858,17 @@ async def get_user_best_score_in_beatmap(
     user: int,
     mode: GameMode | None = None,
 ) -> TotalScoreBestScore | None:
+    """Get the user's best score for a specific beatmap and mode.
+
+    Args:
+        session: The database session to use for the query.
+        beatmap: The ID of the beatmap for which to retrieve the best score.
+        user: The ID of the user for whom to retrieve the best score.
+        mode: The game mode for which to retrieve the best score. If None, retrieves the best score across all modes.
+
+    Returns:
+        The user's best score for the specified beatmap and mode, or None if not found.
+    """
     return (
         await session.exec(
             select(TotalScoreBestScore)
@@ -815,6 +889,18 @@ async def get_user_best_score_with_mod_in_beatmap(
     mod: list[str],
     mode: GameMode | None = None,
 ) -> TotalScoreBestScore | None:
+    """Get the user's best score for a specific beatmap, mode, and mod.
+
+    Args:
+        session: The database session to use for the query.
+        beatmap: The ID of the beatmap for which to retrieve the best score.
+        user: The ID of the user for whom to retrieve the best score.
+        mod: The list of mods to filter the best score by.
+        mode: The game mode for which to retrieve the best score. If None, retrieves the best score across all modes.
+
+    Returns:
+        The user's best score for the specified beatmap, mode, and mod, or None if not found.
+    """
     return (
         await session.exec(
             select(TotalScoreBestScore)
@@ -840,6 +926,19 @@ async def get_user_first_scores(
     offset: int = 0,
     cursor_id: int | None = None,
 ) -> list[TotalScoreBestScore]:
+    """Get the user's first scores for a specific mode.
+
+    Args:
+        session: The database session to use for the query.
+        user_id: The ID of the user for whom to retrieve the first scores.
+        mode: The game mode for which to retrieve the first scores.
+        limit: The maximum number of scores to return.
+        offset: The number of scores to skip before starting to return results.
+        cursor_id: The ID of the score to use as a cursor for pagination. If provided, only scores with IDs less than this value will be returned.
+
+    Returns:
+        A list of the user's first scores for the specified mode, ordered by score ID in descending order.
+    """  # noqa: E501
     # Alias for the subquery table
     s2 = aliased(TotalScoreBestScore)
 
@@ -868,6 +967,16 @@ async def get_user_first_scores(
 
 
 async def get_user_first_score_count(session: AsyncSession, user_id: int, mode: GameMode) -> int:
+    """Get the count of the user's first scores for a specific mode.
+
+    Args:
+        session: The database session to use for the query.
+        user_id: The ID of the user for whom to retrieve the first score count.
+        mode: The game mode for which to retrieve the first score count.
+
+    Returns:
+        The count of the user's first scores for the specified mode.
+    """
     s2 = aliased(TotalScoreBestScore)
     query = select(func.count()).where(
         TotalScoreBestScore.user_id == user_id,
@@ -890,6 +999,17 @@ async def get_user_best_pp_in_beatmap(
     user: int,
     mode: GameMode,
 ) -> BestScore | None:
+    """Get the user's best score for a specific beatmap and mode.
+
+    Args:
+        session: The database session to use for the query.
+        beatmap: The ID of the beatmap for which to retrieve the best score.
+        user: The ID of the user for whom to retrieve the best score.
+        mode: The game mode for which to retrieve the best score.
+
+    Returns:
+        The user's best score for the specified beatmap and mode, or None if not found.
+    """
     return (
         await session.exec(
             select(BestScore).where(
@@ -902,6 +1022,16 @@ async def get_user_best_pp_in_beatmap(
 
 
 async def calculate_user_pp(session: AsyncSession, user_id: int, mode: GameMode) -> tuple[float, float]:
+    """Calculate the user's total performance points (PP) and accuracy for a specific mode.
+
+    Args:
+        session: The database session to use for the query.
+        user_id: The ID of the user for whom to calculate PP and accuracy.
+        mode: The game mode for which to calculate PP and accuracy.
+
+    Returns:
+        A tuple containing the total PP and accuracy for the user in the specified mode.
+    """
     pp_sum = 0
     acc_sum = 0
     bps = await get_user_best_pp(session, user_id, mode)
@@ -921,6 +1051,17 @@ async def get_user_best_pp(
     mode: GameMode,
     limit: int = 1000,
 ) -> Sequence[BestScore]:
+    """Get the user's best scores for a specific mode.
+
+    Args:
+        session: The database session to use for the query.
+        user: The ID of the user for whom to retrieve the best scores.
+        mode: The game mode for which to retrieve the best scores.
+        limit: The maximum number of scores to return.
+
+    Returns:
+        A list of the user's best scores for the specified mode, ordered by PP in descending order.
+    """
     return (
         await session.exec(
             select(BestScore)
@@ -931,14 +1072,37 @@ async def get_user_best_pp(
     ).all()
 
 
-# https://github.com/ppy/osu-queue-score-statistics/blob/master/osu.Server.Queues.ScoreStatisticsProcessor/Helpers/PlayValidityHelper.cs
 def get_play_length(score: "Score", beatmap_length: int):
+    """Calculate the effective play length of a score, considering mods and actual play time.
+
+    Args:
+        score: The score for which to calculate the play length.
+        beatmap_length: The original length of the beatmap in seconds.
+
+    Returns:
+        The effective play length of the score in seconds.
+
+    Reference:
+        - https://github.com/ppy/osu-queue-score-statistics/blob/master/osu.Server.Queues.ScoreStatisticsProcessor/Helpers/PlayValidityHelper.cs
+    """
     speed_rate = get_speed_rate(score.mods)
     length = beatmap_length / speed_rate
     return int(min(length, (score.ended_at - score.started_at).total_seconds()))
 
 
 def calculate_playtime(score: "Score", beatmap_length: int) -> tuple[int, bool]:
+    """Calculate the playtime of a score and determine if it is valid.
+
+    Args:
+        score: The score for which to calculate the playtime.
+        beatmap_length: The original length of the beatmap in seconds.
+
+    Returns:
+        A tuple containing the effective play length of the score in seconds and a boolean indicating if the score is considered valid.
+
+    Reference:
+        - https://github.com/ppy/osu-queue-score-statistics/blob/master/osu.Server.Queues.ScoreStatisticsProcessor/Helpers/PlayValidityHelper.cs
+    """  # noqa: E501
     total_length = get_play_length(score, beatmap_length)
     total_obj_hited = (
         score.n300
@@ -971,6 +1135,19 @@ async def process_score(
     info: SoloScoreSubmissionInfo,
     session: AsyncSession,
 ) -> Score:
+    """Process a score submission and create a new Score record in the database.
+
+    Args:
+        user: The user who submitted the score.
+        beatmap_id: The ID of the beatmap for which the score was submitted.
+        ranked: A boolean indicating whether the beatmap is ranked.
+        score_token: The token associated with the score submission, containing metadata about the submission.
+        info: An object containing detailed information about the score submission, such as accuracy, mods, and statistics.
+        session: The database session to use for creating the Score record.
+
+    Returns:
+        The newly created Score record representing the submitted score.
+    """  # noqa: E501
     gamemode = GameMode.from_int(info.ruleset_id).to_special_mode(info.mods)
     logger.info(
         "Creating score for user {user_id} | beatmap={beatmap_id} ruleset={ruleset} passed={passed} total={total}",
@@ -1258,8 +1435,8 @@ async def _process_statistics(
         statistics.level_current = calculate_score_to_level(statistics.total_score)
         statistics.maximum_combo = max(statistics.maximum_combo, score.max_combo)
     if score.passed and has_leaderboard:
-        # 情况1: 没有最佳分数记录，直接添加
-        # 情况2: 有最佳分数记录但没有该mod组合的记录，添加新记录
+        # Case 1: No existing best score record, add new record
+        # Case 2: Existing best score record but no record for this mod combination, add new record
         if previous_score_best is None or previous_score_best_mod is None:
             session.add(
                 TotalScoreBestScore(
@@ -1279,7 +1456,8 @@ async def _process_statistics(
                 mods=mod_for_save,
             )
 
-        # 情况3: 有最佳分数记录和该mod组合的记录，且是同一个记录，更新得分更高的情况
+        # Case 3: Existing best score record and mod-specific record, and they are the same record,
+        # update if the new score is higher
         elif previous_score_best.score_id == previous_score_best_mod.score_id and difference > 0:
             previous_score_best.total_score = score.total_score
             previous_score_best.rank = score.rank
@@ -1291,11 +1469,12 @@ async def _process_statistics(
                 total=score.total_score,
             )
 
-        # 情况4: 有最佳分数记录和该mod组合的记录，但不是同一个记录
+        # Case 4: Existing best score record and mod-specific record, but they are not the same record
         elif previous_score_best.score_id != previous_score_best_mod.score_id:
-            # 更新全局最佳记录（如果新分数更高）
+            # Update global best record (if the new score is higher)
             if difference > 0:
-                # 下方的 if 一定会触发。将高分设置为此分数，删除自己防止重复的 score_id
+                # The if below will always trigger.
+                # Set the high score to this score and delete itself to prevent duplicate score_id
                 logger.info(
                     "Replacing global best score for user {user_id} | old_score_id={old_score_id}",
                     user_id=user.id,
@@ -1303,7 +1482,7 @@ async def _process_statistics(
                 )
                 await session.delete(previous_score_best)
 
-            # 更新mod特定最佳记录（如果新分数更高）
+            # Update mod-specific best record (if the new score is higher)
             mod_diff = score.total_score - previous_score_best_mod.total_score
             if mod_diff > 0:
                 previous_score_best_mod.total_score = score.total_score
@@ -1411,6 +1590,18 @@ async def process_user(
     beatmap_length: int,
     beatmap_status: BeatmapRankStatus,
 ):
+    """Process a user's statistics and score performance after a score submission.
+
+    Args:
+        session: The database session to use for processing.
+        redis: The Redis client to use for caching and queuing tasks.
+        fetcher: An object responsible for fetching external data, such as beatmap information or PP calculations.
+        user: The user whose score is being processed.
+        score: The score that was submitted and needs to be processed.
+        score_token: The token associated with the score submission, containing metadata about the submission.
+        beatmap_length: The original length of the beatmap in seconds, used for calculating playtime and validity.
+        beatmap_status: The ranking status of the beatmap, used to determine if PP and leaderboard updates should be applied.
+    """  # noqa: E501
     score_id = score.id
     user_id = user.id
     logger.info(

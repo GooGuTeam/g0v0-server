@@ -1,3 +1,8 @@
+"""Multiplayer room attempt count database models.
+
+This module tracks user attempts and scores in multiplayer rooms.
+"""
+
 from typing import Any, NotRequired, TypedDict
 
 from ._base import DatabaseModel, ondemand
@@ -19,6 +24,8 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 
 class ItemAttemptsCountDict(TypedDict):
+    """TypedDict representation of room attempt counts."""
+
     accuracy: float
     attempts: int
     completed: int
@@ -32,6 +39,8 @@ class ItemAttemptsCountDict(TypedDict):
 
 
 class ItemAttemptsCountModel(DatabaseModel[ItemAttemptsCountDict]):
+    """Base model for room attempt counts with transformation support."""
+
     accuracy: float = 0.0
     attempts: int = Field(default=0)
     completed: int = Field(default=0)
@@ -78,6 +87,8 @@ class ItemAttemptsCountModel(DatabaseModel[ItemAttemptsCountDict]):
 
 
 class ItemAttemptsCount(AsyncAttrs, ItemAttemptsCountModel, table=True):
+    """Database table for tracking user attempts in multiplayer rooms."""
+
     __tablename__: str = "item_attempts_count"
     id: int | None = Field(default=None, primary_key=True)
 

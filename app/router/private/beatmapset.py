@@ -1,3 +1,8 @@
+"""Beatmapset-related private API endpoints.
+
+Provides endpoints for beatmapset rating and synchronization operations.
+"""
+
 from typing import Annotated
 
 from app.database.beatmap import Beatmap
@@ -19,27 +24,16 @@ from sqlmodel import col, exists, select
 
 @router.get(
     "/beatmapsets/{beatmapset_id}/can_rate",
-    name="判断用户能否为谱面集打分",
+    name="Check if user can rate beatmapset",
     response_model=bool,
-    tags=["谱面集", "g0v0 API"],
+    tags=["Beatmapset", "g0v0 API"],
+    description="Check if the user can rate a beatmapset.",
 )
 async def can_rate_beatmapset(
     beatmapset_id: int,
     session: Database,
     current_user: ClientUser,
 ):
-    """检查用户是否可以评价谱面集
-
-    检查当前用户是否可以对指定的谱面集进行评价
-    参数:
-    - beatmapset_id: 谱面集ID
-
-    错误情况:
-    - 404: 找不到指定谱面集
-
-    返回:
-    - bool: 用户是否可以评价谱面集
-    """
     if await current_user.is_restricted(session):
         return False
 
@@ -56,7 +50,11 @@ async def can_rate_beatmapset(
 
 
 @router.post(
-    "/beatmapsets/{beatmapset_id}/ratings", name="上传对谱面集的打分", status_code=201, tags=["谱面集", "g0v0 API"]
+    "/beatmapsets/{beatmapset_id}/ratings",
+    name="Submit beatmapset rating",
+    status_code=201,
+    tags=["Beatmapset", "g0v0 API"],
+    description="Submit a rating for a beatmapset.",
 )
 async def rate_beatmaps(
     beatmapset_id: int,
@@ -64,20 +62,6 @@ async def rate_beatmaps(
     rating: Annotated[int, Body(..., ge=0, le=10)],
     current_user: ClientUser,
 ):
-    """为谱面集评分
-
-    为指定的谱面集添加用户评分，并更新谱面集的评分统计信息
-
-    参数:
-    - beatmapset_id: 谱面集ID
-    - rating: 评分
-
-    错误情况:
-    - 404: 找不到指定谱面集
-
-    返回:
-    - 成功: None
-    """
     if await current_user.is_restricted(session):
         raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
 
@@ -95,34 +79,18 @@ async def rate_beatmaps(
 
 @router.post(
     "/beatmapsets/{beatmapset_id}/sync",
-    name="请求同步谱面集",
+    name="Request beatmapset sync",
     status_code=202,
-    tags=["谱面集", "g0v0 API"],
+    tags=["Beatmapset", "g0v0 API"],
     dependencies=[Depends(RateLimiter(limiter=Limiter(Rate(50, Duration.HOUR))))],
+    description="Request to sync a beatmapset from Bancho.",
 )
 async def sync_beatmapset(
-    beatmapset_id: Annotated[int, Path(..., description="谱面集ID")],
+    beatmapset_id: Annotated[int, Path(..., description="Beatmapset ID")],
     session: Database,
     current_user: ClientUser,
-    immediate: Annotated[bool, Query(description="是否立即同步")] = False,
+    immediate: Annotated[bool, Query(description="Whether to sync immediately")] = False,
 ):
-    """请求同步谱面集
-
-    请求将指定的谱面集从 Bancho 同步到服务器
-
-    默认情况下请求会加入同步队列，等待自动同步。
-    若设置 `immediate=true`，会尝试立刻同步该谱面集。
-
-    速率限制:
-    - 每个用户每小时最多50次请求
-
-    参数:
-    - beatmapset_id: 谱面集ID
-    - immediate: 是否立即同步（默认 false）
-
-    错误情况:
-    - 404: 找不到指定谱面集
-    """
     current_beatmapset = (await session.exec(select(exists()).where(Beatmapset.id == beatmapset_id))).first()
     if not current_beatmapset:
         raise RequestError(ErrorType.BEATMAPSET_NOT_FOUND)

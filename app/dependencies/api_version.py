@@ -1,5 +1,6 @@
 from typing import Annotated
 
+from fast_depends import Depends as FastDepends
 from fastapi import Depends, Header
 
 
@@ -11,4 +12,4 @@ def get_api_version(version: int | None = Header(None, alias="x-api-version", in
     return version
 
 
-APIVersion = Annotated[int, Depends(get_api_version)]
+APIVersion = Annotated[int, Depends(get_api_version), FastDepends(get_api_version)]

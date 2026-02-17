@@ -2,12 +2,9 @@ from typing import Annotated
 
 from app.service.beatmap_download_service import BeatmapDownloadService, download_service
 
+from fast_depends import Depends as FastDepends
 from fastapi import Depends
 
-
-def get_beatmap_download_service():
-    """获取谱面下载服务实例"""
-    return download_service
-
-
-DownloadService = Annotated[BeatmapDownloadService, Depends(get_beatmap_download_service)]
+DownloadService = Annotated[
+    BeatmapDownloadService, Depends(lambda: download_service), FastDepends(lambda: download_service)
+]

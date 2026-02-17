@@ -96,6 +96,10 @@ STORAGE_SETTINGS='{
 """,
                 "表现计算设置": """配置表现分计算器及其参数。
 
+如果 `CALCULATOR` 以 `-` 开头，服务器将尝试从其后面的 id 对应的插件中加载计算器实现。
+如果 `CALCULATOR` 不存在 `.`，则认为它是一个内置计算器的名称，目前内置了 `performance_server` 和 `rosu` 两个计算器。
+否则，服务器将尝试从 `CALCULATOR` 指定的模块路径加载计算器实现。
+
 ### [osu-performance-server](https://github.com/GooGuTeam/osu-performance-server) (默认)
 
 ```bash
@@ -514,7 +518,7 @@ CALCULATOR_CONFIG='{}'
 
     # 表现计算设置
     calculator: Annotated[
-        Literal["rosu", "performance_server"],
+        str,
         Field(default="performance_server", description="表现分计算器"),
         "表现计算设置",
     ]
@@ -713,6 +717,17 @@ CALCULATOR_CONFIG='{}'
         LocalStorageSettings | CloudflareR2Settings | AWSS3StorageSettings,
         Field(default=LocalStorageSettings(), description="存储服务配置 (JSON 格式)"),
         "存储服务设置",
+    ]
+
+    plugin_dirs: Annotated[
+        list[str],
+        Field(default=["./plugins"], description="插件目录列表"),
+        "插件设置",
+    ]
+    disabled_plugins: Annotated[
+        list[str],
+        Field(default=[], description="禁用的插件列表"),
+        "插件设置",
     ]
 
     @field_validator("storage_settings", mode="after")

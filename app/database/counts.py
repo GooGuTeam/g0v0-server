@@ -1,3 +1,8 @@
+"""Play count and statistics tracking database models.
+
+This module tracks monthly play counts and replay watched counts for users.
+"""
+
 from datetime import date
 from typing import TYPE_CHECKING
 
@@ -15,12 +20,16 @@ if TYPE_CHECKING:
 
 
 class CountBase(SQLModel):
+    """Base class for count records."""
+
     year: int = Field(index=True)
     month: int = Field(index=True)
     count: int = Field(default=0)
 
 
 class MonthlyPlaycounts(CountBase, table=True):
+    """Tracks monthly play counts per user."""
+
     __tablename__: str = "monthly_playcounts"
 
     id: int | None = Field(
@@ -32,6 +41,8 @@ class MonthlyPlaycounts(CountBase, table=True):
 
 
 class ReplayWatchedCount(CountBase, table=True):
+    """Tracks how many times a user's replays have been watched per month."""
+
     __tablename__: str = "replays_watched_counts"
 
     id: int | None = Field(
@@ -43,6 +54,8 @@ class ReplayWatchedCount(CountBase, table=True):
 
 
 class CountResp(SQLModel):
+    """Response model for count data."""
+
     start_date: date
     count: int
 

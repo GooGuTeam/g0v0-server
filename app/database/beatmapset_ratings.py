@@ -1,3 +1,8 @@
+"""Beatmapset rating database models.
+
+This module handles user ratings (1-10 stars) for beatmapsets.
+"""
+
 from .beatmapset import Beatmapset
 from .user import User
 
@@ -5,6 +10,8 @@ from sqlmodel import BigInteger, Column, Field, ForeignKey, Relationship, SQLMod
 
 
 class BeatmapRating(SQLModel, table=True):
+    """Records user ratings for beatmapsets."""
+
     __tablename__: str = "beatmap_ratings"
     id: int | None = Field(
         default=None,

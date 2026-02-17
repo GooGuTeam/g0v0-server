@@ -1,6 +1,6 @@
-"""
-MailerSend 邮件发送服务
-使用 MailerSend API 发送邮件
+"""MailerSend email service.
+
+Sends emails using the MailerSend API.
 """
 
 from typing import Any
@@ -12,7 +12,10 @@ from mailersend import EmailBuilder, MailerSendClient
 
 
 class MailerSendService:
-    """MailerSend 邮件发送服务"""
+    """MailerSend email service.
+
+    Provides email sending functionality using the MailerSend API.
+    """
 
     def __init__(self):
         if not settings.mailersend_api_key:
@@ -33,28 +36,28 @@ class MailerSendService:
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, str]:
         """
-        使用 MailerSend 发送邮件
+        Send an email.
 
         Args:
-            to_email: 收件人邮箱地址
-            subject: 邮件主题
-            content: 邮件纯文本内容
-            html_content: 邮件HTML内容（如果有）
-            metadata: 额外元数据（未使用）
+            to_email: Recipient email address.
+            subject: Email subject.
+            content: Plain text email content.
+            html_content: Email HTML content (if any).
+            metadata: Extra metadata (unused).
 
         Returns:
-            返回格式为 {'id': 'message_id'} 的字典
+            Dictionary in format {'id': 'message_id'}.
         """
         try:
-            _ = metadata  # 避免未使用参数警告
+            _ = metadata  # Avoid unused parameter warning
 
-            # 构建邮件
+            # Build email
             email_builder = EmailBuilder()
             email_builder.from_email(self.from_email, self.from_name)
             email_builder.to_many([{"email": to_email}])
             email_builder.subject(subject)
 
-            # 优先使用 HTML 内容，否则使用纯文本
+            # Prefer HTML content, otherwise use plain text
             if html_content:
                 email_builder.html(html_content)
             else:
@@ -62,10 +65,10 @@ class MailerSendService:
 
             email = email_builder.build()
 
-            # 发送邮件
+            # Send email
             response = self.client.emails.send(email)
 
-            # 从 APIResponse 中提取 message_id
+            # Extract message_id from APIResponse
             message_id = getattr(response, "id", "") if response else ""
             logger.info(f"Successfully sent email via MailerSend to {to_email}, message_id: {message_id}")
             return {"id": message_id}
@@ -75,12 +78,16 @@ class MailerSendService:
             return {"id": ""}
 
 
-# 全局 MailerSend 服务实例
+# Global MailerSend service instance
 _mailersend_service: MailerSendService | None = None
 
 
 def get_mailersend_service() -> MailerSendService:
-    """获取或创建 MailerSend 服务实例"""
+    """Get or create the MailerSend service instance.
+
+    Returns:
+        The MailerSendService singleton instance.
+    """
     global _mailersend_service
     if _mailersend_service is None:
         _mailersend_service = MailerSendService()

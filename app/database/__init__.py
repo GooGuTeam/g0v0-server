@@ -1,3 +1,9 @@
+"""Database models and ORM entities for the osu! API server.
+
+This module exports all database models, TypedDict types, and response classes
+used throughout the application for database operations and API responses.
+"""
+
 from .achievement import UserAchievement, UserAchievementResp
 from .auth import OAuthClient, OAuthToken, TotpKeys, V1APIKeys
 from .beatmap import (

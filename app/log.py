@@ -1,3 +1,10 @@
+"""Logging configuration and utilities module.
+
+This module provides structured logging using Loguru with custom formatters
+for different components (services, fetchers, tasks, system). It intercepts
+standard logging calls and routes them through Loguru with enhanced formatting.
+"""
+
 import http
 import inspect
 import logging
@@ -7,7 +14,6 @@ from types import FunctionType
 from typing import TYPE_CHECKING
 
 from app.config import settings
-from app.utils import snake_to_pascal
 
 import loguru
 
@@ -18,7 +24,18 @@ logger: "Logger" = loguru.logger
 
 
 class InterceptHandler(logging.Handler):
+    """Logging handler that intercepts standard logging and routes to Loguru.
+
+    This handler captures log records from standard logging and forwards them
+    to Loguru with appropriate level mapping and caller detection.
+    """
+
     def emit(self, record: logging.LogRecord) -> None:
+        """Emit a log record by routing it to Loguru.
+
+        Args:
+            record: The log record to emit.
+        """
         # Get corresponding Loguru level if it exists.
         try:
             level: str | int = logger.level(record.levelname).name
@@ -51,6 +68,14 @@ class InterceptHandler(logging.Handler):
         _logger.opt(depth=depth, exception=record.exc_info, colors=color).log(level, message)
 
     def _format_uvicorn_error_log(self, message: str) -> str:
+        """Format uvicorn error log messages with color highlighting.
+
+        Args:
+            message: The raw log message.
+
+        Returns:
+            The formatted message with color tags.
+        """
         websocket_pattern = r'(\d+\.\d+\.\d+\.\d+:\d+)\s*-\s*"WebSocket\s+([^"]+)"\s+([\w\[\]]+)'
         websocket_match = re.search(websocket_pattern, message)
 
@@ -68,6 +93,14 @@ class InterceptHandler(logging.Handler):
             return message
 
     def _format_uvicorn_access_log(self, message: str) -> str:
+        """Format uvicorn access log messages with color highlighting.
+
+        Args:
+            message: The raw log message.
+
+        Returns:
+            The formatted message with color tags.
+        """
         http_pattern = r'(\d+\.\d+\.\d+\.\d+:\d+)\s*-\s*"(\w+)\s+([^"]+)"\s+(\d+)'
 
         http_match = re.search(http_pattern, message)
@@ -108,6 +141,18 @@ class InterceptHandler(logging.Handler):
 
 
 def get_caller_class_name(module_prefix: str = "", just_last_part: bool = True) -> str | None:
+    """Get the class name of the calling context.
+
+    Inspects the call stack to determine the class name from which
+    the logger was invoked.
+
+    Args:
+        module_prefix: Only consider modules starting with this prefix.
+        just_last_part: If True, return only the last part of the module name.
+
+    Returns:
+        The class name, module name, or None if not found.
+    """
     stack = inspect.stack()
     for frame_info in stack[2:]:
         module = frame_info.frame.f_globals.get("__name__", "")
@@ -115,23 +160,23 @@ def get_caller_class_name(module_prefix: str = "", just_last_part: bool = True) 
             continue
 
         local_vars = frame_info.frame.f_locals
-        # 实例方法
+        # Instance method
         if "self" in local_vars:
             return local_vars["self"].__class__.__name__
-        # 类方法
+        # Class method
         if "cls" in local_vars:
             return local_vars["cls"].__name__
 
-        # 静态方法 / 普通函数 -> 尝试通过函数名匹配类
+        # Static method / regular function -> try to match class by function name
         func_name = frame_info.function
         for obj_name, obj in frame_info.frame.f_globals.items():
-            if isinstance(obj, type):  # 遍历模块内类
+            if isinstance(obj, type):  # Iterate module classes
                 cls = obj
                 attr = getattr(cls, func_name, None)
                 if isinstance(attr, (staticmethod, classmethod, FunctionType)):
                     return cls.__name__
 
-        # 如果没找到类，返回模块名
+        # If no class found, return module name
         if just_last_part:
             return module.rsplit(".", 1)[-1]
         return module
@@ -139,30 +184,88 @@ def get_caller_class_name(module_prefix: str = "", just_last_part: bool = True) 
 
 
 def service_logger(name: str) -> "Logger":
+    """Get a logger bound to a service name.
+
+    Args:
+        name: The service name.
+
+    Returns:
+        A bound Logger instance.
+    """
     return logger.bind(service=name)
 
 
 def fetcher_logger(name: str) -> "Logger":
+    """Get a logger bound to a fetcher name.
+
+    Args:
+        name: The fetcher name.
+
+    Returns:
+        A bound Logger instance.
+    """
     return logger.bind(fetcher=name)
 
 
 def task_logger(name: str) -> "Logger":
+    """Get a logger bound to a task name.
+
+    Args:
+        name: The task name.
+
+    Returns:
+        A bound Logger instance.
+    """
     return logger.bind(task=name)
 
 
 def system_logger(name: str) -> "Logger":
+    """Get a logger bound to a system component name.
+
+    Args:
+        name: The system component name.
+
+    Returns:
+        A bound Logger instance.
+    """
     return logger.bind(system=name)
 
 
 def uvicorn_logger() -> "Logger":
+    """Get a logger bound to Uvicorn.
+
+    Returns:
+        A bound Logger instance for Uvicorn logs.
+    """
     return logger.bind(uvicorn="Uvicorn")
 
 
 def log(name: str) -> "Logger":
+    """Get a logger with a custom name.
+
+    Args:
+        name: The logger name.
+
+    Returns:
+        A bound Logger instance.
+    """
     return logger.bind(real_name=name)
 
 
 def dynamic_format(record):
+    """Generate dynamic log format based on record metadata.
+
+    Creates colored log format strings appropriate for the component
+    type (uvicorn, service, fetcher, task, or system).
+
+    Args:
+        record: The Loguru log record.
+
+    Returns:
+        The format string for this record.
+    """
+    from app.helpers import snake_to_pascal
+
     name = ""
 
     uvicorn = record["extra"].get("uvicorn")

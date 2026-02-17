@@ -1,8 +1,14 @@
+"""Score endpoints for osu! API v2.
+
+This module provides endpoints for score submission, leaderboards, pinned scores,
+replay downloads, and room/playlist score management.
+"""
+
 from datetime import UTC, date
 import time
 from typing import Annotated
 
-from app.calculator import clamp
+from app.calculating import clamp
 from app.config import settings
 from app.database import (
     Beatmap,
@@ -40,9 +46,19 @@ from app.dependencies.database import Database, Redis, get_redis, with_db
 from app.dependencies.fetcher import Fetcher, get_fetcher
 from app.dependencies.storage import StorageService
 from app.dependencies.user import ClientUser, get_current_user
+from app.helpers import api_doc, utcnow
 from app.log import log
 from app.models.beatmap import BeatmapRankStatus
 from app.models.error import ErrorType, RequestError
+from app.models.events.score import (
+    MultiplayerScoreCreatedEvent,
+    MultiplayerScoreSubmittedEvent,
+    ReplayDownloadedEvent,
+    ScoreProcessedEvent,
+    ScoreType,
+    SoloScoreCreatedEvent,
+    SoloScoreSubmittedEvent,
+)
 from app.models.room import RoomCategory
 from app.models.score import (
     GameMode,
@@ -50,9 +66,9 @@ from app.models.score import (
     Rank,
     SoloScoreSubmissionInfo,
 )
+from app.plugins import hub
 from app.service.beatmap_cache_service import get_beatmap_cache_service
 from app.service.user_cache_service import refresh_user_cache_background
-from app.utils import api_doc, utcnow
 
 from .router import router
 
@@ -80,11 +96,24 @@ logger = log("Score")
 
 
 async def _process_user_achievement(score_id: int):
+    """Process achievements for a submitted score.
+
+    Args:
+        score_id: The score ID to process achievements for.
+    """
     async with with_db() as session:
         await process_achievements(session, get_redis(), score_id)
 
 
 async def _process_user(score_id: int, user_id: int, redis: Redis, fetcher: Fetcher):
+    """Process user statistics after score submission.
+
+    Args:
+        score_id: The submitted score ID.
+        user_id: The user ID who submitted the score.
+        redis: Redis connection.
+        fetcher: Fetcher service for external data.
+    """
     async with with_db() as session:
         user = await session.get(User, user_id)
         if not user:
@@ -123,6 +152,7 @@ async def _process_user(score_id: int, user_id: int, redis: Redis, fetcher: Fetc
         await process_user(session, redis, fetcher, user, score, score_token, beatmap[0], BeatmapRankStatus(beatmap[1]))
         await refresh_user_cache_background(redis, user_id, gamemode)
         await redis.publish("osu-channel:score:processed", f'{{"ScoreId": {score_id}}}')
+        hub.emit(ScoreProcessedEvent(score_id=score_id))
 
 
 async def submit_score(
@@ -134,7 +164,24 @@ async def submit_score(
     redis: Redis,
     fetcher: Fetcher,
 ):
-    # 立即获取用户ID，避免后续的懒加载问题
+    """Submit a score using a score token.
+
+    Args:
+        background_task: Background tasks handler.
+        info: Score submission information.
+        token: Score token ID.
+        current_user: The authenticated user.
+        db: Database session.
+        redis: Redis connection.
+        fetcher: Fetcher service for external data.
+
+    Returns:
+        dict: The submitted score response.
+
+    Raises:
+        RequestError: If token not found, score not found, or beatmap not found.
+    """
+    # Get user ID immediately to avoid lazy loading issues
     user_id = current_user.id
 
     if not info.passed:
@@ -192,20 +239,23 @@ async def submit_score(
 
 
 async def _preload_beatmap_for_pp_calculation(beatmap_id: int) -> None:
+    """Pre-cache beatmap file to speed up PP calculation.
+
+    When a player starts playing, asynchronously preload the beatmap raw file to Redis cache.
+
+    Args:
+        beatmap_id: The beatmap ID to preload.
     """
-    预缓存beatmap文件以加速PP计算
-    当玩家开始游玩时异步预加载beatmap原始文件到Redis缓存
-    """
-    # 检查是否启用了beatmap预加载功能
+    # Check if beatmap preload feature is enabled
     if not settings.enable_beatmap_preload:
         return
 
     try:
-        # 异步获取fetcher和redis连接
+        # Asynchronously get fetcher and redis connection
         fetcher = await get_fetcher()
         redis = get_redis()
 
-        # 检查是否已经缓存，避免重复下载
+        # Check if already cached to avoid duplicate downloads
         cache_key = f"beatmap:raw:{beatmap_id}"
         if await redis.exists(cache_key):
             logger.debug(f"Beatmap {beatmap_id} already cached, skipping preload")
@@ -215,7 +265,7 @@ async def _preload_beatmap_for_pp_calculation(beatmap_id: int) -> None:
         logger.debug(f"Successfully preloaded beatmap {beatmap_id} for PP calculation")
 
     except Exception as e:
-        # 预缓存失败不应该影响正常游戏流程
+        # Preload failure should not affect normal gameplay
         logger.warning(f"Failed to preload beatmap {beatmap_id}: {e}")
 
 
@@ -223,11 +273,26 @@ LeaderboardScoreType = ScoreModel.generate_typeddict(tuple(DEFAULT_SCORE_INCLUDE
 
 
 class BeatmapUserScore(BaseModel):
+    """Response model for a user's score on a beatmap.
+
+    Attributes:
+        position: The user's position on the leaderboard.
+        score: The score data.
+    """
+
     position: int
     score: LeaderboardScoreType  # pyright: ignore[reportInvalidTypeForm]
 
 
 class BeatmapScores(BaseModel):
+    """Response model for beatmap leaderboard scores.
+
+    Attributes:
+        scores: List of scores on the leaderboard.
+        user_score: The current user's score (if any).
+        score_count: Total number of scores on the leaderboard.
+    """
+
     scores: list[LeaderboardScoreType]  # pyright: ignore[reportInvalidTypeForm]
     user_score: BeatmapUserScore | None = None
     score_count: int = 0
@@ -235,37 +300,56 @@ class BeatmapScores(BaseModel):
 
 @router.get(
     "/beatmaps/{beatmap_id}/scores",
-    tags=["成绩"],
+    tags=["Scores"],
     responses={
         200: {
             "model": BeatmapScores,
             "description": (
-                "排行榜及当前用户成绩。\n\n"
-                f"如果 `x-api-version >= 20220705`，返回值为 `BeatmapScores[Score]`"
-                f" （包含：{', '.join([f'`{inc}`' for inc in DEFAULT_SCORE_INCLUDES])}），"
-                "否则为 `BeatmapScores[LegacyScoreResp]`。"
+                "Leaderboard and current user's score.\n\n"
+                f"If `x-api-version >= 20220705`, returns `BeatmapScores[Score]`"
+                f" (includes: {', '.join([f'`{inc}`' for inc in DEFAULT_SCORE_INCLUDES])}), "
+                "otherwise returns `BeatmapScores[LegacyScoreResp]`."
             ),
         }
     },
-    name="获取谱面排行榜",
-    description="获取指定谱面在特定条件下的排行榜及当前用户成绩。",
+    name="Get beatmap leaderboard",
+    description="Get the leaderboard and current user's score for a specific beatmap under certain conditions.",
 )
 async def get_beatmap_scores(
     db: Database,
     api_version: APIVersion,
-    beatmap_id: Annotated[int, Path(description="谱面 ID")],
-    mode: Annotated[GameMode, Query(description="指定 auleset")],
-    mods: Annotated[list[str], Query(default_factory=set, alias="mods[]", description="筛选使用的 Mods (可选，多值)")],
+    beatmap_id: Annotated[int, Path(description="Beatmap ID")],
+    mode: Annotated[GameMode, Query(description="Specified ruleset")],
+    mods: Annotated[
+        list[str],
+        Query(default_factory=set, alias="mods[]", description="Filter by mods (optional, multiple values)"),
+    ],
     current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
-    legacy_only: Annotated[bool | None, Query(description="是否只查询 Stable 分数")] = None,
+    legacy_only: Annotated[bool | None, Query(description="Whether to only query Stable scores")] = None,
     type: Annotated[
         LeaderboardType,
         Query(
-            description=("排行榜类型：GLOBAL 全局 / COUNTRY 国家 / FRIENDS 好友 / TEAM 战队"),
+            description=("Leaderboard type: GLOBAL / COUNTRY / FRIENDS / TEAM"),
         ),
     ] = LeaderboardType.GLOBAL,
-    limit: Annotated[int, Query(ge=1, le=200, description="返回条数 (1-200)")] = 50,
+    limit: Annotated[int, Query(ge=1, le=200, description="Number of results (1-200)")] = 50,
 ):
+    """Get beatmap leaderboard scores.
+
+    Args:
+        db: Database session dependency.
+        api_version: API version from request headers.
+        beatmap_id: The beatmap ID.
+        mode: The game mode.
+        mods: Optional mod filter.
+        current_user: The authenticated user.
+        legacy_only: Whether to only query Stable scores.
+        type: Leaderboard type filter.
+        limit: Maximum number of results.
+
+    Returns:
+        dict: Leaderboard scores with user score and count.
+    """
     all_scores, user_score, count = await get_leaderboard(
         db,
         beatmap_id,
@@ -302,31 +386,49 @@ async def get_beatmap_scores(
 
 @router.get(
     "/beatmaps/{beatmap_id}/scores/users/{user_id}",
-    tags=["成绩"],
+    tags=["Scores"],
     responses={
         200: {
             "model": BeatmapUserScore,
             "description": (
-                "指定用户在指定谱面上的最高成绩\n\n"
-                "如果 `x-api-version >= 20220705`，返回值为 `BeatmapUserScore[Score]`，"
-                f" （包含：{', '.join([f'`{inc}`' for inc in DEFAULT_SCORE_INCLUDES])}），"
-                "否则为 `BeatmapUserScore[LegacyScoreResp]`。"
+                "User's best score on the specified beatmap\n\n"
+                "If `x-api-version >= 20220705`, returns `BeatmapUserScore[Score]`, "
+                f" (includes: {', '.join([f'`{inc}`' for inc in DEFAULT_SCORE_INCLUDES])}), "
+                "otherwise returns `BeatmapUserScore[LegacyScoreResp]`."
             ),
         }
     },
-    name="获取用户谱面最高成绩",
-    description="获取指定用户在指定谱面上的最高成绩。",
+    name="Get user's best beatmap score",
+    description="Get the best score for a specific user on a specific beatmap.",
 )
 async def get_user_beatmap_score(
     db: Database,
     api_version: APIVersion,
-    beatmap_id: Annotated[int, Path(description="谱面 ID")],
-    user_id: Annotated[int, Path(description="用户 ID")],
+    beatmap_id: Annotated[int, Path(description="Beatmap ID")],
+    user_id: Annotated[int, Path(description="User ID")],
     current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
-    legacy_only: Annotated[bool | None, Query(description="是否只查询 Stable 分数")] = None,
-    mode: Annotated[GameMode | None, Query(description="指定 ruleset (可选)")] = None,
-    mods: Annotated[str | None, Query(description="筛选使用的 Mods (暂未实现)")] = None,
+    legacy_only: Annotated[bool | None, Query(description="Whether to only query Stable scores")] = None,
+    mode: Annotated[GameMode | None, Query(description="Specified ruleset (optional)")] = None,
+    mods: Annotated[str | None, Query(description="Filter by mods (not implemented)")] = None,
 ):
+    """Get user's best score on a beatmap.
+
+    Args:
+        db: Database session dependency.
+        api_version: API version from request headers.
+        beatmap_id: The beatmap ID.
+        user_id: The user ID.
+        current_user: The authenticated user.
+        legacy_only: Whether to only query Stable scores.
+        mode: Optional game mode filter.
+        mods: Mod filter (not implemented).
+
+    Returns:
+        dict: User's best score with position.
+
+    Raises:
+        RequestError: If the score is not found.
+    """
     user_score = (
         await db.exec(
             select(Score)
@@ -365,30 +467,44 @@ async def get_user_beatmap_score(
 
 @router.get(
     "/beatmaps/{beatmap_id}/scores/users/{user_id}/all",
-    tags=["成绩"],
+    tags=["Scores"],
     responses={
         200: api_doc(
             (
-                "用户谱面全部成绩\n\n"
-                "如果 `x-api-version >= 20220705`，返回值为 `Score`列表，"
-                "否则为 `LegacyScoreResp`列表。"
+                "All user scores on beatmap\n\n"
+                "If `x-api-version >= 20220705`, returns `Score` list, "
+                "otherwise returns `LegacyScoreResp` list."
             ),
             list[ScoreModel] | list[LegacyScoreResp],
             DEFAULT_SCORE_INCLUDES,
         )
     },
-    name="获取用户谱面全部成绩",
-    description="获取指定用户在指定谱面上的全部成绩列表。",
+    name="Get all user beatmap scores",
+    description="Get all scores for a specific user on a specific beatmap.",
 )
 async def get_user_all_beatmap_scores(
     db: Database,
     api_version: APIVersion,
-    beatmap_id: Annotated[int, Path(description="谱面 ID")],
-    user_id: Annotated[int, Path(description="用户 ID")],
+    beatmap_id: Annotated[int, Path(description="Beatmap ID")],
+    user_id: Annotated[int, Path(description="User ID")],
     current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
-    legacy_only: Annotated[bool | None, Query(description="是否只查询 Stable 分数")] = None,
-    ruleset: Annotated[GameMode | None, Query(description="指定 ruleset (可选)")] = None,
+    legacy_only: Annotated[bool | None, Query(description="Whether to only query Stable scores")] = None,
+    ruleset: Annotated[GameMode | None, Query(description="Specified ruleset (optional)")] = None,
 ):
+    """Get all user scores on a beatmap.
+
+    Args:
+        db: Database session dependency.
+        api_version: API version from request headers.
+        beatmap_id: The beatmap ID.
+        user_id: The user ID.
+        current_user: The authenticated user.
+        legacy_only: Whether to only query Stable scores.
+        ruleset: Optional game mode filter.
+
+    Returns:
+        list: All user scores on the beatmap.
+    """
     all_user_scores = (
         await db.exec(
             select(Score)
@@ -408,24 +524,44 @@ async def get_user_all_beatmap_scores(
 
 @router.post(
     "/beatmaps/{beatmap_id}/solo/scores",
-    tags=["游玩"],
+    tags=["Gameplay"],
     response_model=ScoreTokenResp,
-    name="创建单曲成绩提交令牌",
-    description="\n为指定谱面创建一次性的成绩提交令牌。",
+    name="Create solo score token",
+    description="\nCreate a one-time score submission token for a specific beatmap.",
 )
 async def create_solo_score(
     background_task: BackgroundTasks,
     db: Database,
     fetcher: Fetcher,
     verification_service: ClientVerificationService,
-    beatmap_id: Annotated[int, Path(description="谱面 ID")],
-    beatmap_hash: Annotated[str, Form(description="谱面文件哈希")],
-    ruleset_id: Annotated[int, Form(..., description="ruleset 数字 ID (0-3)")],
+    beatmap_id: Annotated[int, Path(description="Beatmap ID")],
+    beatmap_hash: Annotated[str, Form(description="Beatmap file hash")],
+    ruleset_id: Annotated[int, Form(..., description="Ruleset numeric ID (0-3)")],
     current_user: ClientUser,
-    version_hash: Annotated[str, Form(description="游戏版本哈希")] = "",
-    ruleset_hash: Annotated[str, Form(description="ruleset 版本哈希")] = "",
+    version_hash: Annotated[str, Form(description="Game version hash")] = "",
+    ruleset_hash: Annotated[str, Form(description="Ruleset version hash")] = "",
 ):
-    # 立即获取用户ID，避免懒加载问题
+    """Create a solo score submission token.
+
+    Args:
+        background_task: Background tasks handler.
+        db: Database session dependency.
+        fetcher: Fetcher service.
+        verification_service: Client verification service.
+        beatmap_id: The beatmap ID.
+        beatmap_hash: The beatmap file hash.
+        ruleset_id: The ruleset numeric ID (0-3).
+        current_user: The authenticated client user.
+        version_hash: Game version hash.
+        ruleset_hash: Ruleset version hash.
+
+    Returns:
+        ScoreTokenResp: The created score token.
+
+    Raises:
+        RequestError: If validation fails.
+    """
+    # Get user ID immediately to avoid lazy loading issues
     user_id = current_user.id
 
     try:
@@ -482,35 +618,68 @@ async def create_solo_score(
             mode=ruleset_id,
             client_version=str(client_version),
         )
+
+        hub.emit(
+            SoloScoreCreatedEvent(
+                user_id=user_id,
+                beatmap_id=beatmap_id,
+                beatmap_hash=beatmap_hash,
+                gamemode=GameMode.from_int(ruleset_id),
+                score_token=score_token.id,
+            )
+        )
+
         return ScoreTokenResp.from_db(score_token)
 
 
 @router.put(
     "/beatmaps/{beatmap_id}/solo/scores/{token}",
-    tags=["游玩"],
-    name="提交单曲成绩",
-    description="\n使用令牌提交单曲成绩。",
-    responses={200: api_doc("单曲成绩提交结果。", ScoreModel)},
+    tags=["Gameplay"],
+    name="Submit solo score",
+    description="\nSubmit a solo score using a token.",
+    responses={200: api_doc("Solo score submission result.", ScoreModel)},
 )
 async def submit_solo_score(
     background_task: BackgroundTasks,
     db: Database,
-    beatmap_id: Annotated[int, Path(description="谱面 ID")],
-    token: Annotated[int, Path(description="成绩令牌 ID")],
-    info: Annotated[SoloScoreSubmissionInfo, Body(description="成绩提交信息")],
+    beatmap_id: Annotated[int, Path(description="Beatmap ID")],
+    token: Annotated[int, Path(description="Score token ID")],
+    info: Annotated[SoloScoreSubmissionInfo, Body(description="Score submission information")],
     current_user: ClientUser,
     redis: Redis,
     fetcher: Fetcher,
 ):
+    """Submit a solo score.
+
+    Args:
+        background_task: Background tasks handler.
+        db: Database session dependency.
+        beatmap_id: The beatmap ID.
+        token: The score token ID.
+        info: Score submission information.
+        current_user: The authenticated client user.
+        redis: Redis connection.
+        fetcher: Fetcher service.
+
+    Returns:
+        dict: The submitted score.
+    """
+    hub.emit(
+        SoloScoreSubmittedEvent(
+            submission_info=info,
+            user_id=current_user.id,
+        )
+    )
+
     return await submit_score(background_task, info, token, current_user, db, redis, fetcher)
 
 
 @router.post(
     "/rooms/{room_id}/playlist/{playlist_id}/scores",
-    tags=["游玩"],
+    tags=["Gameplay"],
     response_model=ScoreTokenResp,
-    name="创建房间项目成绩令牌",
-    description="\n为房间游玩项目创建成绩提交令牌。",
+    name="Create room item score token",
+    description="\nCreate a score submission token for a room playlist item.",
 )
 async def create_playlist_score(
     session: Database,
@@ -518,13 +687,34 @@ async def create_playlist_score(
     room_id: int,
     playlist_id: int,
     verification_service: ClientVerificationService,
-    beatmap_id: Annotated[int, Form(description="谱面 ID")],
-    beatmap_hash: Annotated[str, Form(description="谱面文件哈希")],
-    ruleset_id: Annotated[int, Form(..., description="ruleset 数字 ID (0-3)")],
+    beatmap_id: Annotated[int, Form(description="Beatmap ID")],
+    beatmap_hash: Annotated[str, Form(description="Beatmap file hash")],
+    ruleset_id: Annotated[int, Form(..., description="Ruleset numeric ID (0-3)")],
     current_user: ClientUser,
-    version_hash: Annotated[str, Form(description="谱面版本哈希")] = "",
-    ruleset_hash: Annotated[str, Form(description="ruleset 版本哈希")] = "",
+    version_hash: Annotated[str, Form(description="Game version hash")] = "",
+    ruleset_hash: Annotated[str, Form(description="Ruleset version hash")] = "",
 ):
+    """Create a score token for a playlist item.
+
+    Args:
+        session: Database session dependency.
+        background_task: Background tasks handler.
+        room_id: The room ID.
+        playlist_id: The playlist item ID.
+        verification_service: Client verification service.
+        beatmap_id: The beatmap ID.
+        beatmap_hash: The beatmap file hash.
+        ruleset_id: The ruleset numeric ID.
+        current_user: The authenticated client user.
+        version_hash: Game version hash.
+        ruleset_hash: Ruleset version hash.
+
+    Returns:
+        ScoreTokenResp: The created score token.
+
+    Raises:
+        RequestError: If validation fails.
+    """
     try:
         gamemode = GameMode.from_int(ruleset_id)
     except ValueError:
@@ -590,7 +780,7 @@ async def create_playlist_score(
         raise RequestError(ErrorType.PLAYLIST_ITEM_EXPIRED)
     if item.played_at:
         raise RequestError(ErrorType.PLAYLIST_ITEM_ALREADY_PLAYED)
-    # 这里应该不用验证mod了吧。。。
+    # Mod validation should not be needed here
     background_task.add_task(_preload_beatmap_for_pp_calculation, beatmap_id)
     score_token = ScoreToken(
         user_id=user_id,
@@ -613,15 +803,28 @@ async def create_playlist_score(
         playlist_id=playlist_id,
         client_version=str(client_version),
     )
+
+    hub.emit(
+        MultiplayerScoreCreatedEvent(
+            user_id=user_id,
+            beatmap_id=beatmap_id,
+            beatmap_hash=beatmap_hash,
+            gamemode=GameMode.from_int(ruleset_id),
+            score_token=score_token.id,
+            score_type=ScoreType.MULTIPLAYER,
+            room_id=room_id,
+            playlist_id=playlist_id,
+        )
+    )
     return ScoreTokenResp.from_db(score_token)
 
 
 @router.put(
     "/rooms/{room_id}/playlist/{playlist_id}/scores/{token}",
-    tags=["游玩"],
-    name="提交房间项目成绩",
-    description="\n提交房间游玩项目成绩。",
-    responses={200: api_doc("单曲成绩提交结果。", ScoreModel)},
+    tags=["Gameplay"],
+    name="Submit room item score",
+    description="\nSubmit a score for a room playlist item.",
+    responses={200: api_doc("Solo score submission result.", ScoreModel)},
 )
 async def submit_playlist_score(
     background_task: BackgroundTasks,
@@ -634,10 +837,38 @@ async def submit_playlist_score(
     redis: Redis,
     fetcher: Fetcher,
 ):
+    """Submit a playlist score.
+
+    Args:
+        background_task: Background tasks handler.
+        session: Database session dependency.
+        room_id: The room ID.
+        playlist_id: The playlist item ID.
+        token: The score token ID.
+        info: Score submission information.
+        current_user: The authenticated client user.
+        redis: Redis connection.
+        fetcher: Fetcher service.
+
+    Returns:
+        dict: The submitted score.
+
+    Raises:
+        RequestError: If validation fails.
+    """
     if await current_user.is_restricted(session):
         raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
 
     user_id = current_user.id
+
+    hub.emit(
+        MultiplayerScoreSubmittedEvent(
+            submission_info=info,
+            room_id=room_id,
+            playlist_id=playlist_id,
+            user_id=user_id,
+        )
+    )
 
     item = (await session.exec(select(Playlist).where(Playlist.id == playlist_id, Playlist.room_id == room_id))).first()
     if not item:
@@ -673,6 +904,13 @@ async def submit_playlist_score(
 
 
 class IndexedScoreResp(MultiplayerScores):
+    """Response model for indexed multiplayer scores.
+
+    Attributes:
+        total: Total number of scores.
+        user_score: The current user's score (if any).
+    """
+
     total: int
     user_score: MultiplayScoreDict | None = None  # pyright: ignore[reportInvalidTypeForm]
 
@@ -680,13 +918,14 @@ class IndexedScoreResp(MultiplayerScores):
 @router.get(
     "/rooms/{room_id}/playlist/{playlist_id}/scores",
     # response_model=IndexedScoreResp,
-    name="获取房间项目排行榜",
-    description="获取房间游玩项目排行榜。",
-    tags=["成绩"],
+    name="Get room item leaderboard",
+    description="Get the leaderboard for a room playlist item.",
+    tags=["Scores"],
     responses={
         200: {
             "description": (
-                f"房间项目排行榜。\n\n包含：{', '.join([f'`{inc}`' for inc in Score.MULTIPLAYER_BASE_INCLUDES])}"
+                f"Room item leaderboard.\n\n"
+                f"Includes: {', '.join([f'`{inc}`' for inc in Score.MULTIPLAYER_BASE_INCLUDES])}"
             ),
             "model": IndexedScoreResp,
         }
@@ -697,10 +936,29 @@ async def index_playlist_scores(
     room_id: int,
     playlist_id: int,
     current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
-    limit: Annotated[int, Query(ge=1, le=50, description="返回条数 (1-50)")] = 50,
-    cursor: Annotated[int, Query(alias="cursor[total_score]", description="分页游标（上一页最低分）")] = 2000000,
+    limit: Annotated[int, Query(ge=1, le=50, description="Number of results (1-50)")] = 50,
+    cursor: Annotated[
+        int,
+        Query(alias="cursor[total_score]", description="Pagination cursor (previous page lowest score)"),
+    ] = 2000000,
 ):
-    # 立即获取用户ID，避免懒加载问题
+    """Get playlist item leaderboard.
+
+    Args:
+        session: Database session dependency.
+        room_id: The room ID.
+        playlist_id: The playlist item ID.
+        current_user: The authenticated user.
+        limit: Maximum number of results.
+        cursor: Pagination cursor.
+
+    Returns:
+        IndexedScoreResp: Leaderboard scores with pagination.
+
+    Raises:
+        RequestError: If the room is not found.
+    """
+    # Get user ID immediately to avoid lazy loading issues
     user_id = current_user.id
 
     room = await session.get(Room, room_id)
@@ -753,12 +1011,12 @@ async def index_playlist_scores(
 
 @router.get(
     "/rooms/{room_id}/playlist/{playlist_id}/scores/{score_id}",
-    name="获取房间项目单个成绩",
-    description="获取指定房间游玩项目中单个成绩详情。",
-    tags=["成绩"],
+    name="Get room item score",
+    description="Get details for a specific score in a room playlist item.",
+    tags=["Scores"],
     responses={
         200: api_doc(
-            "房间项目单个成绩详情。",
+            "Room item score details.",
             ScoreModel,
             [*Score.MULTIPLAYER_BASE_INCLUDES, "position", "scores_around"],
         )
@@ -772,6 +1030,22 @@ async def show_playlist_score(
     current_user: ClientUser,
     redis: Redis,
 ):
+    """Get a specific playlist score.
+
+    Args:
+        session: Database session dependency.
+        room_id: The room ID.
+        playlist_id: The playlist item ID.
+        score_id: The score ID.
+        current_user: The authenticated client user.
+        redis: Redis connection.
+
+    Returns:
+        dict: Score details with position and surrounding scores.
+
+    Raises:
+        RequestError: If room or score is not found.
+    """
     room = await session.get(Room, room_id)
     if not room:
         raise RequestError(ErrorType.ROOM_NOT_FOUND)
@@ -818,14 +1092,14 @@ async def show_playlist_score(
     "/rooms/{room_id}/playlist/{playlist_id}/scores/users/{user_id}",
     responses={
         200: api_doc(
-            "房间项目单个成绩详情。",
+            "Room item score details.",
             ScoreModel,
             [*Score.MULTIPLAYER_BASE_INCLUDES, "position", "scores_around"],
         )
     },
-    name="获取房间项目用户成绩",
-    description="获取指定用户在房间游玩项目中的成绩。",
-    tags=["成绩"],
+    name="Get user's room item score",
+    description="Get a specific user's score in a room playlist item.",
+    tags=["Scores"],
 )
 async def get_user_playlist_score(
     session: Database,
@@ -834,6 +1108,21 @@ async def get_user_playlist_score(
     user_id: int,
     current_user: ClientUser,
 ):
+    """Get a user's playlist score.
+
+    Args:
+        session: Database session dependency.
+        room_id: The room ID.
+        playlist_id: The playlist item ID.
+        user_id: The user ID.
+        current_user: The authenticated client user.
+
+    Returns:
+        dict: Score details with position and surrounding scores.
+
+    Raises:
+        RequestError: If the score is not found.
+    """
     score_record = None
     start_time = time.time()
     while time.time() - start_time < READ_SCORE_TIMEOUT:
@@ -866,17 +1155,28 @@ async def get_user_playlist_score(
 @router.put(
     "/score-pins/{score_id}",
     status_code=204,
-    name="置顶成绩",
-    description="\n将指定成绩置顶到用户主页 (按顺序)。",
-    tags=["成绩"],
+    name="Pin score",
+    description="\nPin a score to the user's profile (in order).",
+    tags=["Scores"],
 )
 async def pin_score(
     db: Database,
     current_user: ClientUser,
     user_cache_service: UserCacheService,
-    score_id: Annotated[int, Path(description="成绩 ID")],
+    score_id: Annotated[int, Path(description="Score ID")],
 ):
-    # 立即获取用户ID，避免懒加载问题
+    """Pin a score to the user's profile.
+
+    Args:
+        db: Database session dependency.
+        current_user: The authenticated client user.
+        user_cache_service: User cache service.
+        score_id: The score ID to pin.
+
+    Raises:
+        RequestError: If the score is not found.
+    """
+    # Get user ID immediately to avoid lazy loading issues
     user_id = current_user.id
 
     score_record = (
@@ -913,17 +1213,28 @@ async def pin_score(
 @router.delete(
     "/score-pins/{score_id}",
     status_code=204,
-    name="取消置顶成绩",
-    description="\n取消置顶指定成绩。",
-    tags=["成绩"],
+    name="Unpin score",
+    description="\nUnpin a score from the user's profile.",
+    tags=["Scores"],
 )
 async def unpin_score(
     db: Database,
     user_cache_service: UserCacheService,
-    score_id: Annotated[int, Path(description="成绩 ID")],
+    score_id: Annotated[int, Path(description="Score ID")],
     current_user: ClientUser,
 ):
-    # 立即获取用户ID，避免懒加载问题
+    """Unpin a score from the user's profile.
+
+    Args:
+        db: Database session dependency.
+        user_cache_service: User cache service.
+        score_id: The score ID to unpin.
+        current_user: The authenticated client user.
+
+    Raises:
+        RequestError: If the score is not found.
+    """
+    # Get user ID immediately to avoid lazy loading issues
     user_id = current_user.id
 
     score_record = (await db.exec(select(Score).where(Score.id == score_id, Score.user_id == user_id))).first()
@@ -951,19 +1262,34 @@ async def unpin_score(
 @router.post(
     "/score-pins/{score_id}/reorder",
     status_code=204,
-    name="调整置顶成绩顺序",
-    description=("\n调整已置顶成绩的展示顺序。仅提供 after_score_id 或 before_score_id 之一。"),
-    tags=["成绩"],
+    name="Reorder pinned score",
+    description=(
+        "\nReorder the display order of a pinned score. Provide only one of after_score_id or before_score_id."
+    ),
+    tags=["Scores"],
 )
 async def reorder_score_pin(
     db: Database,
     user_cache_service: UserCacheService,
     current_user: ClientUser,
-    score_id: Annotated[int, Path(description="成绩 ID")],
-    after_score_id: Annotated[int | None, Body(description="放在该成绩之后")] = None,
-    before_score_id: Annotated[int | None, Body(description="放在该成绩之前")] = None,
+    score_id: Annotated[int, Path(description="Score ID")],
+    after_score_id: Annotated[int | None, Body(description="Place after this score")] = None,
+    before_score_id: Annotated[int | None, Body(description="Place before this score")] = None,
 ):
-    # 立即获取用户ID，避免懒加载问题
+    """Reorder a pinned score.
+
+    Args:
+        db: Database session dependency.
+        user_cache_service: User cache service.
+        current_user: The authenticated client user.
+        score_id: The score ID to reorder.
+        after_score_id: Place after this score ID.
+        before_score_id: Place before this score ID.
+
+    Raises:
+        RequestError: If score not found, not pinned, or invalid parameters.
+    """
+    # Get user ID immediately to avoid lazy loading issues
     user_id = current_user.id
 
     score_record = (await db.exec(select(Score).where(Score.id == score_id, Score.user_id == user_id))).first()
@@ -1035,9 +1361,9 @@ async def reorder_score_pin(
 
 @router.get(
     "/scores/{score_id}/download",
-    name="下载成绩回放",
-    description="下载指定成绩的回放文件。",
-    tags=["成绩"],
+    name="Download score replay",
+    description="Download the replay file for a specific score.",
+    tags=["Scores"],
     dependencies=[Depends(RateLimiter(limiter=Limiter(Rate(10, Duration.MINUTE))))],
 )
 async def download_score_replay(
@@ -1046,7 +1372,21 @@ async def download_score_replay(
     current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
     storage_service: StorageService,
 ):
-    # 立即获取用户ID，避免懒加载问题
+    """Download a score replay.
+
+    Args:
+        score_id: The score ID.
+        db: Database session dependency.
+        current_user: The authenticated user.
+        storage_service: Storage service for file access.
+
+    Returns:
+        RedirectResponse: Redirect to the replay file URL.
+
+    Raises:
+        RequestError: If score or replay file is not found.
+    """
+    # Get user ID immediately to avoid lazy loading issues
     user_id = current_user.id
 
     score = (await db.exec(select(Score).where(Score.id == score_id))).first()
@@ -1087,6 +1427,14 @@ async def download_score_replay(
             db.add(replay_watched_count)
         replay_watched_count.count += 1
         await db.commit()
+
+    hub.emit(
+        ReplayDownloadedEvent(
+            score_id=score_id,
+            owner_user_id=score.user_id,
+            downloader_user_id=user_id,
+        )
+    )
     return RedirectResponse(
         await storage_service.get_file_url(filepath), 301, headers={"Content-Type": "application/x-osu-replay"}
     )

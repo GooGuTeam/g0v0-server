@@ -1,3 +1,10 @@
+"""URL redirect routers for frontend and legacy API compatibility.
+
+This module provides redirect endpoints to:
+- Forward user/beatmap/score URLs to the frontend
+- Redirect legacy v1 API paths to their proper endpoints
+"""
+
 import urllib.parse
 
 from app.config import settings
@@ -21,6 +28,17 @@ redirect_router = APIRouter(include_in_schema=False)
 @redirect_router.get("/home/password-reset")
 @redirect_router.get("/oauth/authorize")
 async def redirect(request: Request):
+    """Redirect various paths to the frontend.
+
+    Handles redirects for user profiles, beatmaps, scores, multiplayer rooms,
+    password reset, and OAuth authorization to the configured frontend URL.
+
+    Args:
+        request: FastAPI request object.
+
+    Returns:
+        RedirectResponse (301) to frontend URL with path and query preserved.
+    """
     query_string = request.url.query
     target_path = request.url.path
     redirect_url = urllib.parse.urljoin(str(settings.frontend_url), target_path)
@@ -37,6 +55,21 @@ redirect_api_router = APIRouter(prefix="/api", include_in_schema=False)
 
 @redirect_api_router.get("/{path}")
 async def redirect_to_api_root(request: Request, path: str):
+    """Redirect legacy v1 API paths to proper endpoints.
+
+    Handles legacy API paths like /api/get_beatmaps and redirects them
+    to the correct /api/v1/* endpoints.
+
+    Args:
+        request: FastAPI request object.
+        path: API path segment being requested.
+
+    Returns:
+        RedirectResponse (302) to the v1 API endpoint.
+
+    Raises:
+        RequestError: If path is not a recognized legacy API endpoint.
+    """
     if path in {
         "get_beatmaps",
         "get_user",

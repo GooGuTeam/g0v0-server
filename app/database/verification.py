@@ -1,13 +1,14 @@
-"""
-邮件验证相关数据库模型
+"""Email verification and session management database models.
+
+This module handles email verification, login sessions, and trusted devices
+for user authentication and security.
 """
 
 from datetime import datetime
 from typing import TYPE_CHECKING, Literal, Optional
 
-from app.helpers.geoip_helper import GeoIPHelper
+from app.helpers import GeoIPHelper, extract_user_agent, utcnow
 from app.models.model import UserAgentInfo, UTCBaseModel
-from app.utils import extract_user_agent, utcnow
 
 from pydantic import BaseModel
 from sqlalchemy import BigInteger, Column, ForeignKey
@@ -18,39 +19,41 @@ if TYPE_CHECKING:
 
 
 class Location(BaseModel):
+    """Geographic location data."""
+
     country: str = ""
     city: str = ""
     country_code: str = ""
 
 
 class EmailVerification(SQLModel, table=True):
-    """邮件验证记录"""
+    """Database table for email verification records."""
 
     __tablename__: str = "email_verifications"
 
     id: int | None = Field(default=None, primary_key=True)
     user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), nullable=False, index=True))
     email: str = Field(index=True)
-    verification_code: str = Field(max_length=8)  # 8位验证码
+    verification_code: str = Field(max_length=8)  # 8-character verification code
     created_at: datetime = Field(default_factory=utcnow)
-    expires_at: datetime = Field()  # 验证码过期时间
-    is_used: bool = Field(default=False)  # 是否已使用
+    expires_at: datetime = Field()  # Code expiration time
+    is_used: bool = Field(default=False)  # Whether the code has been used
     used_at: datetime | None = Field(default=None)
-    ip_address: str | None = Field(default=None)  # 请求IP
-    user_agent: str | None = Field(default=None)  # 用户代理
+    ip_address: str | None = Field(default=None)  # Request IP
+    user_agent: str | None = Field(default=None)  # User agent
 
 
 class LoginSessionBase(SQLModel):
-    """登录会话记录"""
+    """Base fields for login sessions."""
 
     id: int = Field(default=None, primary_key=True)
     user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), nullable=False, index=True))
     ip_address: str = Field(sa_column=Column(VARCHAR(45), nullable=False), default="127.0.0.1", exclude=True)
     user_agent: str | None = Field(default=None, sa_column=Column(Text))
-    is_verified: bool = Field(default=False)  # 是否已验证
+    is_verified: bool = Field(default=False)  # Whether the session is verified
     created_at: datetime = Field(default_factory=lambda: utcnow())
     verified_at: datetime | None = Field(default=None)
-    expires_at: datetime = Field()  # 会话过期时间
+    expires_at: datetime = Field()  # Session expiration time
     device_id: int | None = Field(
         sa_column=Column(BigInteger, ForeignKey("trusted_devices.id", ondelete="SET NULL"), nullable=True, index=True),
         default=None,
@@ -58,20 +61,24 @@ class LoginSessionBase(SQLModel):
 
 
 class LoginSession(LoginSessionBase, table=True):
+    """Database table for login sessions."""
+
     __tablename__: str = "login_sessions"
     token_id: int | None = Field(
         sa_column=Column(Integer, ForeignKey("oauth_tokens.id", ondelete="SET NULL"), nullable=True, index=True),
         exclude=True,
     )
-    is_new_device: bool = Field(default=False, exclude=True)  # 是否新位置登录
+    is_new_device: bool = Field(default=False, exclude=True)  # New device login
     web_uuid: str | None = Field(sa_column=Column(VARCHAR(36), nullable=True), default=None, exclude=True)
-    verification_method: str | None = Field(default=None, max_length=20, exclude=True)  # 验证方法 (totp/mail)
+    verification_method: str | None = Field(default=None, max_length=20, exclude=True)  # totp/mail
 
     device: Optional["TrustedDevice"] = Relationship(back_populates="sessions")
     token: Optional["OAuthToken"] = Relationship(back_populates="login_session")
 
 
 class LoginSessionResp(UTCBaseModel, LoginSessionBase):
+    """Response model for login sessions."""
+
     user_agent_info: UserAgentInfo | None = None
     location: Location | None = None
 
@@ -92,6 +99,8 @@ class LoginSessionResp(UTCBaseModel, LoginSessionBase):
 
 
 class TrustedDeviceBase(SQLModel):
+    """Base fields for trusted devices."""
+
     id: int = Field(default=None, primary_key=True)
     user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), nullable=False, index=True))
     ip_address: str = Field(sa_column=Column(VARCHAR(45), nullable=False), default="127.0.0.1", exclude=True)
@@ -103,6 +112,8 @@ class TrustedDeviceBase(SQLModel):
 
 
 class TrustedDevice(TrustedDeviceBase, table=True):
+    """Database table for trusted devices."""
+
     __tablename__: str = "trusted_devices"
     web_uuid: str | None = Field(sa_column=Column(VARCHAR(36), nullable=True), default=None)
 
@@ -110,6 +121,8 @@ class TrustedDevice(TrustedDeviceBase, table=True):
 
 
 class TrustedDeviceResp(UTCBaseModel, TrustedDeviceBase):
+    """Response model for trusted devices."""
+
     user_agent_info: UserAgentInfo | None = None
     location: Location | None = None
 

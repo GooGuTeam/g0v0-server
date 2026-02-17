@@ -1,3 +1,9 @@
+"""BanchoBot user creation startup task.
+
+Creates the BanchoBot system user during application startup
+if it does not already exist.
+"""
+
 from app.const import BANCHOBOT_ID
 from app.database.statistics import UserStatistics
 from app.database.user import User
@@ -8,7 +14,12 @@ from app.models.score import GameMode
 from sqlmodel import exists, select
 
 
-async def create_banchobot():
+async def create_banchobot() -> None:
+    """Create the BanchoBot system user if it doesn't exist.
+
+    BanchoBot is a special bot user used for system messages,
+    daily challenges, and other automated interactions.
+    """
     async with with_db() as session:
         is_exist = (await session.exec(select(exists()).where(User.id == BANCHOBOT_ID))).first()
         if not is_exist:

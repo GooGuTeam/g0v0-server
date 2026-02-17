@@ -214,6 +214,7 @@ bancho.py-master/*
 
 # runtime file
 storage/
+!app/storage/
 replays/
 osu-master/*
 rulesets/
@@ -232,3 +233,4 @@ config/*
 osu-web-master/*
 performance-server
 plugins/
+!app/plugins

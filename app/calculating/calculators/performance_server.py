@@ -1,3 +1,9 @@
+"""Performance calculator that uses the osu-performance-server.
+
+References:
+  - https://github.com/GooGuTeam/osu-performance-server
+"""
+
 import asyncio
 import datetime
 from typing import TYPE_CHECKING, TypedDict, cast
@@ -34,6 +40,11 @@ class AvailableRulesetResp(TypedDict):
 
 class PerformanceServerPerformanceCalculator(BasePerformanceCalculator):
     def __init__(self, server_url: str = "http://localhost:5225", **kwargs) -> None:  # noqa: ARG002
+        """Initialize the performance server performance calculator.
+
+        Args:
+            server_url: The URL of the osu-performance-server instance to use for calculations.
+        """
         self.server_url = server_url
 
         self._available_modes: AvailableModes | None = None

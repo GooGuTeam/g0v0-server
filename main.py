@@ -1,8 +1,9 @@
 from contextlib import asynccontextmanager
 import json
 from pathlib import Path
+import time
 
-from app.calculator import init_calculator
+from app.calculating import init_calculator
 from app.config import settings
 from app.database import User
 from app.dependencies.database import (
@@ -14,11 +15,14 @@ from app.dependencies.database import (
 )
 from app.dependencies.fetcher import get_fetcher
 from app.dependencies.scheduler import start_scheduler, stop_scheduler
+from app.helpers import bg_tasks, utcnow
 from app.log import system_logger
 from app.middleware.verify_session import VerifySessionMiddleware
 from app.models.error import RequestError
+from app.models.events.http import RequestHandledEvent, RequestReceivedEvent
 from app.models.mods import init_mods, init_ranked_mods
 from app.models.score import init_ruleset_version_hash
+from app.plugins import hub, manager, plugin_router
 from app.router import (
     api_v1_router,
     api_v2_router,
@@ -49,7 +53,6 @@ from app.tasks import (
     start_cache_tasks,
     stop_cache_tasks,
 )
-from app.utils import bg_tasks, utcnow
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -59,9 +62,12 @@ import sentry_sdk
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):  # noqa: ARG001
+async def lifespan(app: FastAPI):
     # === on startup ===
     # init mods, achievements and performance calculator
+    manager.load_all_plugins()
+    app.include_router(plugin_router)
+
     init_mods()
     init_ranked_mods()
     init_ruleset_version_hash()
@@ -114,45 +120,52 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
     await redis_message_client.aclose()
 
 
-desc = f"""osu! API 模拟服务器，支持 osu! API v1, v2 和 osu!lazer 的绝大部分功能。
+desc = f"""g0v0-server is an osu!(lazer) server written in Python, supporting the latest osu!(lazer) client and providing additional features (e.g., Relax/Autopilot Mod statistics, custom ruleset support).
 
-## 端点说明
+g0v0-server is implemented based on osu! API v2, achieving compatibility with the vast majority of osu! API v1 and v2. This means you can easily integrate existing osu! applications into g0v0-server.
 
-所有 v2 API 均以 `/api/v2/` 开头，所有 v1 API 均以 `/api/v1/` 开头（直接访问 `/api` 的 v1 API 会进行重定向）。
+Meanwhile, g0v0-server also provides a series of g0v0! APIs to implement operations for other functionalities outside of the osu! API.
 
-所有 g0v0-server 提供的额外 API（g0v0-api） 均以 `/api/private/` 开头。
+g0v0-server is not just a score server. It implements most of the osu! website features (e.g., chat, user settings, etc.).
 
-## 鉴权
+If you want to develop this or to run another instance, please check our [documentation](https://docs.g0v0.top/). If you are confused about this project, welcome to our [Discord server](https://discord.gg/AhzJXXWYfF) to seek answers.
 
-v2 API 采用 OAuth 2.0 鉴权，支持以下鉴权方式：
+g0v0-server is developed by [GooGuTeam](https://github.com/GooGuTeam) and licensed under **GNU Affero General Public License v3.0 (AGPL-3.0-only)**. Any derivative work, modification, or deployment **MUST** clearly and prominently attribute the original authors:
+> GooGuTeam - https://github.com/GooGuTeam/g0v0-server
 
-- `password` 密码鉴权，仅适用于 osu!lazer 客户端和前端等服务，需要提供用户的用户名和密码进行登录。
-- `authorization_code` 授权码鉴权，适用于第三方应用，需要提供用户的授权码进行登录。
-- `client_credentials` 客户端凭证鉴权，适用于服务端应用，需要提供客户端 ID 和客户端密钥进行登录。
+## Endpoint Specifications
 
-使用 `password` 鉴权的具有全部权限。`authorization_code` 具有指定 scope 的权限。`client_credentials` 只有 `public` 权限。各接口需要的权限请查看每个 Endpoint 的 Authorization。
+All v2 APIs begin with `/api/v2/`, while all v1 APIs start with `/api/v1/` (direct access to `/api` for v1 APIs will redirect).
+All additional APIs provided by g0v0-server (g0v0-api) begin with `/api/private/`. All additional APIs provided by plugins begin with `/api/plugins/<plugin-id>/`
 
-v1 API 采用 API Key 鉴权，将 API Key 放入 Query `k` 中。
+## Authentication
+
+v2 APIs use OAuth 2.0 authentication and support the following methods:
+- `password`: Password authentication, applicable only to services like the osu!lazer client and frontend. Requires providing the user's username and password for login.
+- `authorization_code`: Authorization code authentication, suitable for third-party applications. Requires providing the user's authorization code for login.
+- `client_credentials`: Client credentials authentication for server-side applications, requiring the client ID and client secret for login.
+`password` authentication grants full permissions. `authorization_code` grants permissions for specified scopes. `client_credentials` grants only `public` permissions. Refer to each Endpoint's Authorization section for specific permission requirements.
+
+v1 API uses API Key authentication. Place the API Key in the Query `k` field.
 
 {
     '''
-## 速率限制
+## Rate Limiting
 
-所有 API 请求均受到速率限制，具体限制规则如下：
+All API requests are subject to rate limiting. Specific restrictions are as follows:
 
-- 每分钟最多可以发送 1200 个请求
-- 突发请求限制为每秒最多 200 个请求
+- Maximum of 1200 requests per minute
+- Burst requests capped at 200 requests per second
 
-此外，下载回放 API (`/api/v1/get_replay`, `/api/v2/scores/{score_id}/download`) 的速率限制为每分钟最多 10 个请求。
+Additionally, the download replay API (`/api/v1/get_replay`, `/api/v2/scores/{score_id}/download`) is rate-limited to 10 requests per minute.
 '''
     if settings.enable_rate_limit
     else ""
 }
 
-## 参考
-
-- v2 API 文档：[osu-web 文档](https://osu.ppy.sh/docs/index.html)
-- v1 API 文档：[osu-api](https://github.com/ppy/osu-api/wiki)
+## References
+- v2 API Documentation: [osu-web Documentation](https://osu.ppy.sh/docs/index.html)
+- v1 API Documentation: [osu-api](https://github.com/ppy/osu-api/wiki)
 """  # noqa: E501
 
 # 检查 New Relic 配置文件是否存在，如果存在则初始化 New Relic
@@ -240,13 +253,13 @@ async def get_user_avatar_root(
 
 @app.get("/", include_in_schema=False)
 async def root():
-    """根端点"""
-    return {"message": "osu! API 模拟服务器正在运行"}
+    if settings.frontend_url:
+        return RedirectResponse(url=str(settings.frontend_url), status_code=302)
+    return {"message": "g0v0-server is running"}
 
 
 @app.get("/health", include_in_schema=False)
 async def health_check():
-    """健康检查端点"""
     return {"status": "ok", "timestamp": utcnow().isoformat()}
 
 
@@ -276,6 +289,14 @@ async def http_exception_handler(request: Request, exc: HTTPException):  # noqa:
     return JSONResponse(status_code=exc.status_code, content={"error": exc.detail})
 
 
+@app.middleware("http")
+async def add_process_time_header(request: Request, call_next):
+    hub.emit(RequestReceivedEvent(time=time.time(), request=request))
+    response = await call_next(request)
+    hub.emit(RequestHandledEvent(time=time.time(), request=request, response=response))
+    return response
+
+
 if settings.secret_key == "your_jwt_secret_here":  # noqa: S105
     raise RuntimeError(
         "jwt_secret_key is unset. Your server is unsafe. Use this command to generate: openssl rand -hex 32"
@@ -294,6 +315,6 @@ if __name__ == "__main__":
         host=settings.host,
         port=settings.port,
         reload=settings.debug,
-        log_config=None,  # 禁用uvicorn默认日志配置
-        access_log=True,  # 启用访问日志
+        log_config=None,
+        access_log=True,
     )

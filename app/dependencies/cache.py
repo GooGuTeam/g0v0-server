@@ -10,11 +10,11 @@ from app.service.user_cache_service import (
     get_user_cache_service,
 )
 
+from fast_depends import Depends as FastDepends
 from fastapi import Depends
 
 
 def get_beatmapset_cache_dependency(redis: Redis) -> OriginBeatmapsetCacheService:
-    """获取beatmapset缓存服务依赖"""
     return get_beatmapset_cache_service(redis)
 
 
@@ -22,5 +22,9 @@ def get_user_cache_dependency(redis: Redis) -> OriginUserCacheService:
     return get_user_cache_service(redis)
 
 
-BeatmapsetCacheService = Annotated[OriginBeatmapsetCacheService, Depends(get_beatmapset_cache_dependency)]
-UserCacheService = Annotated[OriginUserCacheService, Depends(get_user_cache_dependency)]
+BeatmapsetCacheService = Annotated[
+    OriginBeatmapsetCacheService, Depends(get_beatmapset_cache_dependency), FastDepends(get_beatmapset_cache_dependency)
+]
+UserCacheService = Annotated[
+    OriginUserCacheService, Depends(get_user_cache_dependency), FastDepends(get_user_cache_dependency)
+]

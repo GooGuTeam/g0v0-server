@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings
 from pydantic_settings.main import SettingsConfigDict
 
 
-class G0v0ServerDatabaseConfig(BaseSettings):
+class G0v0ServerConfig(BaseSettings):
     model_config: SettingsConfigDict = SettingsConfigDict(
         extra="ignore",
         env_file_encoding="utf-8",
@@ -39,6 +39,12 @@ class G0v0ServerDatabaseConfig(BaseSettings):
         "数据库设置",
     ]
 
+    plugin_dirs: Annotated[
+        list[str],
+        Field(default=["./plugins"], description="插件目录列表"),
+        "插件设置",
+    ]
+
     @property
     def database_url(self) -> str:
         return f"mysql+aiomysql://{self.mysql_user}:{self.mysql_password}@{self.mysql_host}:{self.mysql_port}/{self.mysql_database}"
@@ -47,5 +53,6 @@ class G0v0ServerDatabaseConfig(BaseSettings):
 class ContextObject(TypedDict):
     g0v0_server_path: Path
     plugin_path: Path
+    g0v0_server_config: G0v0ServerConfig
     alembic_config: AlembicConfig
     plugin_id: str | None

@@ -1,3 +1,16 @@
+"""Router module for osu! lazer API.
+
+This module exports all API routers including:
+- v1 and v2 API routers
+- OAuth authentication router
+- File serving router
+- Fetcher callback router
+- Legacy IO router for spectator server compatibility
+- Chat/notification router
+- Private/experimental endpoints router
+- Redirect routers for frontend/legacy API compatibility
+"""
+
 from .auth import router as auth_router
 from .fetcher import fetcher_router as fetcher_router
 from .file import file_router as file_router
