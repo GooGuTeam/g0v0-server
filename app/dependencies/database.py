@@ -62,6 +62,11 @@ async def get_db():
         yield session
 
 
+async def get_no_context_db():
+    async with AsyncSession(engine) as session:
+        yield session
+
+
 @asynccontextmanager
 async def with_db():
     async with AsyncSession(engine) as session:
@@ -73,6 +78,7 @@ async def with_db():
 
 DBFactory = Callable[[], AsyncIterator[AsyncSession]]
 Database = Annotated[AsyncSession, Depends(get_db), DIDepends(get_db)]
+NoContextDB = Annotated[AsyncSession, Depends(get_no_context_db), DIDepends(get_no_context_db)]
 
 
 async def get_db_factory() -> DBFactory:
