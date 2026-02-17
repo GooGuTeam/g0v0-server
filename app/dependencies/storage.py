@@ -11,7 +11,7 @@ from app.storage import StorageService as OriginStorageService
 from app.storage.cloudflare_r2 import AWSS3StorageService, CloudflareR2StorageService
 from app.storage.local import LocalStorageService
 
-from fast_depends import Depends as DIDepends
+from fast_depends import Depends as FastDepends
 from fastapi import Depends
 
 storage: OriginStorageService | None = None
@@ -53,4 +53,4 @@ def get_storage_service():
     return storage
 
 
-StorageService = Annotated[OriginStorageService, Depends(get_storage_service), DIDepends(get_storage_service)]
+StorageService = Annotated[OriginStorageService, Depends(get_storage_service), FastDepends(get_storage_service)]

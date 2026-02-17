@@ -6,7 +6,7 @@ from app.fetcher import Fetcher as OriginFetcher
 from app.fetcher._base import TokenAuthError
 from app.log import fetcher_logger
 
-from fast_depends import Depends as DIDepends
+from fast_depends import Depends as FastDepends
 from fastapi import Depends
 
 fetcher: OriginFetcher | None = None
@@ -37,4 +37,4 @@ async def get_fetcher() -> OriginFetcher:
     return fetcher
 
 
-Fetcher = Annotated[OriginFetcher, Depends(get_fetcher), DIDepends(get_fetcher)]
+Fetcher = Annotated[OriginFetcher, Depends(get_fetcher), FastDepends(get_fetcher)]

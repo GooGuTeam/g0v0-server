@@ -5,7 +5,7 @@ from app.plugins import (
     hub,
 )
 
-from fast_depends import Depends as DIDepends
+from fast_depends import Depends as FastDepends
 from fastapi import Depends
 
-EventHub = Annotated[OriginalEventHub, Depends(lambda: hub), DIDepends(lambda: hub)]
+EventHub = Annotated[OriginalEventHub, Depends(lambda: hub), FastDepends(lambda: hub)]

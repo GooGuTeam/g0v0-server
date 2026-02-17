@@ -5,7 +5,7 @@ from typing import Annotated
 from app.config import settings
 from app.helpers import GeoIPHelper
 
-from fast_depends import Depends as DIDepends
+from fast_depends import Depends as FastDepends
 from fastapi import Depends, Request
 
 
@@ -63,8 +63,8 @@ def get_client_ip(request: Request) -> str:
     return client_ip if is_valid_ip(client_ip) else "127.0.0.1"
 
 
-IPAddress = Annotated[str, Depends(get_client_ip), DIDepends(get_client_ip)]
-GeoIPService = Annotated[GeoIPHelper, Depends(get_geoip_helper), DIDepends(get_geoip_helper)]
+IPAddress = Annotated[str, Depends(get_client_ip), FastDepends(get_client_ip)]
+GeoIPService = Annotated[GeoIPHelper, Depends(get_geoip_helper), FastDepends(get_geoip_helper)]
 
 
 def is_valid_ip(ip_str: str) -> bool:

@@ -11,7 +11,7 @@ from app.models.oauth import OAuth2ClientCredentialsBearer
 from .api_version import APIVersion
 from .database import Database, get_redis
 
-from fast_depends import Depends as DIDepends
+from fast_depends import Depends as FastDepends
 from fastapi import Depends, Security
 from fastapi.security import (
     APIKeyQuery,
@@ -70,7 +70,7 @@ v1_api_key = APIKeyQuery(name="k", scheme_name="V1 API Key", description="v1 API
 
 async def v1_authorize(
     db: Database,
-    api_key: Annotated[str, Depends(v1_api_key), DIDepends(v1_api_key)],
+    api_key: Annotated[str, Depends(v1_api_key), FastDepends(v1_api_key)],
 ):
     """V1 API Key 授权"""
     if not api_key:
@@ -83,7 +83,7 @@ async def v1_authorize(
 
 async def get_client_user_and_token(
     db: Database,
-    token: Annotated[str | None, Depends(oauth2_password), DIDepends(oauth2_password)],
+    token: Annotated[str | None, Depends(oauth2_password), FastDepends(oauth2_password)],
 ) -> tuple[User, OAuthToken]:
     if token is None:
         raise RequestError(ErrorType.NOT_AUTHENTICATED)
@@ -108,7 +108,7 @@ async def get_client_user_no_verified(user_and_token: UserAndToken = Depends(get
 
 async def get_client_user(
     db: Database,
-    redis: Annotated[Redis, Depends(get_redis), DIDepends(get_redis)],
+    redis: Annotated[Redis, Depends(get_redis), FastDepends(get_redis)],
     api_version: APIVersion,
     user_and_token: UserAndToken = Depends(get_client_user_and_token),
 ):
@@ -164,10 +164,10 @@ async def _validate_token(
 async def get_current_user_and_token(
     db: Database,
     security_scopes: SecurityScopes,
-    token_pw: Annotated[str | None, Depends(oauth2_password), DIDepends(oauth2_password)] = None,
-    token_code: Annotated[str | None, Depends(oauth2_code), DIDepends(oauth2_code)] = None,
+    token_pw: Annotated[str | None, Depends(oauth2_password), FastDepends(oauth2_password)] = None,
+    token_code: Annotated[str | None, Depends(oauth2_code), FastDepends(oauth2_code)] = None,
     token_client_credentials: Annotated[
-        str | None, Depends(oauth2_client_credentials), DIDepends(oauth2_client_credentials)
+        str | None, Depends(oauth2_client_credentials), FastDepends(oauth2_client_credentials)
     ] = None,
 ) -> UserAndToken:
     """获取当前认证用户"""
@@ -187,10 +187,10 @@ async def get_current_user(
 async def get_optional_user(
     db: Database,
     security_scopes: SecurityScopes,
-    token_pw: Annotated[str | None, Depends(oauth2_password), DIDepends(oauth2_password)] = None,
-    token_code: Annotated[str | None, Depends(oauth2_code), DIDepends(oauth2_code)] = None,
+    token_pw: Annotated[str | None, Depends(oauth2_password), FastDepends(oauth2_password)] = None,
+    token_code: Annotated[str | None, Depends(oauth2_code), FastDepends(oauth2_code)] = None,
     token_client_credentials: Annotated[
-        str | None, Depends(oauth2_client_credentials), DIDepends(oauth2_client_credentials)
+        str | None, Depends(oauth2_client_credentials), FastDepends(oauth2_client_credentials)
     ] = None,
 ) -> User | None:
     token = token_pw or token_code or token_client_credentials
