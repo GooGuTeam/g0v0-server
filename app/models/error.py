@@ -51,6 +51,7 @@ class ErrorType(Enum):
     USER_NOT_TEAM_MEMBER = ("user_not_team_member", 404, "User is not a member of the team")
     JOIN_REQUEST_NOT_FOUND = ("join_request_not_found", 404, "Join request not found")
     OAUTH_APP_NOT_FOUND = ("oauth_app_not_found", 404, "OAuth app not found")
+    API_KEY_NOT_FOUND = ("api_key_not_found", 404, "API key not found")
     AUDIO_PREVIEW_NOT_FOUND = ("audio_preview_not_found", 404, "Audio preview not found for this beatmapset")
     AUDIO_PREVIEW_NOT_AVAILABLE = (
         "audio_preview_not_available",

@@ -71,7 +71,7 @@ class V1APIKeys(SQLModel, table=True):
     """Database table for v1 API keys."""
 
     __tablename__: str = "v1_api_keys"
-    id: int | None = Field(default=None, primary_key=True)
+    id: int = Field(default=None, primary_key=True)
     name: str = Field(max_length=100, index=True)
     key: str = Field(default_factory=secrets.token_hex, index=True)
     owner_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))

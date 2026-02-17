@@ -8,6 +8,7 @@ from app.config import settings
 
 from . import (  # noqa: F401
     admin,
+    api_keys,
     audio_proxy,
     avatar,
     beatmapset,
