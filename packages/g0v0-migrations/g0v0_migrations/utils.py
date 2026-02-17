@@ -5,6 +5,7 @@ import tomllib
 
 REGEX_PLUGIN_ID = re.compile(r"^[a-z0-9\-_]+$")
 
+
 def detect_g0v0_server_path() -> Path | None:
     """Detect the g0v0 server path from the current working directory to parents.
 
