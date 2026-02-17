@@ -5,16 +5,26 @@ from pydantic import Field
 from pydantic_settings import BaseSettings
 
 META_FILENAME = "plugin.json"
+PYPROJECT_FILENAME = "pyproject.toml"
+REQUIREMENTS_FILENAME = "requirements.txt"
 
 
 class Config(BaseSettings):
     plugin_dirs: list[str] = Field(default=["./plugins"])
 
 
+def run_subprocess(command: list[str]) -> None:
+    try:
+        subprocess.run(command, check=True)  # noqa: S603
+    except subprocess.CalledProcessError as e:
+        print(f"Command '{' '.join(command)}' failed with error: {e}")
+
+
 config = Config()
 plugin_dirs = config.plugin_dirs
 
 for plugin_dir in plugin_dirs:
+    print(f"Installing dependencies for plugins in directory: {plugin_dir}")
     plugin_path = Path(plugin_dir)
     if not plugin_path.is_dir():
         print(f"Plugin directory '{plugin_dir}' does not exist or is not a directory.")
@@ -28,8 +38,15 @@ for plugin_dir in plugin_dirs:
             print(f"Plugin directory '{plugin}' does not contain '{META_FILENAME}', skipping.")
             continue
 
-        try:
-            print(f"Installing dependencies for plugin '{plugin.name}'...")
-            subprocess.run(["uv", "pip", "install", str(plugin.absolute())], check=True)  # noqa: S603, S607
-        except subprocess.CalledProcessError as e:
-            print(f"Failed to install dependencies for plugin '{plugin.name}': {e}")
+        if not (plugin / PYPROJECT_FILENAME).exists() and not (plugin / REQUIREMENTS_FILENAME).exists():
+            print(
+                f"Plugin '{plugin.name}' does not contain '{PYPROJECT_FILENAME}' "
+                f"or '{REQUIREMENTS_FILENAME}', skipping."
+            )
+            continue
+        elif (plugin / REQUIREMENTS_FILENAME).exists():
+            run_subprocess(["uv", "pip", "install", "-r", str(plugin / REQUIREMENTS_FILENAME)])
+            continue
+        elif (plugin / PYPROJECT_FILENAME).exists():
+            run_subprocess(["uv", "pip", "install", "-e", str(plugin.absolute())])
+            continue
