@@ -2,7 +2,7 @@ from pathlib import Path
 import subprocess
 
 from pydantic import Field
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 META_FILENAME = "plugin.json"
 PYPROJECT_FILENAME = "pyproject.toml"
@@ -10,6 +10,8 @@ REQUIREMENTS_FILENAME = "requirements.txt"
 
 
 class Config(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
     plugin_dirs: list[str] = Field(default=["./plugins"])
 
 
@@ -31,7 +33,7 @@ for plugin_dir in plugin_dirs:
         continue
 
     for plugin in Path(plugin_dir).iterdir():
-        if not plugin.is_dir():
+        if not plugin.is_dir() or plugin.name.startswith("."):
             continue
         meta_files = Path(plugin) / META_FILENAME
         if not meta_files.exists():
