@@ -2,7 +2,7 @@ from pathlib import Path
 import subprocess
 
 from pydantic import Field
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 META_FILENAME = "plugin.json"
 PYPROJECT_FILENAME = "pyproject.toml"
@@ -10,6 +10,8 @@ REQUIREMENTS_FILENAME = "requirements.txt"
 
 
 class Config(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
     plugin_dirs: list[str] = Field(default=["./plugins"])
 
 
