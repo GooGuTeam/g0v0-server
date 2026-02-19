@@ -53,6 +53,31 @@ async def redirect(request: Request):
 redirect_api_router = APIRouter(prefix="/api", include_in_schema=False)
 
 
+@redirect_api_router.get("/v1/get_player_info")
+@redirect_api_router.get("/v1/get_player_count")
+async def redirect_bancho_py_api(request: Request, path: str):
+    """Redirect legacy v1 Public API paths to the bancho.py API provided by [plugin](https://github.com/GooGuTeam/g0v0-plugins/tree/main/banchopy_api).
+
+    Handles legacy API paths like /api/v1/get_player_info and redirects them
+    to the corresponding endpoints in the banchopy_api plugin.
+
+    This is a compatibility redirect for older clients that may still be using the old API paths for player info.
+
+    Args:
+        request: FastAPI request object.
+        path: API path segment being requested.
+
+    Returns:
+        RedirectResponse (302) to the banchopy_api endpoint.
+
+    Raises:
+        RequestError: If path is not a recognized player info API endpoint.
+    """
+    if path in {"get_player_info", "get_player_count"}:
+        return RedirectResponse(f"/api/plugins/banchopy_api/{path}?{request.url.query}", status_code=302)
+    raise RequestError(ErrorType.NOT_FOUND)
+
+
 @redirect_api_router.get("/{path}")
 async def redirect_to_api_root(request: Request, path: str):
     """Redirect legacy v1 API paths to proper endpoints.
@@ -79,28 +104,4 @@ async def redirect_to_api_root(request: Request, path: str):
         "get_replay",
     }:
         return RedirectResponse(f"/api/v1/{path}?{request.url.query}", status_code=302)
-    raise RequestError(ErrorType.NOT_FOUND)
-
-
-@redirect_api_router.get("/v1/{path}")
-async def redirect_bancho_py_api(request: Request, path: str):
-    """Redirect legacy v1 Public API paths to the bancho.py API provided by [plugin](https://github.com/GooGuTeam/g0v0-plugins/tree/main/banchopy_api).
-
-    Handles legacy API paths like /api/v1/get_player_info and redirects them
-    to the corresponding endpoints in the banchopy_api plugin.
-
-    This is a compatibility redirect for older clients that may still be using the old API paths for player info.
-
-    Args:
-        request: FastAPI request object.
-        path: API path segment being requested.
-
-    Returns:
-        RedirectResponse (302) to the banchopy_api endpoint.
-
-    Raises:
-        RequestError: If path is not a recognized player info API endpoint.
-    """
-    if path in {"get_player_info", "get_player_count"}:
-        return RedirectResponse(f"/api/plugins/banchopy_api/{path}?{request.url.query}", status_code=302)
     raise RequestError(ErrorType.NOT_FOUND)
