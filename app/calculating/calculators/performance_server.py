@@ -6,7 +6,7 @@ References:
 
 import asyncio
 import datetime
-from typing import TYPE_CHECKING, TypedDict, cast
+from typing import TypedDict, cast
 
 from app.models.mods import APIMod
 from app.models.performance import (
@@ -15,7 +15,7 @@ from app.models.performance import (
     PerformanceAttributes,
     PerformanceAttributesUnion,
 )
-from app.models.score import GameMode
+from app.models.score import GameMode, ScoreData
 
 from ._base import (
     AvailableModes,
@@ -27,9 +27,6 @@ from ._base import (
 
 from httpx import AsyncClient, HTTPError
 from pydantic import TypeAdapter
-
-if TYPE_CHECKING:
-    from app.database.score import Score
 
 
 class AvailableRulesetResp(TypedDict):
@@ -94,7 +91,7 @@ class PerformanceServerPerformanceCalculator(BasePerformanceCalculator):
             except Exception as e:
                 raise CalculateError(f"Unknown error: {e}") from e
 
-    async def calculate_performance(self, beatmap_raw: str, score: "Score") -> PerformanceAttributes:
+    async def calculate_performance(self, beatmap_raw: str, score: ScoreData) -> PerformanceAttributes:
         # https://github.com/GooGuTeam/osu-performance-server#post-performance
         async with AsyncClient(timeout=15) as client:
             try:
@@ -114,10 +111,10 @@ class PerformanceServerPerformanceCalculator(BasePerformanceCalculator):
                             "miss": score.nmiss,
                             "perfect": score.ngeki,
                             "good": score.nkatu,
-                            "large_tick_hit": score.nlarge_tick_hit or 0,
-                            "large_tick_miss": score.nlarge_tick_miss or 0,
-                            "small_tick_hit": score.nsmall_tick_hit or 0,
-                            "slider_tail_hit": score.nslider_tail_hit or 0,
+                            "large_tick_hit": score.nlarge_tick_hit,
+                            "large_tick_miss": score.nlarge_tick_miss,
+                            "small_tick_hit": score.nsmall_tick_hit,
+                            "slider_tail_hit": score.nslider_tail_hit,
                         },
                         "ruleset": score.gamemode.to_base_ruleset().value,
                     },

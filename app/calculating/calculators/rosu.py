@@ -6,7 +6,7 @@ References:
 
 from asyncio import get_event_loop
 from copy import deepcopy
-from typing import TYPE_CHECKING, ClassVar
+from typing import ClassVar
 
 from app.calculating import clamp
 from app.models.mods import APIMod
@@ -19,7 +19,7 @@ from app.models.performance import (
     TaikoDifficultyAttributes,
     TaikoPerformanceAttributes,
 )
-from app.models.score import GameMode
+from app.models.score import GameMode, ScoreData
 
 from ._base import (
     AvailableModes,
@@ -29,9 +29,6 @@ from ._base import (
     PerformanceCalculator as BasePerformanceCalculator,
     PerformanceError,
 )
-
-if TYPE_CHECKING:
-    from app.database.score import Score
 
 try:
     import rosu_pp_py as rosu
@@ -147,7 +144,7 @@ class RosuPerformanceCalculator(BasePerformanceCalculator):
         else:
             return PerformanceAttributes(pp=attr.pp)
 
-    async def calculate_performance(self, beatmap_raw: str, score: "Score") -> PerformanceAttributes:
+    async def calculate_performance(self, beatmap_raw: str, score: ScoreData) -> PerformanceAttributes:
         try:
             map = rosu.Beatmap(content=beatmap_raw)
             mods = deepcopy(score.mods.copy())
@@ -158,9 +155,9 @@ class RosuPerformanceCalculator(BasePerformanceCalculator):
                 lazer=True,
                 accuracy=clamp(score.accuracy * 100, 0, 100),
                 combo=score.max_combo,
-                large_tick_hits=score.nlarge_tick_hit or 0,
-                slider_end_hits=score.nslider_tail_hit or 0,
-                small_tick_hits=score.nsmall_tick_hit or 0,
+                large_tick_hits=score.nlarge_tick_hit,
+                slider_end_hits=score.nslider_tail_hit,
+                small_tick_hits=score.nsmall_tick_hit,
                 n_geki=score.ngeki,
                 n_katu=score.nkatu,
                 n300=score.n300,

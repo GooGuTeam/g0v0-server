@@ -1,6 +1,6 @@
 from enum import Enum
 
-from app.models.score import GameMode, SoloScoreSubmissionInfo
+from app.models.score import GameMode, ScoreData, SoloScoreSubmissionInfo
 
 from ._base import PluginEvent
 
@@ -60,13 +60,13 @@ class MultiplayerScoreSubmittedEvent(ScoreSubmittedEvent):
 class ScoreProcessedEvent(PluginEvent):
     """Event fired when a score has been processed."""
 
-    score_id: int
+    score: ScoreData
 
 
 class ScoreDeletedEvent(PluginEvent):
     """Event fired when a score is deleted."""
 
-    score_id: int
+    score: ScoreData
 
 
 class ReplayUploadedEvent(PluginEvent):

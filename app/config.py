@@ -660,11 +660,6 @@ CALCULATOR_CONFIG='{}'
     ]
 
     # 反作弊设置
-    suspicious_score_check: Annotated[
-        bool,
-        Field(default=True, description="启用可疑分数检查（pp>3000）"),
-        "反作弊设置",
-    ]
     banned_name: Annotated[
         list[str],
         Field(

@@ -1,6 +1,7 @@
+from datetime import datetime
 from enum import Enum, StrEnum
 import json
-from typing import NamedTuple, TypedDict, cast
+from typing import TYPE_CHECKING, NamedTuple, TypedDict, cast
 
 from app.config import settings
 from app.path import STATIC_DIR
@@ -11,6 +12,9 @@ from pydantic import BaseModel, Field, ValidationInfo, field_serializer, field_v
 
 VersionEntry = TypedDict("VersionEntry", {"latest-version": str, "versions": dict[str, str]})
 DOWNLOAD_URL = "https://github.com/GooGuTeam/custom-rulesets/releases/tag/{version}"
+
+if TYPE_CHECKING:
+    from app.database import Score
 
 
 class RulesetCheckResult(NamedTuple):
@@ -361,3 +365,74 @@ def init_ruleset_version_hash() -> None:
         if mode is None:
             continue
         RULESETS_VERSION_HASH[mode] = entry
+
+
+class ScoreData(BaseModel):
+    """Score data used for PP calculation and score submission."""
+
+    id: int
+    mods: list[APIMod] = Field(default_factory=list)
+    n300: int | None = Field(default=None)
+    n100: int | None = Field(default=None)
+    n50: int | None = Field(default=None)
+    nmiss: int | None = Field(default=None)
+    ngeki: int | None = Field(default=None)
+    nkatu: int | None = Field(default=None)
+    nlarge_tick_miss: int | None = Field(default=None)
+    nlarge_tick_hit: int | None = Field(default=None)
+    nslider_tail_hit: int | None = Field(default=None)
+    nsmall_tick_hit: int | None = Field(default=None)
+    maximum_statistics: ScoreStatistics = Field(default_factory=dict)
+    total_score: int
+    total_score_without_mods: int
+    passed: bool
+    rank: Rank
+    user_id: int
+    beatmap_id: int
+    accuracy: float
+    started_at: datetime
+    ended_at: datetime
+    map_md5: str
+    max_combo: int
+    gamemode: GameMode
+    pp: float = 0
+    ranked: bool
+    has_replay: bool = False
+
+    playlist_item_id: int | None = Field(default=None)
+    room_id: int | None = Field(default=None)
+
+    @classmethod
+    def from_score(cls, score: "Score") -> "ScoreData":
+        return cls(
+            id=score.id,
+            mods=score.mods,
+            n300=score.n300,
+            n100=score.n100,
+            n50=score.n50,
+            nmiss=score.nmiss,
+            ngeki=score.ngeki,
+            nkatu=score.nkatu,
+            nlarge_tick_miss=score.nlarge_tick_miss,
+            nlarge_tick_hit=score.nlarge_tick_hit,
+            nslider_tail_hit=score.nslider_tail_hit,
+            nsmall_tick_hit=score.nsmall_tick_hit,
+            maximum_statistics=score.maximum_statistics,
+            total_score=score.total_score,
+            total_score_without_mods=score.total_score_without_mods,
+            passed=score.passed,
+            rank=score.rank,
+            user_id=score.user_id,
+            beatmap_id=score.beatmap_id,
+            accuracy=score.accuracy,
+            started_at=score.started_at,
+            ended_at=score.ended_at,
+            playlist_item_id=score.playlist_item_id,
+            room_id=score.room_id,
+            map_md5=score.map_md5,
+            max_combo=score.max_combo,
+            gamemode=score.gamemode,
+            pp=score.pp,
+            has_replay=score.has_replay,
+            ranked=score.ranked,
+        )

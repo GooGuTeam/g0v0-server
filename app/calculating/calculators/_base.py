@@ -6,14 +6,11 @@ the calculation process.
 """
 
 import abc
-from typing import TYPE_CHECKING, NamedTuple
+from typing import NamedTuple
 
 from app.models.mods import APIMod
 from app.models.performance import DifficultyAttributes, PerformanceAttributes
-from app.models.score import GameMode
-
-if TYPE_CHECKING:
-    from app.database.score import Score
+from app.models.score import GameMode, ScoreData
 
 
 class CalculateError(Exception):
@@ -55,7 +52,7 @@ class PerformanceCalculator(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    async def calculate_performance(self, beatmap_raw: str, score: "Score") -> PerformanceAttributes:
+    async def calculate_performance(self, beatmap_raw: str, score: ScoreData) -> PerformanceAttributes:
         """Calculate the performance attributes of a score.
 
         Args:
