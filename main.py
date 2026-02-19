@@ -34,7 +34,6 @@ from app.router import (
     redirect_api_router,
 )
 from app.router.redirect import redirect_router
-from app.router.v1 import api_v1_public_router
 from app.service.beatmap_download_service import download_service
 from app.service.beatmapset_update_service import init_beatmapset_update_service
 from app.service.client_verification_service import init_client_verification_service
@@ -198,7 +197,6 @@ app = FastAPI(
 
 app.include_router(api_v2_router)
 app.include_router(api_v1_router)
-app.include_router(api_v1_public_router)
 app.include_router(chat_router)
 app.include_router(redirect_api_router)
 # app.include_router(fetcher_router)

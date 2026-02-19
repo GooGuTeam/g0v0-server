@@ -12,6 +12,7 @@ from app.models.model import UTCBaseModel
 from app.models.score import GameMode
 
 from sqlalchemy import Column, DateTime
+from sqlalchemy.orm import Mapped
 from sqlmodel import BigInteger, Field, ForeignKey, Relationship, SQLModel, Text, col, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -39,8 +40,8 @@ class Team(TeamBase, table=True):
 
     __tablename__: str = "teams"
 
-    leader: "User" = Relationship()
-    members: list["TeamMember"] = Relationship(back_populates="team")
+    leader: Mapped["User"] = Relationship()
+    members: Mapped[list["TeamMember"]] = Relationship(back_populates="team")
 
 
 class TeamResp(TeamBase):

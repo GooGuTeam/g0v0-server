@@ -13,6 +13,7 @@ from ._base import DatabaseModel, included
 from .events import Event, EventType
 
 from sqlalchemy.ext.asyncio import AsyncAttrs
+from sqlalchemy.orm import Mapped
 from sqlmodel import (
     BigInteger,
     Column,
@@ -80,8 +81,8 @@ class BeatmapPlaycounts(BeatmapPlaycountsModel, table=True):
     __tablename__: str = "beatmap_playcounts"
     __table_args__ = (Index("idx_beatmap_playcounts_playcount_id", "playcount", "id"),)
 
-    user: "User" = Relationship()
-    beatmap: "Beatmap" = Relationship()
+    user: Mapped["User"] = Relationship()
+    beatmap: Mapped["Beatmap"] = Relationship()
 
 
 async def process_beatmap_playcount(session: AsyncSession, user_id: int, beatmap_id: int) -> None:
