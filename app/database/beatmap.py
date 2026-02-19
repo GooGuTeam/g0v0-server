@@ -388,14 +388,6 @@ class APIBeatmapTag(BaseModel):
     count: int
 
 
-class BannedBeatmaps(SQLModel, table=True):
-    """Table of banned beatmaps that are excluded from leaderboards."""
-
-    __tablename__: str = "banned_beatmaps"
-    id: int | None = Field(primary_key=True, index=True, default=None)
-    beatmap_id: int = Field(index=True)
-
-
 async def calculate_beatmap_attributes(
     beatmap_id: int,
     ruleset: GameMode,
