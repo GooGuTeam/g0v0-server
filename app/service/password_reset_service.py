@@ -101,7 +101,9 @@ class PasswordResetService:
                 await redis.setex(reset_code_key, 600, json.dumps(reset_data))
 
                 # Send reset email
-                email_sent = await self.send_password_reset_email(email=email, code=reset_code, username=user.username)
+                email_sent = await self.send_password_reset_email(
+                    email=email, code=reset_code, username=user.username, country_code=user.country_code
+                )
 
                 if email_sent:
                     logger.info(f"Sent reset code to user {user.id} ({email})")
