@@ -149,6 +149,7 @@ class EmailService:
 
         while self._processing:
             try:
+
                 def brpop_operation():
                     return self.redis.brpop(["email_queue"], timeout=5)
 
