@@ -93,8 +93,27 @@ class PerformanceServerPerformanceCalculator(BasePerformanceCalculator):
 
     async def calculate_performance(self, beatmap_raw: str, score: ScoreData) -> PerformanceAttributes:
         # https://github.com/GooGuTeam/osu-performance-server#post-performance
+        hit_result_map = {
+            "n300": "great",
+            "n100": "ok",
+            "n50": "meh",
+            "nmiss": "miss",
+            "ngeki": "perfect",
+            "nkatu": "good",
+            "nlarge_tick_hit": "large_tick_hit",
+            "nlarge_tick_miss": "large_tick_miss",
+            "nsmall_tick_hit": "small_tick_hit",
+            "nslider_tail_hit": "slider_tail_hit",
+        }
+
         async with AsyncClient(timeout=15) as client:
             try:
+                statistics = {}
+                for attr, name in hit_result_map.items():
+                    value = getattr(score, attr, None)
+                    if value is not None:
+                        statistics[name] = value
+
                 resp = await client.post(
                     f"{self.server_url}/performance",
                     json={
@@ -104,18 +123,7 @@ class PerformanceServerPerformanceCalculator(BasePerformanceCalculator):
                         "accuracy": score.accuracy,
                         "combo": score.max_combo,
                         "mods": score.mods,
-                        "statistics": {
-                            "great": score.n300,
-                            "ok": score.n100,
-                            "meh": score.n50,
-                            "miss": score.nmiss,
-                            "perfect": score.ngeki,
-                            "good": score.nkatu,
-                            "large_tick_hit": score.nlarge_tick_hit,
-                            "large_tick_miss": score.nlarge_tick_miss,
-                            "small_tick_hit": score.nsmall_tick_hit,
-                            "slider_tail_hit": score.nslider_tail_hit,
-                        },
+                        "statistics": statistics,
                         "ruleset": score.gamemode.to_base_ruleset().value,
                     },
                 )
