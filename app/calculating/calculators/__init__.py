@@ -36,34 +36,34 @@ async def init_calculator(
     if set_to_global and CALCULATOR is not None:
         return CALCULATOR
 
-    async with _init_lock:
-        try:
-            if calculator.startswith("-"):
-                from app.plugins import manager
+    try:
+        if calculator.startswith("-"):
+            from app.plugins import manager
 
-                # Calculator is from a plugin, e.g. "-osu_native_calculator"
-                plugin = manager.get_plugin_by_id(calculator[1:])
-                if plugin is None:
-                    raise ImportError(f"Plugin '{calculator[1:]}' not found for performance calculator")
-                module = plugin.module
-                if module is None:
-                    raise RuntimeError(f"Plugin '{calculator[1:]}' is not loaded.")
-            elif "." not in calculator:
-                # Built-in calculator, e.g. "performance_server"
-                module = importlib.import_module(f".{calculator}", package="app.calculating.calculators")
-            else:
-                # Absolute package path, e.g. "plugins.osu_native_calculator"
-                module = importlib.import_module(calculator)
+            # Calculator is from a plugin, e.g. "-osu_native_calculator"
+            plugin = manager.get_plugin_by_id(calculator[1:])
+            if plugin is None:
+                raise ImportError(f"Plugin '{calculator[1:]}' not found for performance calculator")
+            module = plugin.module
+            if module is None:
+                raise RuntimeError(f"Plugin '{calculator[1:]}' is not loaded.")
+        elif "." not in calculator:
+            # Built-in calculator, e.g. "performance_server"
+            module = importlib.import_module(f".{calculator}", package="app.calculating.calculators")
+        else:
+            # Absolute package path, e.g. "plugins.osu_native_calculator"
+            module = importlib.import_module(calculator)
 
-            calculator_class = module.PerformanceCalculator(**calculator_config)
-            if calculator_class is not None:
-                await calculator_class.init()
-                if set_to_global:
+        calculator_class = module.PerformanceCalculator(**calculator_config)
+        if calculator_class is not None:
+            await calculator_class.init()
+            if set_to_global:
+                async with _init_lock:
                     CALCULATOR = calculator_class
-                else:
-                    return calculator_class
-        except (ImportError, AttributeError) as e:
-            raise ImportError(f"Failed to import performance calculator for {calculator}") from e
+            else:
+                return calculator_class
+    except (ImportError, AttributeError) as e:
+        raise ImportError(f"Failed to import performance calculator for {calculator}") from e
     return CALCULATOR
 
 
