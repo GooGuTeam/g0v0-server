@@ -62,11 +62,19 @@ class ScoreProcessedEvent(PluginEvent):
 
     score: ScoreData
 
+    @property
+    def score_id(self) -> int:
+        return self.score.id
+
 
 class ScoreDeletedEvent(PluginEvent):
     """Event fired when a score is deleted."""
 
     score: ScoreData
+
+    @property
+    def score_id(self) -> int:
+        return self.score.id
 
 
 class ReplayUploadedEvent(PluginEvent):

@@ -10,6 +10,10 @@ class BeforeCalculatingPPEvent(PluginEvent):
     score: ScoreData
     beatmap_raw: str
 
+    @property
+    def score_id(self) -> int:
+        return self.score.id
+
 
 class AfterCalculatingPPEvent(PluginEvent):
     """Event fired after calculating PP for a score."""
@@ -17,3 +21,7 @@ class AfterCalculatingPPEvent(PluginEvent):
     score: ScoreData
     beatmap_raw: str
     performance_attribute: PerformanceAttributes
+
+    @property
+    def score_id(self) -> int:
+        return self.score.id
