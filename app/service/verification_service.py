@@ -14,7 +14,7 @@ from app.database.verification import EmailVerification, LoginSession, TrustedDe
 from app.helpers import utcnow
 from app.log import logger
 from app.models.model import UserAgentInfo
-from app.service.email_queue import email_queue
+from app.service.email_service import email_service
 
 from redis.asyncio import Redis
 from sqlmodel import col, exists, select
@@ -50,11 +50,8 @@ class EmailVerificationService:
             Dictionary in format {'id': 'message_id'}, returns email_id if using SMTP.
         """
         try:
-            from app.service.email_template_service import get_email_template_service
-
-            # Use template service to generate email content
-            template_service = get_email_template_service()
-            subject, html_content, plain_content = template_service.render_verification_email(
+            # Use email service to generate email content and send
+            subject, html_content, plain_content = email_service.render_verification_email(
                 username=username,
                 code=code,
                 country_code=country_code,
@@ -63,29 +60,15 @@ class EmailVerificationService:
             # Prepare metadata
             metadata = {"type": "email_verification", "user_id": user_id, "code": code, "country": country_code}
 
-            # If using MailerSend, send directly and return message_id
-            if settings.email_provider == "mailersend":
-                from app.service.mailersend_service import get_mailersend_service
-
-                mailersend_service = get_mailersend_service()
-                response = await mailersend_service.send_email(
-                    to_email=email,
-                    subject=subject,
-                    content=plain_content,
-                    html_content=html_content,
-                    metadata=metadata,
-                )
-                return response
-            else:
-                # Use SMTP queue to send
-                email_id = await email_queue.enqueue_email(
-                    to_email=email,
-                    subject=subject,
-                    content=plain_content,
-                    html_content=html_content,
-                    metadata=metadata,
-                )
-                return {"id": email_id}
+            # Use email queue to send (handles all providers including MailerSend via plugin)
+            email_id = await email_service.enqueue_email(
+                to_email=email,
+                subject=subject,
+                content=plain_content,
+                html_content=html_content,
+                metadata=metadata,
+            )
+            return {"id": email_id}
 
         except Exception as e:
             logger.error(f"Failed to enqueue email: {e}")

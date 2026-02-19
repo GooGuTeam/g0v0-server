@@ -13,8 +13,7 @@ from app.database import User
 from app.dependencies.database import with_db
 from app.helpers import utcnow
 from app.log import logger
-from app.service.email_queue import email_queue  # Import email queue
-from app.service.email_service import EmailService
+from app.service.email_service import email_service
 
 from redis.asyncio import Redis
 from sqlmodel import select
@@ -31,9 +30,6 @@ class PasswordResetService:
     # Redis key prefixes
     RESET_CODE_PREFIX = "password_reset:code:"  # Store verification code
     RESET_RATE_LIMIT_PREFIX = "password_reset:rate_limit:"  # Rate limit requests
-
-    def __init__(self):
-        self.email_service = EmailService()
 
     def generate_reset_code(self) -> str:
         """Generate an 8-digit reset verification code."""
@@ -127,144 +123,19 @@ class PasswordResetService:
                 logger.exception("Redis operation failed")
                 return False, "Service temporarily unavailable, please try again later"
 
-    async def send_password_reset_email(self, email: str, code: str, username: str) -> bool:
+    async def send_password_reset_email(
+        self, email: str, code: str, username: str, country_code: str | None = None
+    ) -> bool:
         """Send password reset email (using email queue)."""
         try:
-            # HTML email content
-            html_content = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <style>
-        .container {{
-            max-width: 600px;
-            margin: 0 auto;
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-        }}
-        .header {{
-            background: #ED8EA6;
-            color: white;
-            padding: 20px;
-            text-align: center;
-            border-radius: 10px 10px 0 0;
-        }}
-        .content {{
-            background: #f9f9f9;
-            padding: 30px;
-            border: 1px solid #ddd;
-        }}
-        .code {{
-            background: #fff;
-            border: 2px solid #ED8EA6;
-            border-radius: 8px;
-            padding: 15px;
-            text-align: center;
-            font-size: 24px;
-            font-weight: bold;
-            letter-spacing: 3px;
-            margin: 20px 0;
-            color: #333;
-        }}
-        .footer {{
-            background: #333;
-            color: #fff;
-            padding: 15px;
-            text-align: center;
-            border-radius: 0 0 10px 10px;
-            font-size: 12px;
-        }}
-        .warning {{
-            background: #fff3cd;
-            border: 1px solid #ffeaa7;
-            border-radius: 5px;
-            padding: 10px;
-            margin: 15px 0;
-            color: #856404;
-        }}
-        .danger {{
-            background: #f8d7da;
-            border: 1px solid #f5c6cb;
-            border-radius: 5px;
-            padding: 10px;
-            margin: 15px 0;
-            color: #721c24;
-        }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>osu! 密码重置</h1>
-            <p>Password Reset Request</p>
-        </div>
-
-        <div class="content">
-            <h2>你好 {username}！</h2>
-            <p>我们收到了您的密码重置请求。如果这是您本人操作，请使用以下验证码重置密码：</p>
-
-            <div class="code">{code}</div>
-
-            <p>这个验证码将在 <strong>10 分钟后过期</strong>。</p>
-
-            <div class="danger">
-                <strong>⚠️ 安全提醒：</strong>
-                <ul>
-                    <li>请不要与任何人分享这个验证码</li>
-                    <li>如果您没有请求密码重置，请立即忽略这封邮件</li>
-                    <li>验证码只能使用一次</li>
-                    <li>建议设置一个强密码以保护您的账户安全</li>
-                </ul>
-            </div>
-
-            <p>如果您有任何问题，请联系我们的支持团队。</p>
-
-            <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
-
-            <h3>Hello {username}!</h3>
-            <p>We received a request to reset your password. If this was you, please use the following verification code to reset your password:</p>
-
-            <p>This verification code will expire in <strong>10 minutes</strong>.</p>
-
-            <p><strong>Security Notice:</strong> Do not share this verification code with anyone. If you did not request a password reset, please ignore this email.</p>
-        </div>
-
-        <div class="footer">
-            <p>© 2025 g0v0! Private Server. 此邮件由系统自动发送，请勿回复。</p>
-            <p>This email was sent automatically, please do not reply.</p>
-        </div>
-    </div>
-</body>
-</html>
-            """  # noqa: E501
-
-            # Plain text content (as fallback)
-            plain_content = f"""
-你好 {username}！
-
-我们收到了您的密码重置请求。如果这是您本人操作，请使用以下验证码重置密码：
-
-{code}
-
-这个验证码将在10分钟后过期。
-
-安全提醒：
-- 请不要与任何人分享这个验证码
-- 如果您没有请求密码重置，请立即忽略这封邮件
-- 验证码只能使用一次
-- 建议设置一个强密码以保护您的账户安全
-
-如果您有任何问题，请联系我们的支持团队。
-
-© 2025 g0v0! Private Server. 此邮件由系统自动发送，请勿回复。
-"""
-
-            # Add email to queue
-            subject = "密码重置 - Password Reset"
+            subject, html_content, plain_content = email_service.render_password_reset_email(
+                username=username,
+                code=code,
+                country_code=country_code,
+            )
             metadata = {"type": "password_reset", "email": email, "code": code}
 
-            await email_queue.enqueue_email(
+            await email_service.enqueue_email(
                 to_email=email,
                 subject=subject,
                 content=plain_content,

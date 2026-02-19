@@ -37,7 +37,7 @@ from app.router.redirect import redirect_router
 from app.service.beatmap_download_service import download_service
 from app.service.beatmapset_update_service import init_beatmapset_update_service
 from app.service.client_verification_service import init_client_verification_service
-from app.service.email_queue import start_email_processor, stop_email_processor
+from app.service.email_service import start_email_processor, stop_email_processor
 from app.service.redis_message_system import redis_message_system
 from app.service.subscribers.user_cache import user_online_subscriber
 from app.tasks import (
