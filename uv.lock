@@ -859,7 +859,6 @@ dependencies = [
     { name = "mailersend" },
     { name = "maxminddb" },
     { name = "newrelic" },
-    { name = "osupyparser" },
     { name = "passlib", extra = ["bcrypt"] },
     { name = "pillow" },
     { name = "pydantic", extra = ["email"] },
@@ -911,7 +910,6 @@ requires-dist = [
     { name = "mailersend", specifier = ">=2.0.0" },
     { name = "maxminddb", specifier = ">=2.8.2" },
     { name = "newrelic", specifier = ">=10.1.0" },
-    { name = "osupyparser", git = "https://github.com/MingxuanGame/osupyparser.git" },
     { name = "passlib", extras = ["bcrypt"], specifier = ">=1.7.4" },
     { name = "pillow", specifier = ">=11.3.0" },
     { name = "pydantic", extras = ["email"], specifier = ">=2.5.0" },
@@ -1421,11 +1419,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/24/bf/d1bda4f6168e0b2e9
 wheels = [
     { url = "https://files.pythonhosted.org/packages/88/b2/d0896bdcdc8d28a7fc5717c305f1a861c26e18c05047949fb371034d98bd/nodeenv-1.10.0-py2.py3-none-any.whl", hash = "sha256:5bb13e3eed2923615535339b3c620e76779af4cb4c6a90deccc9e36b274d3827", size = 23438, upload-time = "2025-12-20T14:08:52.782Z" },
 ]
-
-[[package]]
-name = "osupyparser"
-version = "1.0.8"
-source = { git = "https://github.com/MingxuanGame/osupyparser.git#f55794b775f61d8f0ea2f6bbc54a03436235df15" }
 
 [[package]]
 name = "packaging"

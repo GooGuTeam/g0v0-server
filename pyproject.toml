@@ -23,7 +23,6 @@ dependencies = [
     "mailersend>=2.0.0",
     "maxminddb>=2.8.2",
     "newrelic>=10.1.0",
-    "osupyparser>=1.0.7",
     "passlib[bcrypt]>=1.7.4",
     "pillow>=11.3.0",
     "pydantic-settings>=2.10.1",
@@ -129,7 +128,6 @@ members = [
 ]
 
 [tool.uv.sources]
-osupyparser = { git = "https://github.com/MingxuanGame/osupyparser.git" }
 g0v0-migrations = { workspace = true }
 
 [dependency-groups]
