@@ -49,242 +49,43 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         extra="allow",
-        json_schema_extra={
-            "paragraphs_desc": {
-                "Fetcher 设置": "Fetcher 用于从 osu! 官方 API 获取数据，使用 osu! 官方 API 的 OAuth 2.0 认证",
-                "监控设置": (
-                    "配置应用的监控选项，如 Sentry 和 New Relic。\n\n"
-                    "将 newrelic.ini 配置文件放入项目根目录即可自动启用 New Relic 监控。"
-                    "如果配置文件不存在或 newrelic 包未安装，将跳过 New Relic 初始化。"
-                ),
-                "存储服务设置": """用于存储回放文件、头像等静态资源。
-
-### 本地存储 (推荐用于开发环境)
-
-本地存储将文件保存在服务器的本地文件系统中，适合开发和小规模部署。
-
-```bash
-STORAGE_SERVICE="local"
-STORAGE_SETTINGS='{"local_storage_path": "./storage"}'
-```
-
-### Cloudflare R2 存储 (推荐用于生产环境)
-
-```bash
-STORAGE_SERVICE="r2"
-STORAGE_SETTINGS='{
-  "r2_account_id": "your_cloudflare_account_id",
-  "r2_access_key_id": "your_r2_access_key_id",
-  "r2_secret_access_key": "your_r2_secret_access_key",
-  "r2_bucket_name": "your_bucket_name",
-  "r2_public_url_base": "https://your-custom-domain.com"
-}'
-```
-
-### AWS S3 存储
-
-```bash
-STORAGE_SERVICE="s3"
-STORAGE_SETTINGS='{
-  "s3_access_key_id": "your_aws_access_key_id",
-  "s3_secret_access_key": "your_aws_secret_access_key",
-  "s3_bucket_name": "your_s3_bucket_name",
-  "s3_region_name": "us-east-1",
-  "s3_public_url_base": "https://your-custom-domain.com"
-}'
-```
-""",
-                "表现计算设置": """配置表现分计算器及其参数。
-
-如果 `CALCULATOR` 以 `-` 开头，服务器将尝试从其后面的 id 对应的插件中加载计算器实现。
-如果 `CALCULATOR` 不存在 `.`，则认为它是一个内置计算器的名称，目前内置了 `performance_server` 和 `rosu` 两个计算器。
-否则，服务器将尝试从 `CALCULATOR` 指定的模块路径加载计算器实现。
-
-### [osu-performance-server](https://github.com/GooGuTeam/osu-performance-server) (默认)
-
-```bash
-CALCULATOR="performance_server"
-CALCULATOR_CONFIG='{
-    "server_url": "http://localhost:5225"
-}'
-```
-
-### rosu-pp-py
-
-```bash
-CALCULATOR="rosu"
-CALCULATOR_CONFIG='{}'
-```
-""",
-                "邮件服务设置": """配置邮件发送提供商和相关参数。
-
-如果 `EMAIL_PROVIDER` 以 `-` 开头，服务器将尝试从其后面的 id 对应的插件中加载邮件提供商实现。
-如果 `EMAIL_PROVIDER` 不存在 `.`，则认为它是一个内置邮件提供商的名称，目前内置了 `smtp` 一个提供商。
-否则，服务器将尝试从 `EMAIL_PROVIDER` 指定的模块路径加载邮件提供商实现。
-
-### smtp (默认)
-
-```bash
-EMAIL_PROVIDER="smtp"
-EMAIL_PROVIDER_CONFIG='{
-    "smtp_server": "smtp.example.com",
-    "smtp_port": 587,
-    "smtp_username": "your_smtp_username",
-    "smtp_password": "your_smtp_password",
-}'
-```
-""",
-            }
-        },
     )
 
-    # 数据库设置
-    mysql_host: Annotated[
-        str,
-        Field(default="localhost", description="MySQL 服务器地址"),
-        "数据库设置",
-    ]
-    mysql_port: Annotated[
-        int,
-        Field(default=3306, description="MySQL 服务器端口"),
-        "数据库设置",
-    ]
-    mysql_database: Annotated[
-        str,
-        Field(default="osu_api", description="MySQL 数据库名称"),
-        "数据库设置",
-    ]
-    mysql_user: Annotated[
-        str,
-        Field(default="osu_api", description="MySQL 用户名"),
-        "数据库设置",
-    ]
-    mysql_password: Annotated[
-        str,
-        Field(default="password", description="MySQL 密码"),
-        "数据库设置",
-    ]
-    mysql_root_password: Annotated[
-        str,
-        Field(default="password", description="MySQL root 密码"),
-        "数据库设置",
-    ]
-    redis_url: Annotated[
-        str,
-        Field(default="redis://127.0.0.1:6379", description="Redis 连接 URL"),
-        "数据库设置",
-    ]
+    # database
+    mysql_host: Annotated[str, Field(default="localhost"), "database"]
+    mysql_port: Annotated[int, Field(default=3306), "database"]
+    mysql_database: Annotated[str, Field(default="osu_api"), "database"]
+    mysql_user: Annotated[str, Field(default="osu_api"), "database"]
+    mysql_password: Annotated[str, Field(default="password"), "database"]
+    mysql_root_password: Annotated[str, Field(default="password"), "database"]
+    redis_url: Annotated[str, Field(default="redis://127.0.0.1:6379"), "database"]
 
     @property
     def database_url(self) -> str:
         return f"mysql+aiomysql://{self.mysql_user}:{self.mysql_password}@{self.mysql_host}:{self.mysql_port}/{self.mysql_database}"
 
-    # JWT 设置
-    secret_key: Annotated[
-        str,
-        Field(
-            default="your_jwt_secret_here",
-            alias="jwt_secret_key",
-            description="JWT 签名密钥",
-        ),
-        "JWT 设置",
-    ]
-    algorithm: Annotated[
-        str,
-        Field(default="HS256", alias="jwt_algorithm", description="JWT 算法"),
-        "JWT 设置",
-    ]
-    access_token_expire_minutes: Annotated[
-        int,
-        Field(default=1440, description="访问令牌过期时间（分钟）"),
-        "JWT 设置",
-    ]
-    refresh_token_expire_minutes: Annotated[
-        int,
-        Field(default=21600, description="刷新令牌过期时间（分钟）"),
-        "JWT 设置",
-    ]  # 15 days
-    jwt_audience: Annotated[
-        str,
-        Field(default="5", description="JWT 受众"),
-        "JWT 设置",
-    ]
-    jwt_issuer: Annotated[
-        str | None,
-        Field(default=None, description="JWT 签发者"),
-        "JWT 设置",
-    ]
+    # jwt
+    secret_key: Annotated[str, Field(default="your_jwt_secret_here", alias="jwt_secret_key"), "jwt"]
+    algorithm: Annotated[str, Field(default="HS256", alias="jwt_algorithm"), "jwt"]
+    access_token_expire_minutes: Annotated[int, Field(default=1440), "jwt"]
+    refresh_token_expire_minutes: Annotated[int, Field(default=21600), "jwt"]  # 15 days
+    jwt_audience: Annotated[str, Field(default="5"), "jwt"]
+    jwt_issuer: Annotated[str | None, Field(default=None), "jwt"]
 
-    # OAuth 设置
-    osu_client_id: Annotated[
-        int,
-        Field(default=5, description="OAuth 客户端 ID"),
-        "OAuth 设置",
-    ]
-    osu_client_secret: Annotated[
-        str,
-        Field(
-            default="FGc9GAtyHzeQDshWP5Ah7dega8hJACAJpQtw6OXk",
-            description="OAuth 客户端密钥",
-        ),
-        "OAuth 设置",
-    ]
-    osu_web_client_id: Annotated[
-        int,
-        Field(default=6, description="Web OAuth 客户端 ID"),
-        "OAuth 设置",
-    ]
-    osu_web_client_secret: Annotated[
-        str,
-        Field(
-            default="your_osu_web_client_secret_here",
-            description="Web OAuth 客户端密钥",
-        ),
-        "OAuth 设置",
-    ]
+    # oauth
+    osu_client_id: Annotated[int, Field(default=5), "oauth"]
+    osu_client_secret: Annotated[str, Field(default="FGc9GAtyHzeQDshWP5Ah7dega8hJACAJpQtw6OXk"), "oauth"]
+    osu_web_client_id: Annotated[int, Field(default=6), "oauth"]
+    osu_web_client_secret: Annotated[str, Field(default="your_osu_web_client_secret_here"), "oauth"]
 
-    # 服务器设置
-    host: Annotated[
-        str,
-        Field(default="0.0.0.0", description="服务器监听地址"),  # noqa: S104
-        "服务器设置",
-    ]
-    port: Annotated[
-        int,
-        Field(default=8000, description="服务器监听端口"),
-        "服务器设置",
-    ]
-    debug: Annotated[
-        bool,
-        Field(default=False, description="是否启用调试模式"),
-        "服务器设置",
-    ]
-    cors_urls: Annotated[
-        list[HttpUrl],
-        Field(default=[], description="额外的 CORS 允许的域名列表 (JSON 格式)"),
-        "服务器设置",
-    ]
-    server_url: Annotated[
-        HttpUrl,
-        Field(
-            default=HttpUrl("http://localhost:8000"),
-            description="服务器 URL",
-        ),
-        "服务器设置",
-    ]
-    frontend_url: Annotated[
-        HttpUrl | None,
-        Field(
-            default=None,
-            description="前端 URL，当访问从游戏打开的 URL 时会重定向到这个 URL，为空表示不重定向",
-        ),
-        "服务器设置",
-    ]
-    enable_rate_limit: Annotated[
-        bool,
-        Field(default=True, description="是否启用速率限制"),
-        "服务器设置",
-    ]
+    # server
+    host: Annotated[str, Field(default="0.0.0.0"), "server"]  # noqa: S104
+    port: Annotated[int, Field(default=8000), "server"]
+    debug: Annotated[bool, Field(default=False), "server"]
+    cors_urls: Annotated[list[HttpUrl], Field(default=[]), "server"]
+    server_url: Annotated[HttpUrl, Field(default=HttpUrl("http://localhost:8000")), "server"]
+    frontend_url: Annotated[HttpUrl | None, Field(default=None), "server"]
+    enable_rate_limit: Annotated[bool, Field(default=True), "server"]
 
     @property
     def web_url(self):
@@ -295,23 +96,15 @@ EMAIL_PROVIDER_CONFIG='{
         else:
             return "/"
 
-    # Fetcher 设置
-    fetcher_client_id: Annotated[
-        str,
-        Field(default="", description="Fetcher 客户端 ID"),
-        "Fetcher 设置",
-    ]
-    fetcher_client_secret: Annotated[
-        str,
-        Field(default="", description="Fetcher 客户端密钥"),
-        "Fetcher 设置",
-    ]
+    # fetcher
+    fetcher_client_id: Annotated[str, Field(default=""), "fetcher"]
+    fetcher_client_secret: Annotated[str, Field(default=""), "fetcher"]
 
     # NOTE: Reserve for user-based-fetcher
 
     # fetcher_scopes: Annotated[
     #     list[str],
-    #     Field(default=["public"], description="Fetcher 权限范围，以逗号分隔每个权限"),
+    #     Field(default=["public"]),
     #     "Fetcher 设置",
     #     NoDecode,
     # ]
@@ -327,336 +120,89 @@ EMAIL_PROVIDER_CONFIG='{
     # def fetcher_callback_url(self) -> str:
     #     return f"{self.server_url}fetcher/callback"
 
-    # 日志设置
-    log_level: Annotated[
-        str,
-        Field(default="INFO", description="日志级别"),
-        "日志设置",
-    ]
+    # logging
+    log_level: Annotated[str, Field(default="INFO"), "logging"]
 
-    # 验证服务设置
-    enable_totp_verification: Annotated[bool, Field(default=True, description="是否启用TOTP双因素验证"), "验证服务设置"]
-    totp_issuer: Annotated[
-        str | None,
-        Field(default=None, description="TOTP 认证器中的发行者名称"),
-        "验证服务设置",
-    ]
-    totp_service_name: Annotated[
-        str,
-        Field(default="g0v0! Lazer Server", description="TOTP 认证器中显示的服务名称"),
-        "验证服务设置",
-    ]
-    totp_use_username_in_label: Annotated[
-        bool,
-        Field(default=True, description="在TOTP标签中使用用户名而不是邮箱"),
-        "验证服务设置",
-    ]
-    enable_turnstile_verification: Annotated[
-        bool,
-        Field(default=False, description="是否启用 Cloudflare Turnstile 验证（仅对非 osu! 客户端）"),
-        "验证服务设置",
-    ]
-    turnstile_secret_key: Annotated[
-        str,
-        Field(default="", description="Cloudflare Turnstile Secret Key"),
-        "验证服务设置",
-    ]
-    turnstile_dev_mode: Annotated[
-        bool,
-        Field(default=False, description="Turnstile 开发模式（跳过验证，用于本地开发）"),
-        "验证服务设置",
-    ]
-    enable_email_verification: Annotated[
-        bool,
-        Field(default=False, description="是否启用邮件验证功能"),
-        "验证服务设置",
-    ]
-    enable_session_verification: Annotated[
-        bool,
-        Field(default=True, description="是否启用会话验证中间件"),
-        "验证服务设置",
-    ]
-    enable_multi_device_login: Annotated[
-        bool,
-        Field(default=True, description="是否允许多设备同时登录"),
-        "验证服务设置",
-    ]
-    max_tokens_per_client: Annotated[
-        int,
-        Field(default=10, description="每个用户每个客户端的最大令牌数量"),
-        "验证服务设置",
-    ]
-    device_trust_duration_days: Annotated[
-        int,
-        Field(default=30, description="设备信任持续天数"),
-        "验证服务设置",
-    ]
+    # verification
+    enable_totp_verification: Annotated[bool, Field(default=True), "verification"]
+    totp_issuer: Annotated[str | None, Field(default=None), "verification"]
+    totp_service_name: Annotated[str, Field(default="g0v0! Lazer Server"), "verification"]
+    totp_use_username_in_label: Annotated[bool, Field(default=True), "verification"]
+    enable_turnstile_verification: Annotated[bool, Field(default=False), "verification"]
+    turnstile_secret_key: Annotated[str, Field(default=""), "verification"]
+    turnstile_dev_mode: Annotated[bool, Field(default=False), "verification"]
+    enable_email_verification: Annotated[bool, Field(default=False), "verification"]
+    enable_session_verification: Annotated[bool, Field(default=True), "verification"]
+    enable_multi_device_login: Annotated[bool, Field(default=True), "verification"]
+    max_tokens_per_client: Annotated[int, Field(default=10), "verification"]
+    device_trust_duration_days: Annotated[int, Field(default=30), "verification"]
 
-    email_provider: Annotated[
-        str,
-        Field(
-            default="smtp",
-            description="邮件发送提供商",
-        ),
-        "邮件服务设置",
-    ]
-    email_provider_config: Annotated[
-        dict,
-        Field(default_factory=dict, description="邮件提供商配置 (JSON)"),
-        "邮件服务设置",
-    ]
-    from_email: Annotated[
-        str,
-        Field(default="noreply@example.com", description="发件人邮箱"),
-        "邮件服务设置",
-    ]
-    from_name: Annotated[
-        str,
-        Field(default="osu! server", description="发件人名称"),
-        "邮件服务设置",
-    ]
+    email_provider: Annotated[str, Field(default="smtp"), "email"]
+    email_provider_config: Annotated[dict, Field(default_factory=dict), "email"]
+    from_email: Annotated[str, Field(default="noreply@example.com"), "email"]
+    from_name: Annotated[str, Field(default="osu! server"), "email"]
 
-    # 监控配置
-    sentry_dsn: Annotated[
-        HttpUrl | None,
-        Field(default=None, description="Sentry DSN，为空不启用 Sentry"),
-        "监控设置",
-    ]
-    new_relic_environment: Annotated[
-        str | None,
-        Field(default=None, description='New Relic 环境标识，设置为 "production" 或 "development"'),
-        "监控设置",
-    ]
+    # monitoring
+    sentry_dsn: Annotated[HttpUrl | None, Field(default=None), "monitoring"]
+    new_relic_environment: Annotated[str | None, Field(default=None), "monitoring"]
 
-    # GeoIP 配置
-    maxmind_license_key: Annotated[
-        str,
-        Field(default="", description="MaxMind License Key（用于下载离线IP库）"),
-        "GeoIP 配置",
-    ]
-    geoip_dest_dir: Annotated[
-        str,
-        Field(default="./geoip", description="GeoIP 数据库存储目录"),
-        "GeoIP 配置",
-    ]
-    geoip_update_day: Annotated[
-        int,
-        Field(default=1, description="GeoIP 每周更新的星期几（0=周一，6=周日）"),
-        "GeoIP 配置",
-    ]
-    geoip_update_hour: Annotated[
-        int,
-        Field(default=2, description="GeoIP 每周更新时间（小时，0-23）"),
-        "GeoIP 配置",
-    ]
+    # geoip
+    maxmind_license_key: Annotated[str, Field(default=""), "geoip"]
+    geoip_dest_dir: Annotated[str, Field(default="./geoip"), "geoip"]
+    geoip_update_day: Annotated[int, Field(default=1), "geoip"]
+    geoip_update_hour: Annotated[int, Field(default=2), "geoip"]
 
-    # 游戏设置
+    # game
     enable_rx: Annotated[
-        bool,
-        Field(
-            default=False,
-            validation_alias=AliasChoices("enable_rx", "enable_osu_rx"),
-            description="启用 RX mod 统计数据",
-        ),
-        "游戏设置",
+        bool, Field(default=False, validation_alias=AliasChoices("enable_rx", "enable_osu_rx")), "game"
     ]
     enable_ap: Annotated[
-        bool,
-        Field(
-            default=False,
-            validation_alias=AliasChoices("enable_ap", "enable_osu_ap"),
-            description="启用 AP mod 统计数据",
-        ),
-        "游戏设置",
+        bool, Field(default=False, validation_alias=AliasChoices("enable_ap", "enable_osu_ap")), "game"
     ]
-    enable_supporter_for_all_users: Annotated[
-        bool,
-        Field(default=False, description="启用所有新注册用户的支持者状态"),
-        "游戏设置",
-    ]
-    enable_all_beatmap_leaderboard: Annotated[
-        bool,
-        Field(default=False, description="启用所有谱面的排行榜"),
-        "游戏设置",
-    ]
-    enable_all_beatmap_pp: Annotated[
-        bool,
-        Field(default=False, description="允许任何谱面获得 PP"),
-        "游戏设置",
-    ]
-    seasonal_backgrounds: Annotated[
-        list[str],
-        Field(default=[], description="季节背景图 URL 列表"),
-        "游戏设置",
-    ]
-    beatmap_tag_top_count: Annotated[
-        int,
-        Field(default=2, description="显示在结算列表的标签所需的最低票数"),
-        "游戏设置",
-    ]
-    old_score_processing_mode: Annotated[
-        OldScoreProcessingMode,
-        Field(
-            default=OldScoreProcessingMode.NORMAL,
-            description=(
-                "旧成绩处理模式<br/>strict: 删除所有相关的成绩、pp、统计信息、回放<br/>normal: 删除 pp 和排行榜成绩"
-            ),
-        ),
-        "游戏设置",
-    ]
-    scoring_mode: Annotated[
-        ScoringMode,
-        Field(
-            default=ScoringMode.STANDARDISED,
-            description="分数计算模式：standardised（标准化）或 classic（经典）",
-        ),
-        "游戏设置",
-    ]
+    enable_supporter_for_all_users: Annotated[bool, Field(default=False), "game"]
+    enable_all_beatmap_leaderboard: Annotated[bool, Field(default=False), "game"]
+    enable_all_beatmap_pp: Annotated[bool, Field(default=False), "game"]
+    seasonal_backgrounds: Annotated[list[str], Field(default=[]), "game"]
+    beatmap_tag_top_count: Annotated[int, Field(default=2), "game"]
+    old_score_processing_mode: Annotated[OldScoreProcessingMode, Field(default=OldScoreProcessingMode.NORMAL), "game"]
+    scoring_mode: Annotated[ScoringMode, Field(default=ScoringMode.STANDARDISED), "game"]
 
-    # 表现计算设置
-    calculator: Annotated[
-        str,
-        Field(default="performance_server", description="表现分计算器"),
-        "表现计算设置",
-    ]
-    calculator_config: Annotated[
-        dict[str, Any],
-        Field(
-            default={"server_url": "http://localhost:5225"},
-            description="表现分计算器配置 (JSON 格式)，具体配置项请参考上方",
-        ),
-        "表现计算设置",
-    ]
-    fallback_no_calculator_pp: Annotated[
-        bool,
-        Field(default=False, description="当计算器不支持某个模式时，使用简化的 pp 计算方法作为后备"),
-        "表现计算设置",
-    ]
+    # calculator
+    calculator: Annotated[str, Field(default="performance_server"), "calculator"]
+    calculator_config: Annotated[dict[str, Any], Field(default={"server_url": "http://localhost:5225"}), "calculator"]
+    fallback_no_calculator_pp: Annotated[bool, Field(default=False), "calculator"]
 
-    # 谱面缓存设置
-    enable_beatmap_preload: Annotated[
-        bool,
-        Field(default=True, description="启用谱面缓存预加载"),
-        "缓存设置",
-        "谱面缓存",
-    ]
-    beatmap_cache_expire_hours: Annotated[
-        int,
-        Field(default=24, description="谱面缓存过期时间（小时）"),
-        "缓存设置",
-        "谱面缓存",
-    ]
-    beatmapset_cache_expire_seconds: Annotated[
-        int,
-        Field(default=3600, description="Beatmapset 缓存过期时间（秒）"),
-        "缓存设置",
-        "谱面缓存",
-    ]
+    # cache - beatmap
+    enable_beatmap_preload: Annotated[bool, Field(default=True), "cache"]
+    beatmap_cache_expire_hours: Annotated[int, Field(default=24), "cache"]
+    beatmapset_cache_expire_seconds: Annotated[int, Field(default=3600), "cache"]
 
-    # 排行榜缓存设置
-    enable_ranking_cache: Annotated[
-        bool,
-        Field(default=True, description="启用排行榜缓存"),
-        "缓存设置",
-        "排行榜缓存",
-    ]
-    ranking_cache_expire_minutes: Annotated[
-        int,
-        Field(default=10, description="排行榜缓存过期时间（分钟）"),
-        "缓存设置",
-        "排行榜缓存",
-    ]
-    ranking_cache_refresh_interval_minutes: Annotated[
-        int,
-        Field(default=10, description="排行榜缓存刷新间隔（分钟）"),
-        "缓存设置",
-        "排行榜缓存",
-    ]
-    ranking_cache_max_pages: Annotated[
-        int,
-        Field(default=20, description="最多缓存的页数"),
-        "缓存设置",
-        "排行榜缓存",
-    ]
-    ranking_cache_top_countries: Annotated[
-        int,
-        Field(default=20, description="缓存前N个国家的排行榜"),
-        "缓存设置",
-        "排行榜缓存",
-    ]
+    # cache - ranking
+    enable_ranking_cache: Annotated[bool, Field(default=True), "cache"]
+    ranking_cache_expire_minutes: Annotated[int, Field(default=10), "cache"]
+    ranking_cache_refresh_interval_minutes: Annotated[int, Field(default=10), "cache"]
+    ranking_cache_max_pages: Annotated[int, Field(default=20), "cache"]
+    ranking_cache_top_countries: Annotated[int, Field(default=20), "cache"]
 
-    # 用户缓存设置
-    enable_user_cache_preload: Annotated[
-        bool,
-        Field(default=True, description="启用用户缓存预加载"),
-        "缓存设置",
-        "用户缓存",
-    ]
-    user_cache_expire_seconds: Annotated[
-        int,
-        Field(default=300, description="用户信息缓存过期时间（秒）"),
-        "缓存设置",
-        "用户缓存",
-    ]
-    user_scores_cache_expire_seconds: Annotated[
-        int,
-        Field(default=60, description="用户成绩缓存过期时间（秒）"),
-        "缓存设置",
-        "用户缓存",
-    ]
-    user_beatmapsets_cache_expire_seconds: Annotated[
-        int,
-        Field(default=600, description="用户谱面集缓存过期时间（秒）"),
-        "缓存设置",
-        "用户缓存",
-    ]
-    user_cache_max_preload_users: Annotated[
-        int,
-        Field(default=200, description="最多预加载的用户数量"),
-        "缓存设置",
-        "用户缓存",
-    ]
+    # cache - user
+    enable_user_cache_preload: Annotated[bool, Field(default=True), "cache"]
+    user_cache_expire_seconds: Annotated[int, Field(default=300), "cache"]
+    user_scores_cache_expire_seconds: Annotated[int, Field(default=60), "cache"]
+    user_beatmapsets_cache_expire_seconds: Annotated[int, Field(default=600), "cache"]
+    user_cache_max_preload_users: Annotated[int, Field(default=200), "cache"]
 
-    # 资源代理设置
-    enable_asset_proxy: Annotated[
-        bool,
-        Field(default=False, description="启用资源代理"),
-        "资源代理设置",
-    ]
-    custom_asset_domain: Annotated[
-        str,
-        Field(default="g0v0.top", description="自定义资源域名"),
-        "资源代理设置",
-    ]
-    asset_proxy_prefix: Annotated[
-        str,
-        Field(default="assets-ppy", description="assets.ppy.sh 的自定义前缀"),
-        "资源代理设置",
-    ]
-    avatar_proxy_prefix: Annotated[
-        str,
-        Field(default="a-ppy", description="a.ppy.sh 的自定义前缀"),
-        "资源代理设置",
-    ]
-    beatmap_proxy_prefix: Annotated[
-        str,
-        Field(default="b-ppy", description="b.ppy.sh 的自定义前缀"),
-        "资源代理设置",
-    ]
+    # asset_proxy
+    enable_asset_proxy: Annotated[bool, Field(default=False), "asset_proxy"]
+    custom_asset_domain: Annotated[str, Field(default="g0v0.top"), "asset_proxy"]
+    asset_proxy_prefix: Annotated[str, Field(default="assets-ppy"), "asset_proxy"]
+    avatar_proxy_prefix: Annotated[str, Field(default="a-ppy"), "asset_proxy"]
+    beatmap_proxy_prefix: Annotated[str, Field(default="b-ppy"), "asset_proxy"]
 
-    # 谱面同步设置
-    enable_auto_beatmap_sync: Annotated[
-        bool,
-        Field(default=False, description="启用自动谱面同步"),
-        "谱面同步设置",
-    ]
-    beatmap_sync_interval_minutes: Annotated[
-        int,
-        Field(default=60, description="自动谱面同步间隔（分钟）"),
-        "谱面同步设置",
-    ]
+    # beatmap_sync
+    enable_auto_beatmap_sync: Annotated[bool, Field(default=False), "beatmap_sync"]
+    beatmap_sync_interval_minutes: Annotated[int, Field(default=60), "beatmap_sync"]
 
-    # 反作弊设置
+    # anticheat
     banned_name: Annotated[
         list[str],
         Field(
@@ -668,59 +214,29 @@ EMAIL_PROVIDER_CONFIG='{
                 "peppy",
                 "saragi",
                 "chocomint",
-            ],
-            description="禁止使用的用户名列表",
+            ]
         ),
-        "反作弊设置",
+        "anticheat",
     ]
-    allow_delete_scores: Annotated[
-        bool,
-        Field(default=False, description="允许用户删除自己的成绩"),
-        "反作弊设置",
-    ]
-    check_ruleset_version: Annotated[
-        bool,
-        Field(default=True, description="检查自定义 ruleset 版本"),
-        "反作弊设置",
-    ]
-    check_client_version: Annotated[
-        bool,
-        Field(default=True, description="检查客户端版本"),
-        "反作弊设置",
-    ]
+    allow_delete_scores: Annotated[bool, Field(default=False), "anticheat"]
+    check_ruleset_version: Annotated[bool, Field(default=True), "anticheat"]
+    check_client_version: Annotated[bool, Field(default=True), "anticheat"]
     client_version_urls: Annotated[
         list[str],
-        Field(
-            default=["https://raw.githubusercontent.com/GooGuTeam/g0v0-client-versions/main/version_list.json"],
-            description=(
-                "客户端版本列表 URL, 查看 https://github.com/GooGuTeam/g0v0-client-versions 来添加你自己的客户端"
-            ),
-        ),
-        "反作弊设置",
+        Field(default=["https://raw.githubusercontent.com/GooGuTeam/g0v0-client-versions/main/version_list.json"]),
+        "anticheat",
     ]
 
-    # 存储设置
-    storage_service: Annotated[
-        StorageServiceType,
-        Field(default=StorageServiceType.LOCAL, description="存储服务类型：local、r2、s3"),
-        "存储服务设置",
-    ]
+    # storage
+    storage_service: Annotated[StorageServiceType, Field(default=StorageServiceType.LOCAL), "storage"]
     storage_settings: Annotated[
         LocalStorageSettings | CloudflareR2Settings | AWSS3StorageSettings,
-        Field(default=LocalStorageSettings(), description="存储服务配置 (JSON 格式)"),
-        "存储服务设置",
+        Field(default=LocalStorageSettings()),
+        "storage",
     ]
 
-    plugin_dirs: Annotated[
-        list[str],
-        Field(default=["./plugins"], description="插件目录列表"),
-        "插件设置",
-    ]
-    disabled_plugins: Annotated[
-        list[str],
-        Field(default=[], description="禁用的插件列表"),
-        "插件设置",
-    ]
+    plugin_dirs: Annotated[list[str], Field(default=["./plugins"]), "plugins"]
+    disabled_plugins: Annotated[list[str], Field(default=[]), "plugins"]
 
     @field_validator("storage_settings", mode="after")
     @classmethod
