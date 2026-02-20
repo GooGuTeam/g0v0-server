@@ -3,7 +3,6 @@
 Sends emails using SMTP protocol.
 """
 
-import asyncio
 import concurrent.futures
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -11,6 +10,7 @@ import smtplib
 from typing import Any
 
 from app.config import settings
+from app.helpers import run_in_threadpool
 from app.log import logger
 
 from ._base import MailServiceProvider
@@ -44,17 +44,27 @@ class SMTPProvider(MailServiceProvider):
         """Initialize the SMTP provider.
 
         Args:
-            smtp_server: SMTP server address. Defaults to settings.smtp_server.
-            smtp_port: SMTP server port. Defaults to settings.smtp_port.
-            smtp_username: SMTP username. Defaults to settings.smtp_username.
-            smtp_password: SMTP password. Defaults to settings.smtp_password.
-            from_email: Sender email address. Defaults to settings.from_email.
-            from_name: Sender display name. Defaults to settings.from_name.
-            **kwargs: Additional configuration options (ignored).
+            smtp_server: SMTP server address. If not provided, it is resolved
+                from the application settings via the legacy SMTP configuration
+                model, defaulting to ``"localhost"`` if no value is configured.
+            smtp_port: SMTP server port. If not provided, it is resolved from
+                the application settings via the legacy SMTP configuration
+                model, defaulting to ``587`` if no value is configured.
+            smtp_username: SMTP username. If not provided, it is resolved from
+                the application settings via the legacy SMTP configuration
+                model, defaulting to an empty string if no value is configured.
+            smtp_password: SMTP password. If not provided, it is resolved from
+                the application settings via the legacy SMTP configuration
+                model, defaulting to an empty string if no value is configured.
+            from_email: Sender email address. If not provided, defaults to
+                ``settings.from_email``.
+            from_name: Sender display name. If not provided, defaults to
+                ``settings.from_name``.
+            **kwargs: Additional configuration options passed through to
+                :class:`MailServiceProvider`.
         """
         super().__init__(**kwargs)
         legacy_setting = _LegacySMTPSettings.model_validate(settings.model_dump())
-
         self.smtp_server = smtp_server or legacy_setting.smtp_server
         self.smtp_port = smtp_port or legacy_setting.smtp_port
         self.smtp_username = smtp_username or legacy_setting.smtp_username
@@ -62,11 +72,6 @@ class SMTPProvider(MailServiceProvider):
         self.from_email = from_email or settings.from_email
         self.from_name = from_name or settings.from_name
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
-
-    async def _run_in_executor(self, func, *args):
-        """Run synchronous operation in thread pool."""
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(self._executor, func, *args)
 
     async def send_email(
         self,
@@ -113,7 +118,7 @@ class SMTPProvider(MailServiceProvider):
                         server.login(self.smtp_username, self.smtp_password)
                     server.send_message(msg)
 
-            await self._run_in_executor(send_smtp_email)
+            await run_in_threadpool(send_smtp_email)
 
             logger.info(f"Successfully sent email via SMTP to {to_email}")
             return {"id": ""}  # SMTP doesn't return message IDs

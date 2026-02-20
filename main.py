@@ -288,7 +288,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):  # noqa:
 
 
 @app.middleware("http")
-async def add_process_time_header(request: Request, call_next):
+async def http_event_emitter(request: Request, call_next):
     hub.emit(RequestReceivedEvent(time=time.time(), request=request))
     response = await call_next(request)
     hub.emit(RequestHandledEvent(time=time.time(), request=request, response=response))

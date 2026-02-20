@@ -55,7 +55,7 @@ redirect_api_router = APIRouter(prefix="/api", include_in_schema=False)
 
 @redirect_api_router.get("/v1/get_player_info")
 @redirect_api_router.get("/v1/get_player_count")
-async def redirect_bancho_py_api(request: Request, path: str):
+async def redirect_bancho_py_api(request: Request):
     """Redirect legacy v1 Public API paths to the bancho.py API provided by [plugin](https://github.com/GooGuTeam/g0v0-plugins/tree/main/banchopy_api).
 
     Handles legacy API paths like /api/v1/get_player_info and redirects them
@@ -65,7 +65,6 @@ async def redirect_bancho_py_api(request: Request, path: str):
 
     Args:
         request: FastAPI request object.
-        path: API path segment being requested.
 
     Returns:
         RedirectResponse (302) to the banchopy_api endpoint.
@@ -73,8 +72,11 @@ async def redirect_bancho_py_api(request: Request, path: str):
     Raises:
         RequestError: If path is not a recognized player info API endpoint.
     """
+    path = request.url.path.removeprefix("/api/v1/")
+    query = f"?{request.url.query}" if request.url.query else ""
+
     if path in {"get_player_info", "get_player_count"}:
-        return RedirectResponse(f"/api/plugins/banchopy_api/{path}?{request.url.query}", status_code=302)
+        return RedirectResponse(f"/api/plugins/banchopy_api/{path}{query}", status_code=302)
     raise RequestError(ErrorType.NOT_FOUND)
 
 
@@ -103,5 +105,6 @@ async def redirect_to_api_root(request: Request, path: str):
         "get_user_recent",
         "get_replay",
     }:
-        return RedirectResponse(f"/api/v1/{path}?{request.url.query}", status_code=302)
+        query = f"?{request.url.query}" if request.url.query else ""
+        return RedirectResponse(f"/api/v1/{path}{query}", status_code=302)
     raise RequestError(ErrorType.NOT_FOUND)
