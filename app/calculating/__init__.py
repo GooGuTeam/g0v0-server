@@ -19,7 +19,6 @@ from .osu import (
     get_display_score,
     pre_fetch_and_calculate_pp,
 )
-from .sus_map import is_suspicious_beatmap
 
 __all__ = [
     "CalculateError",
@@ -38,6 +37,5 @@ __all__ = [
     "get_calculator",
     "get_display_score",
     "init_calculator",
-    "is_suspicious_beatmap",
     "pre_fetch_and_calculate_pp",
 ]

@@ -10,7 +10,6 @@ rank calculation, and various data synchronization jobs.
 from . import (
     beatmapset_update,
     database_cleanup,
-    recalculate_banned_beatmap,
     recalculate_failed_score,
     update_client_version,
 )

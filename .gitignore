@@ -234,3 +234,4 @@ osu-web-master/*
 performance-server
 plugins/
 !app/plugins
+g0v0-plugins/

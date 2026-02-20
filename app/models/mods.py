@@ -50,8 +50,10 @@ API_MOD_TO_LEGACY: dict[str, int] = {
     "MR": 1 << 30,  # Mirror
 }
 LEGACY_MOD_TO_API_MOD = {}
+FREEMOD = 0
 for k, v in API_MOD_TO_LEGACY.items():
     LEGACY_MOD_TO_API_MOD[v] = APIMod(acronym=k, settings={})
+    FREEMOD |= v
 API_MOD_TO_LEGACY["NC"] |= API_MOD_TO_LEGACY["DT"]
 API_MOD_TO_LEGACY["PF"] |= API_MOD_TO_LEGACY["SD"]
 

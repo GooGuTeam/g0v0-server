@@ -34,11 +34,10 @@ from app.router import (
     redirect_api_router,
 )
 from app.router.redirect import redirect_router
-from app.router.v1 import api_v1_public_router
 from app.service.beatmap_download_service import download_service
 from app.service.beatmapset_update_service import init_beatmapset_update_service
 from app.service.client_verification_service import init_client_verification_service
-from app.service.email_queue import start_email_processor, stop_email_processor
+from app.service.email_service import start_email_processor, stop_email_processor
 from app.service.redis_message_system import redis_message_system
 from app.service.subscribers.user_cache import user_online_subscriber
 from app.tasks import (
@@ -198,7 +197,6 @@ app = FastAPI(
 
 app.include_router(api_v2_router)
 app.include_router(api_v1_router)
-app.include_router(api_v1_public_router)
 app.include_router(chat_router)
 app.include_router(redirect_api_router)
 # app.include_router(fetcher_router)
@@ -290,7 +288,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):  # noqa:
 
 
 @app.middleware("http")
-async def add_process_time_header(request: Request, call_next):
+async def http_event_emitter(request: Request, call_next):
     hub.emit(RequestReceivedEvent(time=time.time(), request=request))
     response = await call_next(request)
     hub.emit(RequestHandledEvent(time=time.time(), request=request, response=response))

@@ -38,6 +38,7 @@ from app.models.score import (
     HitResult,
     LeaderboardType,
     Rank,
+    ScoreData,
     ScoreStatistics,
     SoloScoreSubmissionInfo,
 )
@@ -523,7 +524,7 @@ class Score(ScoreModel, table=True):
         session: AsyncSession,
         storage_service: StorageService,
     ):
-        score_id = self.id
+        data = self.to_score_data()
 
         if await self.awaitable_attrs.best_score:
             assert self.best_score is not None
@@ -539,7 +540,10 @@ class Score(ScoreModel, table=True):
         await storage_service.delete_file(self.replay_filename)
         await session.delete(self)
 
-        hub.emit(ScoreDeletedEvent(score_id=score_id))
+        hub.emit(ScoreDeletedEvent(score=data))
+
+    def to_score_data(self) -> ScoreData:
+        return ScoreData.from_score(self)
 
 
 MultiplayScoreDict = ScoreModel.generate_typeddict(tuple(Score.MULTIPLAYER_BASE_INCLUDES))  # pyright: ignore[reportGeneralTypeIssues]

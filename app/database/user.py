@@ -722,21 +722,21 @@ class User(AsyncAttrs, UserModel, table=True):
     silence_end_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True)))
     donor_end_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True)))
 
-    account_history: list[UserAccountHistory] = Relationship(back_populates="user")
-    statistics: list[UserStatistics] = Relationship(back_populates="user")
-    achievement: list[UserAchievement] = Relationship(back_populates="user")
-    team_membership: TeamMember | None = Relationship(back_populates="user")
-    daily_challenge_stats: DailyChallengeStats | None = Relationship(back_populates="user")
-    matchmaking_stats: list["MatchmakingUserStats"] = Relationship(back_populates="user")
-    monthly_playcounts: list[MonthlyPlaycounts] = Relationship(back_populates="user")
-    replays_watched_counts: list[ReplayWatchedCount] = Relationship(back_populates="user")
-    favourite_beatmapsets: list["FavouriteBeatmapset"] = Relationship(back_populates="user")
-    rank_history: list[RankHistory] = Relationship(
+    account_history: Mapped[list[UserAccountHistory]] = Relationship(back_populates="user")
+    statistics: Mapped[list[UserStatistics]] = Relationship(back_populates="user")
+    achievement: Mapped[list[UserAchievement]] = Relationship(back_populates="user")
+    team_membership: Mapped[TeamMember | None] = Relationship(back_populates="user")
+    daily_challenge_stats: Mapped[DailyChallengeStats | None] = Relationship(back_populates="user")
+    matchmaking_stats: Mapped[list["MatchmakingUserStats"]] = Relationship(back_populates="user")
+    monthly_playcounts: Mapped[list[MonthlyPlaycounts]] = Relationship(back_populates="user")
+    replays_watched_counts: Mapped[list[ReplayWatchedCount]] = Relationship(back_populates="user")
+    favourite_beatmapsets: Mapped[list["FavouriteBeatmapset"]] = Relationship(back_populates="user")
+    rank_history: Mapped[list[RankHistory]] = Relationship(
         back_populates="user",
     )
-    events: list[Event] = Relationship(back_populates="user")
-    totp_key: TotpKeys | None = Relationship(back_populates="user")
-    user_preference: UserPreference | None = Relationship(back_populates="user")
+    events: Mapped[list[Event]] = Relationship(back_populates="user")
+    totp_key: Mapped[TotpKeys | None] = Relationship(back_populates="user")
+    user_preference: Mapped[UserPreference | None] = Relationship(back_populates="user")
 
     async def is_user_can_pm(self, from_user: "User", session: AsyncSession) -> tuple[bool, str]:
         """Check if the user can receive private messages from the given user.

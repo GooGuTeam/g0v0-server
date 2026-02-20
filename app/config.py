@@ -1,5 +1,5 @@
 from enum import StrEnum
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any
 
 from app.models.scoring_mode import ScoringMode
 
@@ -114,6 +114,24 @@ CALCULATOR_CONFIG='{
 ```bash
 CALCULATOR="rosu"
 CALCULATOR_CONFIG='{}'
+```
+""",
+                "邮件服务设置": """配置邮件发送提供商和相关参数。
+
+如果 `EMAIL_PROVIDER` 以 `-` 开头，服务器将尝试从其后面的 id 对应的插件中加载邮件提供商实现。
+如果 `EMAIL_PROVIDER` 不存在 `.`，则认为它是一个内置邮件提供商的名称，目前内置了 `smtp` 一个提供商。
+否则，服务器将尝试从 `EMAIL_PROVIDER` 指定的模块路径加载邮件提供商实现。
+
+### smtp (默认)
+
+```bash
+EMAIL_PROVIDER="smtp"
+EMAIL_PROVIDER_CONFIG='{
+    "smtp_server": "smtp.example.com",
+    "smtp_port": 587,
+    "smtp_username": "your_smtp_username",
+    "smtp_password": "your_smtp_password",
+}'
 ```
 """,
             }
@@ -373,50 +391,29 @@ CALCULATOR_CONFIG='{}'
         Field(default=30, description="设备信任持续天数"),
         "验证服务设置",
     ]
+
     email_provider: Annotated[
-        Literal["smtp", "mailersend"],
-        Field(default="smtp", description="邮件发送提供商：smtp（SMTP）或 mailersend（MailerSend）"),
-        "验证服务设置",
-    ]
-    smtp_server: Annotated[
         str,
-        Field(default="localhost", description="SMTP 服务器地址"),
-        "验证服务设置",
+        Field(
+            default="smtp",
+            description="邮件发送提供商",
+        ),
+        "邮件服务设置",
     ]
-    smtp_port: Annotated[
-        int,
-        Field(default=587, description="SMTP 服务器端口"),
-        "验证服务设置",
-    ]
-    smtp_username: Annotated[
-        str,
-        Field(default="", description="SMTP 用户名"),
-        "验证服务设置",
-    ]
-    smtp_password: Annotated[
-        str,
-        Field(default="", description="SMTP 密码"),
-        "验证服务设置",
+    email_provider_config: Annotated[
+        dict,
+        Field(default_factory=dict, description="邮件提供商配置 (JSON)"),
+        "邮件服务设置",
     ]
     from_email: Annotated[
         str,
         Field(default="noreply@example.com", description="发件人邮箱"),
-        "验证服务设置",
+        "邮件服务设置",
     ]
     from_name: Annotated[
         str,
         Field(default="osu! server", description="发件人名称"),
-        "验证服务设置",
-    ]
-    mailersend_api_key: Annotated[
-        str,
-        Field(default="", description="MailerSend API Key"),
-        "验证服务设置",
-    ]
-    mailersend_from_email: Annotated[
-        str,
-        Field(default="", description="MailerSend 发件人邮箱（需要在 MailerSend 中验证）"),
-        "验证服务设置",
+        "邮件服务设置",
     ]
 
     # 监控配置
@@ -660,11 +657,6 @@ CALCULATOR_CONFIG='{}'
     ]
 
     # 反作弊设置
-    suspicious_score_check: Annotated[
-        bool,
-        Field(default=True, description="启用可疑分数检查（pp>3000）"),
-        "反作弊设置",
-    ]
     banned_name: Annotated[
         list[str],
         Field(

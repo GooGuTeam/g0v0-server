@@ -152,7 +152,10 @@ async def _process_user(score_id: int, user_id: int, redis: Redis, fetcher: Fetc
         await process_user(session, redis, fetcher, user, score, score_token, beatmap[0], BeatmapRankStatus(beatmap[1]))
         await refresh_user_cache_background(redis, user_id, gamemode)
         await redis.publish("osu-channel:score:processed", f'{{"ScoreId": {score_id}}}')
-        hub.emit(ScoreProcessedEvent(score_id=score_id))
+
+        # refresh score
+        await session.refresh(score)
+        hub.emit(ScoreProcessedEvent(score=score.to_score_data()))
 
 
 async def submit_score(

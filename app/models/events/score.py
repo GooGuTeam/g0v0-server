@@ -1,8 +1,18 @@
 from enum import Enum
+from typing import Annotated
 
-from app.models.score import GameMode, SoloScoreSubmissionInfo
+from app.models.score import GameMode, ScoreData, SoloScoreSubmissionInfo
 
 from ._base import PluginEvent
+
+from pydantic import AfterValidator, ValidationInfo
+
+
+def _fill_score_id(value: int, info: ValidationInfo) -> int:
+    if value != 0:
+        return value
+    score = info.data["score"]
+    return score.id
 
 
 class ScoreType(Enum):
@@ -60,13 +70,15 @@ class MultiplayerScoreSubmittedEvent(ScoreSubmittedEvent):
 class ScoreProcessedEvent(PluginEvent):
     """Event fired when a score has been processed."""
 
-    score_id: int
+    score: ScoreData
+    score_id: Annotated[int, AfterValidator(_fill_score_id)] = 0
 
 
 class ScoreDeletedEvent(PluginEvent):
     """Event fired when a score is deleted."""
 
-    score_id: int
+    score: ScoreData
+    score_id: Annotated[int, AfterValidator(_fill_score_id)] = 0
 
 
 class ReplayUploadedEvent(PluginEvent):

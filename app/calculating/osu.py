@@ -1,4 +1,3 @@
-import asyncio
 import math
 from typing import TYPE_CHECKING
 
@@ -6,20 +5,18 @@ from app.config import settings
 from app.const import MAX_SCORE
 from app.log import log
 from app.models.events.calculating import AfterCalculatingPPEvent, BeforeCalculatingPPEvent
-from app.models.score import HitResult, ScoreStatistics
+from app.models.score import HitResult, ScoreData, ScoreStatistics
 from app.models.scoring_mode import ScoringMode
 from app.plugins import hub
 
 from .calculators import get_calculator
 from .math import clamp
-from .sus_map import is_suspicious_beatmap
 
 from redis.asyncio import Redis
-from sqlmodel import col, exists, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 if TYPE_CHECKING:
-    from app.database.score import Score
+    from app.database import Score
     from app.fetcher import Fetcher
 
 logger = log("Calculator")
@@ -276,7 +273,7 @@ def calculate_weighted_acc(acc: float, index: int) -> float:
     return calculate_pp_weight(index) * acc if acc > 0 else 0.0
 
 
-def calculate_pp_for_no_calculator(score: "Score", star_rating: float) -> float:
+def calculate_pp_for_no_calculator(score: ScoreData, star_rating: float) -> float:
     """Calculate PP using fallback algorithm when no calculator is available.
 
     Uses a custom exponential reward formula based on score and star rating.
@@ -307,7 +304,7 @@ def calculate_pp_for_no_calculator(score: "Score", star_rating: float) -> float:
         return pmax * (b + (1 - b) * exp_part)
 
 
-async def calculate_pp(score: "Score", beatmap: str, session: AsyncSession) -> float:
+async def calculate_pp(score: "ScoreData | Score", beatmap: str, session: AsyncSession) -> float:
     """Calculate performance points for a score.
 
     Checks for banned/suspicious beatmaps and uses the configured
@@ -321,24 +318,17 @@ async def calculate_pp(score: "Score", beatmap: str, session: AsyncSession) -> f
     Returns:
         The calculated PP value, or 0 if the beatmap is banned/suspicious.
     """
-    from app.database.beatmap import BannedBeatmaps
+    from app.database import Beatmap
 
-    hub.emit(BeforeCalculatingPPEvent(score_id=score.id, beatmap_raw=beatmap))
+    if not isinstance(score, ScoreData):
+        score = ScoreData.from_score(score)
 
-    if settings.suspicious_score_check:
-        beatmap_banned = (
-            await session.exec(select(exists()).where(col(BannedBeatmaps.beatmap_id) == score.beatmap_id))
-        ).first()
-        if beatmap_banned:
-            return 0
-        try:
-            is_suspicious = is_suspicious_beatmap(beatmap)
-            if is_suspicious:
-                session.add(BannedBeatmaps(beatmap_id=score.beatmap_id))
-                logger.warning(f"Beatmap {score.beatmap_id} is suspicious, banned")
-                return 0
-        except Exception:
-            logger.exception(f"Error checking if beatmap {score.beatmap_id} is suspicious")
+    db_beatmap = await session.get(Beatmap, score.beatmap_id)
+    if db_beatmap is None:
+        logger.error(f"Beatmap {score.beatmap_id} not found in database for PP calculation")
+        return 0
+
+    hub.emit(BeforeCalculatingPPEvent(score=score, beatmap_raw=beatmap))
 
     if not (await get_calculator().can_calculate_performance(score.gamemode)):
         if not settings.fallback_no_calculator_pp:
@@ -347,26 +337,18 @@ async def calculate_pp(score: "Score", beatmap: str, session: AsyncSession) -> f
         if await get_calculator().can_calculate_difficulty(score.gamemode):
             star_rating = (await get_calculator().calculate_difficulty(beatmap, score.mods, score.gamemode)).star_rating
         if star_rating < 0:
-            star_rating = (await score.awaitable_attrs.beatmap).difficulty_rating
+            star_rating = db_beatmap.difficulty_rating
         pp = calculate_pp_for_no_calculator(score, star_rating)
     else:
         attrs = await get_calculator().calculate_performance(beatmap, score)
         pp = attrs.pp
-        hub.emit(AfterCalculatingPPEvent(score_id=score.id, beatmap_raw=beatmap, performance_attribute=attrs))
+        hub.emit(AfterCalculatingPPEvent(score=score, beatmap_raw=beatmap, performance_attribute=attrs))
 
-    if settings.suspicious_score_check and (pp > 3000):
-        logger.warning(
-            f"User {score.user_id} played {score.beatmap_id} "
-            f"with {pp=} "
-            f"acc={score.accuracy}. The score is suspicious and return 0pp"
-            f"({score.id=})"
-        )
-        return 0
     return pp
 
 
 async def pre_fetch_and_calculate_pp(
-    score: "Score", session: AsyncSession, redis: Redis, fetcher: "Fetcher"
+    score: "ScoreData | Score", session: AsyncSession, redis: Redis, fetcher: "Fetcher"
 ) -> tuple[float, bool]:
     """Optimized PP calculation with pre-fetching and caching.
 
@@ -381,40 +363,14 @@ async def pre_fetch_and_calculate_pp(
     Returns:
         A tuple of (pp_value, success). Success is False only if fetching fails.
     """
-    from app.database.beatmap import BannedBeatmaps
+    if not isinstance(score, ScoreData):
+        score = ScoreData.from_score(score)
 
     beatmap_id = score.beatmap_id
-
-    # Quick check if beatmap is banned
-    if settings.suspicious_score_check:
-        beatmap_banned = (
-            await session.exec(select(exists()).where(col(BannedBeatmaps.beatmap_id) == beatmap_id))
-        ).first()
-        if beatmap_banned:
-            return 0, False
-
-    # Async fetch beatmap raw file, using existing Redis cache mechanism
     try:
         beatmap_raw = await fetcher.get_or_fetch_beatmap_raw(redis, beatmap_id)
     except Exception as e:
         logger.error(f"Failed to fetch beatmap {beatmap_id}: {e}")
         return 0, False
 
-    # While fetching file, can also check suspicious beatmap
-    if settings.suspicious_score_check:
-        try:
-            # Move suspicious check to thread pool
-            def _check_suspicious():
-                return is_suspicious_beatmap(beatmap_raw)
-
-            loop = asyncio.get_event_loop()
-            is_sus = await loop.run_in_executor(None, _check_suspicious)
-            if is_sus:
-                session.add(BannedBeatmaps(beatmap_id=beatmap_id))
-                logger.warning(f"Beatmap {beatmap_id} is suspicious, banned")
-                return 0, True
-        except Exception:
-            logger.exception(f"Error checking if beatmap {beatmap_id} is suspicious")
-
-    # Call optimized PP calculation function
     return await calculate_pp(score, beatmap_raw, session), True
