@@ -6,25 +6,31 @@
 [![pre-commit.ci status](https://results.pre-commit.ci/badge/github/GooGuTeam/g0v0-server/main.svg)](https://results.pre-commit.ci/latest/github/GooGuTeam/g0v0-server/main)
 [![license](https://img.shields.io/github/license/GooGuTeam/g0v0-server)](./LICENSE)
 [![discord](https://discordapp.com/api/guilds/1404817877504229426/widget.png?style=shield)](https://discord.gg/AhzJXXWYfF)
+[![docs](https://img.shields.io/badge/docs-latest-blue)](https://docs.g0v0.top/)
 
-简体中文 | [English](./README.en.md)
+English | [简体中文](./README.zh-cn.md)
 
-这是一个使用 FastAPI + MySQL + Redis 实现的 osu! API 模拟服务器，支持 osu! API v1, v2 和 osu!lazer 的绝大部分功能。
+g0v0-server is an osu!(lazer) server written in Python that supports the latest osu!(lazer) client and provides additional features (such as Relax/Autopilot Mod statistics and custom ruleset support).
 
-## 功能特性
+g0v0-server is implemented based on osu! API v2 and is largely compatible with both osu! API v1 and v2. This means you can easily integrate existing osu! applications with g0v0-server.
 
-- **OAuth 2.0 认证**: 支持密码流和刷新令牌流
-- **用户数据管理**: 完整的用户信息、统计数据、成就等
-- **多游戏模式支持**: osu! (RX, AP), taiko (RX), catch (RX), mania 和自定义 ruleset（见下）
-- **数据库持久化**: MySQL 存储用户数据
-- **缓存支持**: Redis 缓存令牌和会话信息
-- **多种存储后端**: 支持本地存储、Cloudflare R2、AWS S3
-- **容器化部署**: Docker 和 Docker Compose 支持
-- **资源文件反向代理**: 可以将 osu! 官方的资源链接（头像、谱面封面、音频等）替换为自定义域名。
+Additionally, g0v0-server provides a set of g0v0! APIs to enable operations beyond the osu! API.
 
-## 支持的 ruleset
+g0v0-server is not just a score server. It implements most of the features of the osu! website (such as chat, user settings, etc.).
 
-**Ruleset**|**ID**|**ShortName**|**PP 算法 (rosu)**|**PP 算法 (performance-server)**
+We provide a demo server at <https://lazer-api.g0v0.top> (frontend at <https://lazer.g0v0.top>). You can experience g0v0-server's features through our demo server.
+
+## Features
+
+- Supports the latest osu!(lazer) client
+- Supports Relax/Autopilot Mod statistics
+- Supports [custom rulesets](#supported-rulesets)
+- Supports [plugins](#plugins), allowing developers to add new features to the server
+- Supports [Docker deployment](https://docs.g0v0.top/en/lazer/deploy/deploy-with-docker.html)
+
+## Supported Rulesets
+
+**Ruleset**|**ID**|**ShortName**|**PP Algorithm (rosu)**|**PP Algorithm (performance-server)**
 :-----:|:-----:|:-----:|:-----:|:-----:
 osu!|`0`|`osu`|✅|✅
 osu!taiko|`1`|`taiko`|✅|✅
@@ -40,47 +46,43 @@ osu!catch (RX)|`7`|`fruitsrx`|✅|✅
 [hishigata](https://github.com/LumpBloom7/hishigata)|`13`|`hishigata`|❌|❌
 [soyokaze!](https://github.com/goodtrailer/soyokaze)|`14`|`soyokaze`|❌|✅
 
-前往 [custom-rulesets](https://github.com/GooGuTeam/custom-rulesets/releases/latest) 下载为 g0v0-server 修改的自定义 ruleset。
+Visit [custom-rulesets](https://github.com/GooGuTeam/custom-rulesets/releases/latest) to download custom rulesets modified for g0v0-server.
 
-## 文档
+## Documentation & Quick Start
 
-前往 <https://docs.g0v0.top/> 查看。
+Visit <https://docs.g0v0.top/> for more information.
 
-## 部署
+## Plugins
 
-查看[文档](https://docs.g0v0.top/lazer/deploy/deploy-with-docker.html)。
+g0v0-server supports plugins, allowing developers to add new features to the server. See [Managing Plugins](https://docs.g0v0.top/en/lazer/deploy/manage-plugins.html) to install plugins, and see the [Plugin Development Guide](https://docs.g0v0.top/en/lazer/development/plugin/) to develop plugins.
 
-## 安全
+## Security
 
-使用 `openssl rand -hex 32` 生成 JWT 密钥，以保证服务器安全和旁观服务器的正常运行
+Use `openssl rand -hex 32` to generate the JWT secret key to ensure server security and proper operation of the spectator server.
 
-使用 `openssl rand -hex 40` 生成前端密钥
+Use `openssl rand -hex 40` to generate the frontend secret key.
 
-**如果是在公网环境下，请屏蔽对 `/_lio` 路径的外部请求**
+**If running in a public network environment, please block external requests to the `/_lio` path.**
 
-## 文档
+## License
 
-前往 [wiki](https://github.com/GooGuTeam/g0v0-server/wiki) 查看
+This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0-only)**.  
+Any derivative work, modification, or deployment **MUST clearly and prominently attribute** the original authors:  
+> **GooGuTeam - https://github.com/GooGuTeam/g0v0-server**
 
-## 许可证
+## Contributing
 
-本项目采用 **GNU Affero General Public License v3.0 (AGPL-3.0-only)** 授权。  
-任何衍生作品、修改或部署 **必须在显著位置清晰署名** 原始作者：  
-**GooGuTeam - https://github.com/GooGuTeam/g0v0-server**
+The project is currently in a state of rapid iteration. Issues and Pull Requests are welcome!
 
-## 贡献
+See [Contributing Guide](./CONTRIBUTING.md) for more information.
 
-项目目前处于快速迭代状态，欢迎提交 Issue 和 Pull Request！
-
-查看 [贡献指南](./CONTRIBUTING.md) 获取更多信息。
-
-## 贡献者
+## Contributors
 
 <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
 [![All Contributors](https://img.shields.io/badge/all_contributors-7-orange.svg?style=flat-square)](#contributors-)
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
 
-感谢所有参与此项目的贡献者！ ([emoji key](https://allcontributors.org/docs/en/emoji-key))
+Thanks to all the contributors to this project! ([emoji key](https://allcontributors.org/docs/en/emoji-key))
 
 <!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
 <!-- prettier-ignore-start -->
@@ -104,9 +106,9 @@ osu!catch (RX)|`7`|`fruitsrx`|✅|✅
 
 <!-- ALL-CONTRIBUTORS-LIST:END -->
 
-本项目遵循 [all-contributors](https://github.com/all-contributors/all-contributors) 规范。欢迎任何形式的贡献！
+This project follows the [all-contributors](https://github.com/all-contributors/all-contributors) specification. Contributions of any kind are welcome!
 
-## 参与讨论
+## Discussion
 
-- QQ 群：`1059561526`
 - Discord: https://discord.gg/AhzJXXWYfF
+- QQ Group: `1059561526`

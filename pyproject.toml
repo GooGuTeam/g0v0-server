@@ -1,7 +1,7 @@
 [project]
 name = "g0v0-server"
 version = "0.1.0"
-description = "3rd-party osu!lazer private server which supports the latest osu!lazer."
+description = "An osu!(lazer) private server that is easy to deploy, highly scalable, and fully featured to meet diverse operational needs."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
