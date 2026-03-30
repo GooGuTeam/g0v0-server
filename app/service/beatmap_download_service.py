@@ -234,6 +234,17 @@ class BeatmapDownloadService:
         healthy_endpoints.sort(key=lambda x: x.priority)
         return healthy_endpoints
 
+    def _get_fallback_endpoints(self, is_china: bool) -> list[DownloadEndpoint]:
+        """Get fallback endpoints from the opposite region.
+
+        Args:
+            is_china: Whether the primary request targets China region endpoints.
+
+        Returns:
+            Healthy endpoints from the opposite region sorted by priority.
+        """
+        return self.get_healthy_endpoints(not is_china)
+
     def get_download_url(self, beatmapset_id: int, no_video: bool, is_china: bool) -> str:
         """Get download URL with load balancing and failover.
 
@@ -251,8 +262,13 @@ class BeatmapDownloadService:
         healthy_endpoints = self.get_healthy_endpoints(is_china)
 
         if not healthy_endpoints:
-            # No healthy endpoints available, log error and fallback to highest priority
-            logger.error(f"No healthy endpoints available for is_china={is_china}")
+            # No healthy endpoints available in the preferred region, try the opposite region
+            logger.warning(f"No healthy endpoints available for is_china={is_china}, trying cross-region fallback")
+            healthy_endpoints = self._get_fallback_endpoints(is_china)
+
+        if not healthy_endpoints:
+            # No healthy endpoints available anywhere, fallback to highest priority in preferred region
+            logger.error(f"No healthy endpoints available in any region for is_china={is_china}")
             endpoints = self.china_endpoints if is_china else self.international_endpoints
             if not endpoints:
                 raise RequestError(ErrorType.NO_DOWNLOAD_ENDPOINTS_AVAILABLE)
