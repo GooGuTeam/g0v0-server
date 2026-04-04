@@ -16,8 +16,7 @@ def get_geoip_helper() -> GeoIPHelper:
     """
     return GeoIPHelper(
         dest_dir=settings.geoip_dest_dir,
-        license_key=settings.maxmind_license_key,
-        editions=["City", "ASN"],
+        editions=["Country", "ASN"],
         max_age_days=8,
         timeout=60.0,
     )

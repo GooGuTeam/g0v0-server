@@ -147,7 +147,6 @@ class Settings(BaseSettings):
     new_relic_environment: Annotated[str | None, Field(default=None), "monitoring"]
 
     # geoip
-    maxmind_license_key: Annotated[str, Field(default=""), "geoip"]
     geoip_dest_dir: Annotated[str, Field(default="./geoip"), "geoip"]
     geoip_update_day: Annotated[int, Field(default=1), "geoip"]
     geoip_update_hour: Annotated[int, Field(default=2), "geoip"]
