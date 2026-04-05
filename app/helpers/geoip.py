@@ -172,9 +172,7 @@ class GeoIPHelper:
         actual_hash = digest.hexdigest()
         if actual_hash != expected_hash:
             await asyncio.to_thread(tmp_path.unlink, missing_ok=True)
-            raise ValueError(
-                f"{filename} SHA256 mismatch: expected {expected_hash}, got {actual_hash}"
-            )
+            raise ValueError(f"{filename} SHA256 mismatch: expected {expected_hash}, got {actual_hash}")
 
         await asyncio.to_thread(shutil.move, tmp_path, dst)
         return dst
