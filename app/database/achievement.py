@@ -12,6 +12,7 @@ from app.helpers import utcnow
 from app.models.achievement import MEDALS, Achievement
 from app.models.model import UTCBaseModel
 from app.models.notification import UserAchievementUnlock
+from app.models.score import GameMode
 
 from .events import Event, EventType
 
@@ -59,6 +60,41 @@ class UserAchievementResp(UserAchievementBase):
         return cls.model_validate(db_model)
 
 
+async def unlock_achievements(
+    session: AsyncSession, redis: Redis, achievements: list[Achievement], user_id: int, gamemode: GameMode | None = None
+):
+    from .user import User
+
+    username = (await session.exec(select(User.username).where(User.id == user_id))).one()
+    now = utcnow()
+    for r in achievements:
+        session.add(
+            UserAchievement(
+                achievement_id=r.id,
+                user_id=user_id,
+                achieved_at=now,
+            )
+        )
+        await redis.publish(
+            "chat:notification",
+            UserAchievementUnlock.init(r, user_id, gamemode).model_dump_json(),
+        )
+        event = Event(
+            created_at=now,
+            type=EventType.ACHIEVEMENT,
+            user_id=user_id,
+            event_payload={
+                "achievement": {"slug": r.assets_id, "name": r.name},
+                "user": {
+                    "username": username,
+                    "url": settings.web_url + "users/" + str(user_id),
+                },
+            },
+        )
+        session.add(event)
+    await session.commit()
+
+
 async def process_achievements(session: AsyncSession, redis: Redis, score_id: int):
     """Process and award achievements for a score submission.
 
@@ -77,33 +113,11 @@ async def process_achievements(session: AsyncSession, redis: Redis, score_id: in
     ).all()
     not_achieved = {k: v for k, v in MEDALS.items() if k.id not in achieved}
     result: list[Achievement] = []
-    now = utcnow()
+
     for k, v in not_achieved.items():
+        if v is None:
+            continue
         if await v(session, score, score.beatmap):
             result.append(k)
-    for r in result:
-        session.add(
-            UserAchievement(
-                achievement_id=r.id,
-                user_id=score.user_id,
-                achieved_at=now,
-            )
-        )
-        await redis.publish(
-            "chat:notification",
-            UserAchievementUnlock.init(r, score.user_id, score.gamemode).model_dump_json(),
-        )
-        event = Event(
-            created_at=now,
-            type=EventType.ACHIEVEMENT,
-            user_id=score.user_id,
-            event_payload={
-                "achievement": {"slug": r.assets_id, "name": r.name},
-                "user": {
-                    "username": score.user.username,
-                    "url": settings.web_url + "users/" + str(score.user.id),
-                },
-            },
-        )
-        session.add(event)
-    await session.commit()
+    if result:
+        await unlock_achievements(session, redis, result, score.user_id, GameMode(score.ruleset_id))

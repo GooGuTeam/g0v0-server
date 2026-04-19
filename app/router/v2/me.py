@@ -7,10 +7,13 @@ authenticated user, including their profile and favourite beatmapsets.
 from typing import Annotated
 
 from app.database import FavouriteBeatmapset, User
+from app.database.achievement import unlock_achievements
 from app.database.user import UserModel
-from app.dependencies.database import Database
-from app.dependencies.user import UserAndToken, get_current_user, get_current_user_and_token
+from app.dependencies.database import Database, Redis
+from app.dependencies.user import ClientUser, UserAndToken, get_current_user, get_current_user_and_token
 from app.helpers import api_doc
+from app.models.achievement import CLIENTSIDE_MEDALS
+from app.models.error import ErrorType, RequestError
 from app.models.score import GameMode
 
 from .router import router
@@ -119,3 +122,22 @@ async def update_userpage():
 async def validate_bbcode():
     """Redirect to the private BBCode validation endpoint."""
     return RedirectResponse(url="/api/private/user/validate-bbcode", status_code=307)
+
+
+@router.put(
+    "/me/achievements/{achievement_id}",
+    name="Unlock a clientside achievement",
+    description="Unlock a clientside achievement for the current user.",
+    tags=["Achievements"],
+    status_code=204,
+)
+async def unlock_clientside_achievement(
+    session: Database,
+    redis: Redis,
+    achievement_id: Annotated[int, Path(description="The ID of the clientside achievement to unlock")],
+    current_user: ClientUser,
+):
+    achievement = CLIENTSIDE_MEDALS.get(achievement_id)
+    if not achievement:
+        raise RequestError(ErrorType.ACHIEVEMENT_NOT_FOUND)
+    await unlock_achievements(session, redis, [achievement], current_user.id)

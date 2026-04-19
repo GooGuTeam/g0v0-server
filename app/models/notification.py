@@ -186,13 +186,13 @@ class UserAchievementUnlock(NotificationDetail):
     user_id: int
 
     @classmethod
-    def init(cls, achievement: Achievement, user_id: int, mode: "GameMode") -> Self:
+    def init(cls, achievement: Achievement, user_id: int, mode: "GameMode | None" = None) -> Self:
         instance = cls(
             title=achievement.name,
             cover_url=achievement.url,
             slug=achievement.assets_id,
             achievement_id=achievement.id,
-            achievement_mode=mode.value.lower(),
+            achievement_mode=mode.value.lower() if mode else "",
             description=achievement.desc,
             user_id=user_id,
         )
