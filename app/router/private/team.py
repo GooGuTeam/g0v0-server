@@ -242,7 +242,8 @@ async def delete_team(
             name="TeamQueryResp",
         )
     },
-    description="Get team information.",
+    description="Get team information.\n\n**Depreated**: It's suggested to switch to v2 API.",
+    deprecated=True,
 )
 async def get_team(
     session: Database,

@@ -15,6 +15,7 @@ from . import (  # noqa: F401
     score,
     session_verify,
     tags,
+    team,
     user,
 )
 from .router import router as api_v2_router

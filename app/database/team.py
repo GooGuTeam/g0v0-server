@@ -11,6 +11,7 @@ from app.helpers import utcnow
 from app.models.model import UTCBaseModel
 from app.models.score import GameMode
 
+from pydantic import BaseModel
 from sqlalchemy import Column, DateTime
 from sqlalchemy.orm import Mapped
 from sqlmodel import BigInteger, Field, ForeignKey, Relationship, SQLModel, Text, col, func, select
@@ -20,41 +21,18 @@ if TYPE_CHECKING:
     from .user import User
 
 
-class TeamBase(SQLModel, UTCBaseModel):
-    """Base fields for teams."""
-
-    id: int = Field(default=None, primary_key=True, index=True)
-    name: str = Field(max_length=100)
-    short_name: str = Field(max_length=10)
-    flag_url: str | None = Field(default=None)
-    cover_url: str | None = Field(default=None)
-    created_at: datetime = Field(default_factory=utcnow, sa_column=Column(DateTime))
-    leader_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id")))
-    description: str | None = Field(default=None, sa_column=Column(Text))
-    playmode: GameMode = Field(default=GameMode.OSU)
-    website: str | None = Field(default=None, sa_column=Column(Text))
-
-
-class Team(TeamBase, table=True):
-    """Database table for teams."""
-
-    __tablename__: str = "teams"
-
-    leader: Mapped["User"] = Relationship()
-    members: Mapped[list["TeamMember"]] = Relationship(back_populates="team")
-
-
-class TeamResp(TeamBase):
-    """Response model for teams with computed statistics."""
-
-    rank: int = 0
-    pp: float = 0.0
-    ranked_score: int = 0
-    total_play_count: int = 0
-    member_count: int = 0
+class TeamStatistics(BaseModel):
+    play_count: int = Field(..., description="total amount of times the team has played")
+    ranked_score: int = Field(..., description="total ranked score of the team")
+    performance: float = Field(..., description="total performance points of the team")
+    rank: int | None = Field(None, description="Current rank of this team in the respective ruleset's rankings")
+    ruleset_id: int = Field(..., description="ruleset id")
+    team_id: int = Field(..., description="team id")
 
     @classmethod
-    async def from_db(cls, team: Team, session: AsyncSession, gamemode: GameMode | None = None) -> "TeamResp":
+    async def compute_statistics(
+        cls, session: AsyncSession, team: "Team", gamemode: GameMode | None = None
+    ) -> "TeamStatistics":
         from .statistics import UserStatistics
         from .user import User
 
@@ -117,18 +95,65 @@ class TeamResp(TeamBase):
         ranking_rows = ranking_result.all()
         rank = 0
         for index, (team_id, _) in enumerate(ranking_rows, start=1):
-            if team_id == team.id:
+            if team.id == team_id:
                 rank = index
                 break
+
+        return cls(
+            play_count=total_play_count,
+            ranked_score=total_ranked_score,
+            performance=total_pp,
+            rank=rank or None,
+            ruleset_id=int(playmode),
+            team_id=team.id,
+        )
+
+
+class TeamBase(SQLModel, UTCBaseModel):
+    """Base fields for teams."""
+
+    id: int = Field(default=None, primary_key=True, index=True)
+    name: str = Field(max_length=100)
+    short_name: str = Field(max_length=10)
+    flag_url: str | None = Field(default=None)
+    cover_url: str | None = Field(default=None)
+    created_at: datetime = Field(default_factory=utcnow, sa_column=Column(DateTime))
+    leader_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id")))
+    description: str | None = Field(default=None, sa_column=Column(Text))
+    playmode: GameMode = Field(default=GameMode.OSU)
+    website: str | None = Field(default=None, sa_column=Column(Text))
+
+
+class Team(TeamBase, table=True):
+    """Database table for teams."""
+
+    __tablename__: str = "teams"
+
+    leader: Mapped["User"] = Relationship()
+    members: Mapped[list["TeamMember"]] = Relationship(back_populates="team")
+
+
+class TeamResp(TeamBase):
+    """Response model for teams with computed statistics."""
+
+    rank: int = 0
+    pp: float = 0.0
+    ranked_score: int = 0
+    total_play_count: int = 0
+    member_count: int = 0
+
+    @classmethod
+    async def from_db(cls, team: Team, session: AsyncSession, gamemode: GameMode | None = None) -> "TeamResp":
+        statistics = await TeamStatistics.compute_statistics(session, team, gamemode)
 
         data = team.model_dump()
         data.update(
             {
-                "pp": total_pp,
-                "ranked_score": total_ranked_score,
-                "total_play_count": total_play_count,
-                "member_count": active_member_count,
-                "rank": rank,
+                "rank": statistics.rank or 0,
+                "pp": statistics.performance,
+                "ranked_score": statistics.ranked_score,
+                "total_play_count": statistics.play_count,
+                "member_count": len(team.members),
             }
         )
 
