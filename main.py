@@ -5,7 +5,7 @@ import time
 
 from app.calculating import init_calculator
 from app.config import settings
-from app.database import User
+from app.database import Screenshot, User
 from app.dependencies.database import (
     Database,
     engine,
@@ -58,6 +58,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 import sentry_sdk
+from sqlmodel import select
 
 
 @asynccontextmanager
@@ -247,6 +248,31 @@ async def get_user_avatar_root(
     avatar_url_with_timestamp = f"{avatar_url}{separator}"
 
     return RedirectResponse(url=avatar_url_with_timestamp, status_code=301)
+
+
+@app.get("/ss/{sha256_hash}", include_in_schema=False)
+async def get_screenshot(
+    sha256_hash: str,
+    session: Database,
+):
+    """用户提交的截图访问端点"""
+    screenshot = (await session.exec(select(Screenshot).where(Screenshot.sha256_hash == sha256_hash))).first()
+    if not screenshot:
+        raise HTTPException(status_code=404, detail="Screenshot not found")
+
+    url = screenshot.url
+    screenshot.hits += 1
+    screenshot.last_access = utcnow()
+    session.add(screenshot)
+    await session.commit()
+    return RedirectResponse(
+        url=url,
+        status_code=302,
+        headers={
+            "Content-Type": "image/jpeg",
+            "Cache-Control": "max-age=31536000, public",
+        },
+    )
 
 
 @app.get("/", include_in_schema=False)

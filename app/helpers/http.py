@@ -100,7 +100,13 @@ def extract_user_agent(user_agent: str | None) -> "UserAgentInfo":
     return info
 
 
-def check_image(content: bytes, size: int, width: int, height: int) -> str:
+def check_image(
+    content: bytes,
+    size: int,
+    width: int | None = None,
+    height: int | None = None,
+    allow_formats: list[str] | None = None,
+) -> str:
     """Validate an image's format, size, and dimensions.
 
     Args:
@@ -108,6 +114,7 @@ def check_image(content: bytes, size: int, width: int, height: int) -> str:
         size: Maximum allowed file size in bytes.
         width: Maximum allowed width in pixels.
         height: Maximum allowed height in pixels.
+        allow_formats: List of allowed image formats.
 
     Returns:
         The image format string (lowercase).
@@ -117,15 +124,18 @@ def check_image(content: bytes, size: int, width: int, height: int) -> str:
     """
     from app.models.error import ErrorType, RequestError
 
+    if allow_formats is None:
+        allow_formats = ["PNG", "JPEG", "GIF"]
+
     if len(content) > size:
         raise RequestError(ErrorType.FILE_SIZE_EXCEEDS_LIMIT)
     elif len(content) == 0:
         raise RequestError(ErrorType.FILE_EMPTY)
     try:
         with Image.open(BytesIO(content)) as img:
-            if img.format not in ["PNG", "JPEG", "GIF"]:
+            if img.format not in allow_formats:
                 raise RequestError(ErrorType.INVALID_IMAGE_FORMAT)
-            if img.size[0] > width or img.size[1] > height:
+            if (width is not None and img.size[0] > width) or (height is not None and img.size[1] > height):
                 raise RequestError(ErrorType.IMAGE_DIMENSIONS_EXCEED_LIMIT, {"args": f"{width}x{height}"})
             return img.format.lower()
     except RequestError:
