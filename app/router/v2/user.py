@@ -9,7 +9,7 @@ import sys
 from typing import Annotated, Literal
 
 from app.config import settings
-from app.const import BANCHOBOT_ID
+from app.const import BANCHOBOT_ID, NEW_SCORE_FORMAT_VER
 from app.database import (
     Beatmap,
     BeatmapModel,
@@ -667,7 +667,7 @@ async def get_user_beatmapsets(
     name="Get user scores",
     description=(
         "Get user scores of a specific type, such as best, recent, etc.\n\n"
-        "If `x-api-version >= 20220705`, returns `ScoreResp` list, "
+        f"If `x-api-version >= {NEW_SCORE_FORMAT_VER}`, returns `ScoreResp` list, "
         "otherwise returns `LegacyScoreResp` list."
     ),
     tags=["Users"],
@@ -717,7 +717,7 @@ async def get_user_scores(
     Raises:
         RequestError: If the user is not found.
     """
-    is_legacy_api = api_version < 20220705
+    is_legacy_api = api_version < NEW_SCORE_FORMAT_VER
     redis = get_redis()
     cache_service = get_user_cache_service(redis)
 

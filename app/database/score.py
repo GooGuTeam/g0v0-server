@@ -21,6 +21,7 @@ from app.calculating import (
     pre_fetch_and_calculate_pp,
 )
 from app.config import settings
+from app.const import NEW_SCORE_FORMAT_VER
 from app.dependencies.database import get_redis
 from app.helpers import utcnow
 from app.log import log
@@ -146,6 +147,8 @@ class ScoreModel(AsyncAttrs, DatabaseModel[ScoreDict]):
         *MULTIPLAYER_SCORE_INCLUDE,
     ]
     USER_PROFILE_INCLUDES: ClassVar[list[str]] = ["beatmap", "beatmapset", "user"]
+
+    DEFAULT_SCORE_INCLUDES: ClassVar[list[str]] = ["user", "user.country", "user.cover", "user.team"]
 
     # 基本字段
     beatmap_id: int = Field(index=True, foreign_key="beatmaps.id")
@@ -515,7 +518,7 @@ class Score(ScoreModel, table=True):
     async def to_resp(
         self, session: AsyncSession, api_version: int, includes: list[str] = []
     ) -> "ScoreDict | LegacyScoreResp":
-        if api_version >= 20220705:
+        if api_version >= NEW_SCORE_FORMAT_VER:
             return await ScoreModel.transform(self, includes=includes)
         return await LegacyScoreResp.from_db(session, self)
 

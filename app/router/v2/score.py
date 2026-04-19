@@ -10,6 +10,7 @@ from typing import Annotated
 
 from app.calculating import clamp
 from app.config import settings
+from app.const import NEW_SCORE_FORMAT_VER
 from app.database import (
     Beatmap,
     Playlist,
@@ -91,7 +92,7 @@ from sqlmodel import col, exists, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 READ_SCORE_TIMEOUT = 10
-DEFAULT_SCORE_INCLUDES = ["user", "user.country", "user.cover", "user.team"]
+
 logger = log("Score")
 
 
@@ -272,7 +273,7 @@ async def _preload_beatmap_for_pp_calculation(beatmap_id: int) -> None:
         logger.warning(f"Failed to preload beatmap {beatmap_id}: {e}")
 
 
-LeaderboardScoreType = ScoreModel.generate_typeddict(tuple(DEFAULT_SCORE_INCLUDES)) | LegacyScoreResp
+LeaderboardScoreType = ScoreModel.generate_typeddict(tuple(ScoreModel.DEFAULT_SCORE_INCLUDES)) | LegacyScoreResp
 
 
 class BeatmapUserScore(BaseModel):
@@ -309,8 +310,8 @@ class BeatmapScores(BaseModel):
             "model": BeatmapScores,
             "description": (
                 "Leaderboard and current user's score.\n\n"
-                f"If `x-api-version >= 20220705`, returns `BeatmapScores[Score]`"
-                f" (includes: {', '.join([f'`{inc}`' for inc in DEFAULT_SCORE_INCLUDES])}), "
+                f"If `x-api-version >= {NEW_SCORE_FORMAT_VER}`, returns `BeatmapScores[Score]`"
+                f" (includes: {', '.join([f'`{inc}`' for inc in ScoreModel.DEFAULT_SCORE_INCLUDES])}), "
                 "otherwise returns `BeatmapScores[LegacyScoreResp]`."
             ),
         }
@@ -363,9 +364,13 @@ async def get_beatmap_scores(
         mods=sorted(mods),
     )
 
-    user_score_resp = await user_score.to_resp(db, api_version, includes=DEFAULT_SCORE_INCLUDES) if user_score else None
+    user_score_resp = (
+        await user_score.to_resp(db, api_version, includes=ScoreModel.DEFAULT_SCORE_INCLUDES) if user_score else None
+    )
     return {
-        "scores": [await score.to_resp(db, api_version, includes=DEFAULT_SCORE_INCLUDES) for score in all_scores],
+        "scores": [
+            await score.to_resp(db, api_version, includes=ScoreModel.DEFAULT_SCORE_INCLUDES) for score in all_scores
+        ],
         "user_score": (
             {
                 "score": user_score_resp,
@@ -395,8 +400,8 @@ async def get_beatmap_scores(
             "model": BeatmapUserScore,
             "description": (
                 "User's best score on the specified beatmap\n\n"
-                "If `x-api-version >= 20220705`, returns `BeatmapUserScore[Score]`, "
-                f" (includes: {', '.join([f'`{inc}`' for inc in DEFAULT_SCORE_INCLUDES])}), "
+                f"If `x-api-version >= {NEW_SCORE_FORMAT_VER}`, returns `BeatmapUserScore[Score]`, "
+                f" (includes: {', '.join([f'`{inc}`' for inc in ScoreModel.DEFAULT_SCORE_INCLUDES])}), "
                 "otherwise returns `BeatmapUserScore[LegacyScoreResp]`."
             ),
         }
@@ -452,7 +457,7 @@ async def get_user_beatmap_score(
             {"user_id": user_id, "beatmap_id": beatmap_id},
         )
     else:
-        resp = await user_score.to_resp(db, api_version=api_version, includes=DEFAULT_SCORE_INCLUDES)
+        resp = await user_score.to_resp(db, api_version=api_version, includes=ScoreModel.DEFAULT_SCORE_INCLUDES)
         return {
             "position": (
                 await get_score_position_by_id(
@@ -475,11 +480,11 @@ async def get_user_beatmap_score(
         200: api_doc(
             (
                 "All user scores on beatmap\n\n"
-                "If `x-api-version >= 20220705`, returns `Score` list, "
+                f"If `x-api-version >= {NEW_SCORE_FORMAT_VER}`, returns `Score` list, "
                 "otherwise returns `LegacyScoreResp` list."
             ),
             list[ScoreModel] | list[LegacyScoreResp],
-            DEFAULT_SCORE_INCLUDES,
+            ScoreModel.DEFAULT_SCORE_INCLUDES,
         )
     },
     name="Get all user beatmap scores",
@@ -522,7 +527,9 @@ async def get_user_all_beatmap_scores(
         )
     ).all()
 
-    return [await score.to_resp(db, api_version, includes=DEFAULT_SCORE_INCLUDES) for score in all_user_scores]
+    return [
+        await score.to_resp(db, api_version, includes=ScoreModel.DEFAULT_SCORE_INCLUDES) for score in all_user_scores
+    ]
 
 
 @router.post(
