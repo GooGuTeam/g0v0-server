@@ -348,7 +348,11 @@ async def calculate_pp(score: "ScoreData | Score", beatmap: str, session: AsyncS
 
 
 async def pre_fetch_and_calculate_pp(
-    score: "ScoreData | Score", session: AsyncSession, redis: Redis, fetcher: "Fetcher"
+    score: "ScoreData | Score",
+    session: AsyncSession,
+    redis: Redis,
+    fetcher: "Fetcher",
+    raise_when_not_found: bool = False,
 ) -> tuple[float, bool]:
     """Optimized PP calculation with pre-fetching and caching.
 
@@ -363,6 +367,8 @@ async def pre_fetch_and_calculate_pp(
     Returns:
         A tuple of (pp_value, success). Success is False only if fetching fails.
     """
+    from app.fetcher.beatmap_raw import NoBeatmapError
+
     if not isinstance(score, ScoreData):
         score = ScoreData.from_score(score)
 
@@ -370,6 +376,8 @@ async def pre_fetch_and_calculate_pp(
     try:
         beatmap_raw = await fetcher.get_or_fetch_beatmap_raw(redis, beatmap_id)
     except Exception as e:
+        if raise_when_not_found and isinstance(e, NoBeatmapError):
+            raise
         logger.error(f"Failed to fetch beatmap {beatmap_id}: {e}")
         return 0, False
 
