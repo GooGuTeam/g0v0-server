@@ -120,4 +120,4 @@ async def process_achievements(session: AsyncSession, redis: Redis, score_id: in
         if await v(session, score, score.beatmap):
             result.append(k)
     if result:
-        await unlock_achievements(session, redis, result, score.user_id, GameMode(score.ruleset_id))
+        await unlock_achievements(session, redis, result, score.user_id, score.gamemode)
