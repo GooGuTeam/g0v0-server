@@ -181,6 +181,7 @@ class Settings(BaseSettings):
     ranking_cache_expire_minutes: Annotated[int, Field(default=10), "cache"]
     ranking_cache_refresh_interval_minutes: Annotated[int, Field(default=10), "cache"]
     ranking_cache_max_pages: Annotated[int, Field(default=20), "cache"]
+    top_score_cache_max_pages: Annotated[int, Field(default=3), "cache"]
     ranking_cache_top_countries: Annotated[int, Field(default=20), "cache"]
 
     # cache - user
