@@ -70,6 +70,7 @@ from app.models.score import (
 from app.plugins import hub
 from app.service.beatmap_cache_service import get_beatmap_cache_service
 from app.service.user_cache_service import refresh_user_cache_background
+from app.v2_ipc import get_ipc_client
 
 from .router import router
 
@@ -152,7 +153,11 @@ async def _process_user(score_id: int, user_id: int, redis: Redis, fetcher: Fetc
             return
         await process_user(session, redis, fetcher, user, score, score_token, beatmap[0], BeatmapRankStatus(beatmap[1]))
         await refresh_user_cache_background(redis, user_id, gamemode)
-        await redis.publish("osu-channel:score:processed", f'{{"ScoreId": {score_id}}}')
+
+        if settings.enable_v2_ipc:
+            await get_ipc_client().send_notice("realtime", "score_processed", {"score_id": score_id})
+        else:
+            await redis.publish("osu-channel:score:processed", f'{{"ScoreId": {score_id}}}')
 
         # refresh score
         await session.refresh(score)

@@ -52,6 +52,7 @@ from app.tasks import (
     start_cache_tasks,
     stop_cache_tasks,
 )
+from app.v2_ipc import init_ipc
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -81,6 +82,9 @@ async def lifespan(app: FastAPI):
     fetcher = await get_fetcher()
     # init GeoIP
     await init_geoip()
+    # init IPC
+    if settings.enable_v2_ipc:
+        await init_ipc(redis_client)
 
     # init game server
     await create_rx_statistics()
