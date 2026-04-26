@@ -38,6 +38,7 @@ class RankHistory(SQLModel, table=True):
     user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
     mode: GameMode
     rank: int
+    key_count: int | None = Field(default=None, index=True, description="Mania key count (e.g. 4, 7). Null for non-mania modes.")
     date: dt = Field(
         default_factory=lambda: utcnow().date(),
         sa_column=Column(Date, index=True),
@@ -55,6 +56,7 @@ class RankTop(SQLModel, table=True):
     user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
     mode: GameMode
     rank: int
+    key_count: int | None = Field(default=None, index=True, description="Mania key count (e.g. 4, 7). Null for non-mania modes.")
     date: dt = Field(
         default_factory=lambda: utcnow().date(),
         sa_column=Column(Date, index=True),
@@ -66,13 +68,24 @@ class RankHistoryResp(BaseModel):
 
     mode: GameMode
     data: list[int]
+    key_count: int | None = None
 
     @classmethod
-    async def from_db(cls, session: AsyncSession, user_id: int, mode: GameMode) -> "RankHistoryResp":
+    async def from_db(
+        cls,
+        session: AsyncSession,
+        user_id: int,
+        mode: GameMode,
+        key_count: int | None = None,
+    ) -> "RankHistoryResp":
+        wheres = [RankHistory.user_id == user_id, RankHistory.mode == mode]
+        if key_count is not None:
+            wheres.append(RankHistory.key_count == key_count)
+
         results = (
             await session.exec(
                 select(RankHistory)
-                .where(RankHistory.user_id == user_id, RankHistory.mode == mode)
+                .where(*wheres)
                 .order_by(col(RankHistory.date).desc())
                 .limit(90)
             )
@@ -81,4 +94,4 @@ class RankHistoryResp(BaseModel):
         if len(data) != 90:
             data.extend([0] * (90 - len(data)))
         data.reverse()
-        return cls(mode=mode, data=data)
+        return cls(mode=mode, data=data, key_count=key_count)

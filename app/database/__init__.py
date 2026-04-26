@@ -52,6 +52,12 @@ from .matchmaking import (
     MatchmakingPoolBeatmap,
     MatchmakingUserStats,
 )
+from .mania_key_statistics import (
+    ManiaKeyStatistics,
+    ManiaKeyStatisticsDict,
+    ManiaKeyStatisticsModel,
+    recalculate_mania_key_statistics,
+)
 from .multiplayer_event import MultiplayerEvent, MultiplayerEventResp
 from .notification import Notification, UserNotification
 from .password_reset import PasswordReset
@@ -126,6 +132,9 @@ __all__ = [
     "ItemAttemptsCountModel",
     "LoginSession",
     "LoginSessionResp",
+    "ManiaKeyStatistics",
+    "ManiaKeyStatisticsDict",
+    "ManiaKeyStatisticsModel",
     "MatchmakingPool",
     "MatchmakingPoolBeatmap",
     "MatchmakingUserStats",

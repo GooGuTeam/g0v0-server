@@ -11,5 +11,7 @@ router = APIRouter(prefix="/api/private", dependencies=LIMITERS)
 
 # Import and include sub-routers
 from .audio_proxy import router as audio_proxy_router
+from .mania_key import router as mania_key_router
 
 router.include_router(audio_proxy_router)
+router.include_router(mania_key_router)

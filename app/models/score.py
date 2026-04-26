@@ -130,6 +130,10 @@ class GameMode(StrEnum):
     def is_custom_ruleset(self) -> bool:
         return not self.is_official()
 
+    def is_mania(self) -> bool:
+        """Check if this game mode is mania (including potential future variants like mania RX)."""
+        return self == GameMode.MANIA or int(self) == 3
+
     def to_base_ruleset(self) -> "GameMode":
         gamemode = {
             GameMode.OSURX: GameMode.OSU,

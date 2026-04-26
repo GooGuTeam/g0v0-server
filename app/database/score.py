@@ -21,7 +21,7 @@ from app.calculating import (
     pre_fetch_and_calculate_pp,
 )
 from app.config import settings
-from app.const import NEW_SCORE_FORMAT_VER
+from app.const import MANIA_MAX_KEY_COUNT, MANIA_MIN_KEY_COUNT, NEW_SCORE_FORMAT_VER
 from app.dependencies.database import get_redis
 from app.helpers import utcnow
 from app.log import log
@@ -54,6 +54,7 @@ from .beatmapset import BeatmapsetDict, BeatmapsetModel
 from .best_scores import BestScore
 from .counts import MonthlyPlaycounts
 from .events import Event, EventType
+from .mania_key_statistics import ManiaKeyStatistics
 from .playlist_best_score import PlaylistBestScore
 from .relationship import (
     Relationship as DBRelationship,
@@ -527,6 +528,12 @@ class Score(ScoreModel, table=True):
         session: AsyncSession,
         storage_service: StorageService,
     ):
+        # Capture mania key info before deletion for statistics recalculation
+        gamemode = self.gamemode
+        user_id = self.user_id
+        beatmap = await self.awaitable_attrs.beatmap
+        mania_key_count = int(beatmap.cs) if beatmap and gamemode.is_mania() else None
+
         data = self.to_score_data()
 
         if await self.awaitable_attrs.best_score:
@@ -542,6 +549,12 @@ class Score(ScoreModel, table=True):
 
         await storage_service.delete_file(self.replay_filename)
         await session.delete(self)
+
+        # Recalculate mania key statistics if this was a mania score
+        if mania_key_count is not None and mania_key_count >= MANIA_MIN_KEY_COUNT and mania_key_count <= MANIA_MAX_KEY_COUNT:
+            from .mania_key_statistics import recalculate_mania_key_statistics
+
+            await recalculate_mania_key_statistics(session, user_id, mania_key_count, gamemode)
 
         hub.emit(ScoreDeletedEvent(score=data))
 
@@ -1028,20 +1041,24 @@ async def get_user_best_pp_in_beatmap(
     ).first()
 
 
-async def calculate_user_pp(session: AsyncSession, user_id: int, mode: GameMode) -> tuple[float, float]:
+async def calculate_user_pp(
+    session: AsyncSession, user_id: int, mode: GameMode, key_count: int | None = None
+) -> tuple[float, float]:
     """Calculate the user's total performance points (PP) and accuracy for a specific mode.
 
     Args:
         session: The database session to use for the query.
         user_id: The ID of the user for whom to calculate PP and accuracy.
         mode: The game mode for which to calculate PP and accuracy.
+        key_count: Optional mania key count filter. When provided, only scores
+            on beatmaps with matching CS (Circle Size) are included.
 
     Returns:
         A tuple containing the total PP and accuracy for the user in the specified mode.
     """
     pp_sum = 0
     acc_sum = 0
-    bps = await get_user_best_pp(session, user_id, mode)
+    bps = await get_user_best_pp(session, user_id, mode, key_count=key_count)
     for i, s in enumerate(bps):
         pp_sum += calculate_weighted_pp(s.pp, i)
         acc_sum += calculate_weighted_acc(s.acc, i)
@@ -1057,6 +1074,7 @@ async def get_user_best_pp(
     user: int,
     mode: GameMode,
     limit: int = 1000,
+    key_count: int | None = None,
 ) -> Sequence[BestScore]:
     """Get the user's best scores for a specific mode.
 
@@ -1065,18 +1083,18 @@ async def get_user_best_pp(
         user: The ID of the user for whom to retrieve the best scores.
         mode: The game mode for which to retrieve the best scores.
         limit: The maximum number of scores to return.
+        key_count: Optional mania key count filter. When provided, only scores
+            on beatmaps with matching CS (Circle Size) are included.
 
     Returns:
         A list of the user's best scores for the specified mode, ordered by PP in descending order.
     """
-    return (
-        await session.exec(
-            select(BestScore)
-            .where(BestScore.user_id == user, BestScore.gamemode == mode)
-            .order_by(col(BestScore.pp).desc())
-            .limit(limit)
-        )
-    ).all()
+    query = select(BestScore).where(BestScore.user_id == user, BestScore.gamemode == mode)
+
+    if key_count is not None:
+        query = query.join(Beatmap).where(func.floor(Beatmap.cs) == key_count)
+
+    return (await session.exec(query.order_by(col(BestScore.pp).desc()).limit(limit))).all()
 
 
 def get_play_length(score: "Score", beatmap_length: int):
@@ -1550,6 +1568,26 @@ async def _process_statistics(
     if score.passed and has_pp:
         statistics.pp, statistics.hit_accuracy = await calculate_user_pp(session, statistics.user_id, score.gamemode)
 
+    # Mania key-specific statistics
+    if score.gamemode.is_mania():
+        try:
+            await _process_mania_key_statistics(
+                session=session,
+                user=user,
+                score=score,
+                beatmap_status=beatmap_status,
+                has_pp=has_pp,
+                ranked=ranked,
+                is_valid_playtime=is_valid,
+                playtime=playtime,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to process mania key statistics for user {user_id} score {score_id}",
+                user_id=user.id,
+                score_id=score.id,
+            )
+
     if add_to_db:
         session.add(mouthly_playcount)
         logger.debug(
@@ -1585,6 +1623,152 @@ async def _process_beatmap_playcount(session: AsyncSession, beatmap_id: int, use
             beatmap_id=beatmap_id,
             count=beatmap_playcount.playcount,
         )
+
+
+async def _process_mania_key_statistics(
+    session: AsyncSession,
+    user: User,
+    score: "Score",
+    beatmap_status: BeatmapRankStatus,
+    has_pp: bool,
+    ranked: bool,
+    is_valid_playtime: bool,
+    playtime: int,
+):
+    """Update mania key-specific statistics for a score submission.
+
+    Key count is derived from the beatmap's Circle Size (CS) value.
+    This function queries the best score within the same key_count dimension
+    independently, rather than relying on the global TotalScoreBestScore,
+    because the global best may belong to a different key_count.
+    """
+    beatmap = await score.awaitable_attrs.beatmap
+    if beatmap is None:
+        return
+
+    key_count = int(beatmap.cs)
+    if key_count < MANIA_MIN_KEY_COUNT or key_count > MANIA_MAX_KEY_COUNT:
+        logger.debug(
+            "Skipping mania key statistics for score {score_id}: invalid key_count {key_count}",
+            score_id=score.id,
+            key_count=key_count,
+        )
+        return
+
+    # Get or create key statistics record
+    key_stats = (
+        await session.exec(
+            select(ManiaKeyStatistics).where(
+                ManiaKeyStatistics.user_id == user.id,
+                ManiaKeyStatistics.key_count == key_count,
+            )
+        )
+    ).first()
+
+    if key_stats is None:
+        key_stats = ManiaKeyStatistics(
+            user_id=user.id,
+            key_count=key_count,
+        )
+        session.add(key_stats)
+        await session.flush()
+        logger.debug(
+            "Created mania key statistics for user {user_id} key_count={key_count}",
+            user_id=user.id,
+            key_count=key_count,
+        )
+
+    # Query the user's best score on this beatmap within the same key_count dimension.
+    # We cannot reuse the global `previous_score_best` because it may belong to a
+    # different key_count (e.g. a 7K score on a beatmap that also has a 4K diff).
+    previous_score_best = (
+        await session.exec(
+            select(TotalScoreBestScore)
+            .join(Beatmap, TotalScoreBestScore.beatmap_id == Beatmap.id)
+            .where(
+                TotalScoreBestScore.user_id == user.id,
+                TotalScoreBestScore.beatmap_id == score.beatmap_id,
+                TotalScoreBestScore.gamemode == score.gamemode,
+                func.floor(Beatmap.cs) == key_count,
+            )
+            .order_by(col(TotalScoreBestScore.total_score).desc())
+        )
+    ).first()
+
+    previous_display_score = previous_score_best.score.get_display_score() if previous_score_best else 0
+    previous_score_best_rank = previous_score_best.rank if previous_score_best else None
+
+    # Update score counters (same logic as main statistics)
+    current_display_score = score.get_display_score()
+    difference = current_display_score - previous_display_score
+
+    key_stats.total_score += current_display_score
+
+    # Level is based on total_score, so update it whenever total_score changes
+    key_stats.level_current = calculate_score_to_level(key_stats.total_score)
+
+    if difference > 0 and score.passed and ranked:
+        match score.rank:
+            case Rank.X:
+                key_stats.grade_ss += 1
+            case Rank.XH:
+                key_stats.grade_ssh += 1
+            case Rank.S:
+                key_stats.grade_s += 1
+            case Rank.SH:
+                key_stats.grade_sh += 1
+            case Rank.A:
+                key_stats.grade_a += 1
+        if previous_score_best_rank is not None:
+            match previous_score_best_rank:
+                case Rank.X:
+                    key_stats.grade_ss -= 1
+                case Rank.XH:
+                    key_stats.grade_ssh -= 1
+                case Rank.S:
+                    key_stats.grade_s -= 1
+                case Rank.SH:
+                    key_stats.grade_sh -= 1
+                case Rank.A:
+                    key_stats.grade_a -= 1
+        key_stats.ranked_score += difference
+        key_stats.maximum_combo = max(key_stats.maximum_combo, score.max_combo)
+
+    if is_valid_playtime:
+        key_stats.play_count += 1
+        key_stats.play_time += playtime
+
+    nlarge_tick_miss = score.nlarge_tick_miss or 0
+    nsmall_tick_hit = score.nsmall_tick_hit or 0
+    nlarge_tick_hit = score.nlarge_tick_hit or 0
+
+    key_stats.count_100 += score.n100 + score.nkatu
+    key_stats.count_300 += score.n300 + score.ngeki
+    key_stats.count_50 += score.n50
+    key_stats.count_miss += score.nmiss
+    key_stats.total_hits += (
+        score.n300
+        + score.n100
+        + score.n50
+        + score.ngeki
+        + score.nkatu
+        + nlarge_tick_hit
+        + nlarge_tick_miss
+        + nsmall_tick_hit
+    )
+
+    if score.passed and has_pp:
+        key_stats.pp, key_stats.hit_accuracy = await calculate_user_pp(
+            session, key_stats.user_id, score.gamemode, key_count=key_count
+        )
+        key_stats.is_ranked = key_stats.pp > 0
+
+    logger.debug(
+        "Updated mania key statistics for user {user_id} key_count={key_count} pp={pp}",
+        user_id=user.id,
+        key_count=key_count,
+        pp=key_stats.pp,
+    )
 
 
 async def process_user(
