@@ -337,7 +337,7 @@ async def _score(
 Played at {score.started_at}
 {score.pp:.2f}pp {bp_pp} {score.accuracy:.2%} {",".join(mod_to_save(score.mods))} {score.rank.name.upper()}
 Great: {score.n300}, Good: {score.n100}, Meh: {score.n50}, Miss: {score.nmiss}"""
-    if score.gamemode == GameMode.MANIA:
+    if score.gamemode.is_mania():
         keys = next((mod["acronym"] for mod in score.mods if mod["acronym"].endswith("K")), None)
         if keys is None:
             keys = f"{int(score.beatmap.cs)}K"

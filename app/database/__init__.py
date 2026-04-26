@@ -47,6 +47,12 @@ from .item_attempts_count import (
     ItemAttemptsCountDict,
     ItemAttemptsCountModel,
 )
+from .mania_key_statistics import (
+    ManiaKeyStatistics,
+    ManiaKeyStatisticsDict,
+    ManiaKeyStatisticsModel,
+    recalculate_mania_key_statistics,
+)
 from .matchmaking import (
     MatchmakingPool,
     MatchmakingPoolBeatmap,
@@ -126,6 +132,9 @@ __all__ = [
     "ItemAttemptsCountModel",
     "LoginSession",
     "LoginSessionResp",
+    "ManiaKeyStatistics",
+    "ManiaKeyStatisticsDict",
+    "ManiaKeyStatisticsModel",
     "MatchmakingPool",
     "MatchmakingPoolBeatmap",
     "MatchmakingUserStats",

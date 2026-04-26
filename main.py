@@ -44,6 +44,7 @@ from app.tasks import (
     calculate_user_rank,
     create_banchobot,
     create_custom_ruleset_statistics,
+    create_mania_key_statistics,
     create_rx_statistics,
     daily_challenge_job,
     init_geoip,
@@ -89,6 +90,7 @@ async def lifespan(app: FastAPI):
     # init game server
     await create_rx_statistics()
     await create_custom_ruleset_statistics()
+    await create_mania_key_statistics()
     await calculate_user_rank(True)
     await daily_challenge_job()
     await process_daily_challenge_top()

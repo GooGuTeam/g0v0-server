@@ -22,6 +22,7 @@ from .beatmap_playcounts import BeatmapPlaycounts
 from .counts import CountResp, MonthlyPlaycounts, ReplayWatchedCount
 from .daily_challenge import DailyChallengeStats, DailyChallengeStatsResp
 from .events import Event
+from .mania_key_statistics import ManiaKeyStatistics, ManiaKeyStatisticsDict
 from .notification import Notification, UserNotification
 from .rank_history import RankHistory, RankHistoryResp, RankTop
 from .relationship import RelationshipModel
@@ -173,6 +174,7 @@ class UserDict(TypedDict):
     default_group: NotRequired[str]
     session_verified: NotRequired[bool]
     session_verification_method: NotRequired[Literal["totp", "mail"] | None]
+    mania_key_statistics: NotRequired[list["ManiaKeyStatisticsDict"]]
 
 
 class UserModel(DatabaseModel[UserDict]):
@@ -273,6 +275,7 @@ class UserModel(DatabaseModel[UserDict]):
         "statistics.variants",
         "team",
         "user_achievements",
+        "mania_key_statistics",
         *PROFILE_HEADER_INCLUDES,
         *USER_TRANSFORMER_INCLUDES,
     ]
@@ -712,6 +715,17 @@ class UserModel(DatabaseModel[UserDict]):
             return await LoginSessionService.get_login_method(obj.id, token_id, redis)
         return None
 
+    @ondemand
+    @staticmethod
+    async def mania_key_statistics(
+        _session: AsyncSession,
+        obj: "User",
+    ) -> list["ManiaKeyStatisticsDict"]:
+        from .mania_key_statistics import ManiaKeyStatisticsModel
+
+        stats = await obj.awaitable_attrs.mania_key_statistics
+        return [await ManiaKeyStatisticsModel.transform(s) for s in stats if s.pp > 0 and s.is_ranked]
+
 
 class User(AsyncAttrs, UserModel, table=True):
     __tablename__: str = "lazer_users"
@@ -737,6 +751,9 @@ class User(AsyncAttrs, UserModel, table=True):
     events: Mapped[list[Event]] = Relationship(back_populates="user")
     totp_key: Mapped[TotpKeys | None] = Relationship(back_populates="user")
     user_preference: Mapped[UserPreference | None] = Relationship(back_populates="user")
+    mania_key_statistics: Mapped[list[ManiaKeyStatistics]] = Relationship(
+        back_populates="user",
+    )
 
     async def is_user_can_pm(self, from_user: "User", session: AsyncSession) -> tuple[bool, str]:
         """Check if the user can receive private messages from the given user.
