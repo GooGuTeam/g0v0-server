@@ -135,9 +135,7 @@ class ManiaKeyStatistics(AsyncAttrs, ManiaKeyStatisticsModel, table=True):
     """Database table for user statistics per mania key count."""
 
     __tablename__: str = "lazer_user_mania_key_statistics"
-    __table_args__ = (
-        Index("ix_mania_key_stats_user_key", "user_id", "key_count", unique=True),
-    )
+    __table_args__ = (Index("ix_mania_key_stats_user_key", "user_id", "key_count", unique=True),)
 
     id: int | None = Field(default=None, primary_key=True)
     user_id: int = Field(
@@ -305,9 +303,7 @@ async def recalculate_mania_key_statistics(
     key_stats.level_current = calculate_score_to_level(key_stats.total_score)
 
     # Recalculate PP
-    key_stats.pp, key_stats.hit_accuracy = await calculate_user_pp(
-        session, user_id, gamemode, key_count=key_count
-    )
+    key_stats.pp, key_stats.hit_accuracy = await calculate_user_pp(session, user_id, gamemode, key_count=key_count)
     key_stats.is_ranked = key_stats.pp > 0
 
     await session.commit()

@@ -551,7 +551,11 @@ class Score(ScoreModel, table=True):
         await session.delete(self)
 
         # Recalculate mania key statistics if this was a mania score
-        if mania_key_count is not None and mania_key_count >= MANIA_MIN_KEY_COUNT and mania_key_count <= MANIA_MAX_KEY_COUNT:
+        if (
+            mania_key_count is not None
+            and mania_key_count >= MANIA_MIN_KEY_COUNT
+            and mania_key_count <= MANIA_MAX_KEY_COUNT
+        ):
             from .mania_key_statistics import recalculate_mania_key_statistics
 
             await recalculate_mania_key_statistics(session, user_id, mania_key_count, gamemode)

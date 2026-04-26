@@ -724,11 +724,7 @@ class UserModel(DatabaseModel[UserDict]):
         from .mania_key_statistics import ManiaKeyStatisticsModel
 
         stats = await obj.awaitable_attrs.mania_key_statistics
-        return [
-            await ManiaKeyStatisticsModel.transform(s)
-            for s in stats
-            if s.pp > 0 and s.is_ranked
-        ]
+        return [await ManiaKeyStatisticsModel.transform(s) for s in stats if s.pp > 0 and s.is_ranked]
 
 
 class User(AsyncAttrs, UserModel, table=True):

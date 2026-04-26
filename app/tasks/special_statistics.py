@@ -165,8 +165,6 @@ async def create_mania_key_statistics() -> None:
 
         await session.commit()
         if created_count:
-            logger.success(
-                f"Created and recalculated {created_count} mania key statistics rows during backfill"
-            )
+            logger.success(f"Created and recalculated {created_count} mania key statistics rows during backfill")
         else:
             logger.info("All mania key statistics already exist, no backfill needed")

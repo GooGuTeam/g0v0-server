@@ -38,7 +38,9 @@ class RankHistory(SQLModel, table=True):
     user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
     mode: GameMode
     rank: int
-    key_count: int | None = Field(default=None, index=True, description="Mania key count (e.g. 4, 7). Null for non-mania modes.")
+    key_count: int | None = Field(
+        default=None, index=True, description="Mania key count (e.g. 4, 7). Null for non-mania modes."
+    )
     date: dt = Field(
         default_factory=lambda: utcnow().date(),
         sa_column=Column(Date, index=True),
@@ -56,7 +58,9 @@ class RankTop(SQLModel, table=True):
     user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
     mode: GameMode
     rank: int
-    key_count: int | None = Field(default=None, index=True, description="Mania key count (e.g. 4, 7). Null for non-mania modes.")
+    key_count: int | None = Field(
+        default=None, index=True, description="Mania key count (e.g. 4, 7). Null for non-mania modes."
+    )
     date: dt = Field(
         default_factory=lambda: utcnow().date(),
         sa_column=Column(Date, index=True),
@@ -83,12 +87,7 @@ class RankHistoryResp(BaseModel):
             wheres.append(RankHistory.key_count == key_count)
 
         results = (
-            await session.exec(
-                select(RankHistory)
-                .where(*wheres)
-                .order_by(col(RankHistory.date).desc())
-                .limit(90)
-            )
+            await session.exec(select(RankHistory).where(*wheres).order_by(col(RankHistory.date).desc()).limit(90))
         ).all()
         data = [result.rank for result in results]
         if len(data) != 90:

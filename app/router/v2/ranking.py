@@ -523,6 +523,3 @@ async def get_user_ranking(
         "ranking": ranking_data,
         "total": total_count,
     }
-
-
-

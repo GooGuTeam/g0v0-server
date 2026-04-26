@@ -656,7 +656,10 @@ class RankingCacheService:
                             break
                     scores = (
                         await session.exec(
-                            select(Score).where(*wheres, col(Score.pp) <= cursor).order_by(col(Score.pp).desc()).limit(50)
+                            select(Score)
+                            .where(*wheres, col(Score.pp) <= cursor)
+                            .order_by(col(Score.pp).desc())
+                            .limit(50)
                         )
                     ).all()
                     data = [
@@ -789,8 +792,6 @@ class RankingCacheService:
 
         # Get list of countries to cache (top 20 countries by active user count)
         from app.database import User
-
-        from sqlmodel import func
 
         countries_query = (
             await session.exec(

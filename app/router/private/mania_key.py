@@ -21,7 +21,6 @@ from fastapi import BackgroundTasks, Path, Query, Security
 from pydantic import BaseModel, Field
 from sqlmodel import col, func, select
 
-
 SortType = Literal["performance", "score"]
 
 
@@ -100,9 +99,13 @@ async def get_mania_key_ranking(
         include.append("country_rank")
 
     # Query total count
-    count_query = select(func.count()).select_from(ManiaKeyStatistics).where(
-        *wheres,
-        ~User.is_restricted_query(col(ManiaKeyStatistics.user_id)),
+    count_query = (
+        select(func.count())
+        .select_from(ManiaKeyStatistics)
+        .where(
+            *wheres,
+            ~User.is_restricted_query(col(ManiaKeyStatistics.user_id)),
+        )
     )
     total_count_result = await session.exec(count_query)
     total_count = total_count_result.one()
@@ -158,8 +161,7 @@ async def get_mania_key_ranking(
 @router.get(
     "/rankings/mania/user/{user_id}",
     name="Get user mania key statistics",
-    description="Get a user's mania mode statistics broken down by key count. "
-    "This is a g0v0 extension API.",
+    description="Get a user's mania mode statistics broken down by key count. This is a g0v0 extension API.",
     tags=["Rankings"],
 )
 async def get_user_mania_key_stats(

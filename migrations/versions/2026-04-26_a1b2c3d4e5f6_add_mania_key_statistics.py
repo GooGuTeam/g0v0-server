@@ -47,9 +47,18 @@ def upgrade() -> None:
         sa.Column("level_current", sa.Float(), nullable=False, server_default="1"),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(op.f("ix_lazer_user_mania_key_statistics_user_id"), "lazer_user_mania_key_statistics", ["user_id"], unique=False)
-    op.create_index(op.f("ix_lazer_user_mania_key_statistics_key_count"), "lazer_user_mania_key_statistics", ["key_count"], unique=False)
-    op.create_index(op.f("ix_lazer_user_mania_key_statistics_pp"), "lazer_user_mania_key_statistics", ["pp"], unique=False)
+    op.create_index(
+        op.f("ix_lazer_user_mania_key_statistics_user_id"), "lazer_user_mania_key_statistics", ["user_id"], unique=False
+    )
+    op.create_index(
+        op.f("ix_lazer_user_mania_key_statistics_key_count"),
+        "lazer_user_mania_key_statistics",
+        ["key_count"],
+        unique=False,
+    )
+    op.create_index(
+        op.f("ix_lazer_user_mania_key_statistics_pp"), "lazer_user_mania_key_statistics", ["pp"], unique=False
+    )
     op.create_index(
         "ix_mania_key_stats_user_key",
         "lazer_user_mania_key_statistics",

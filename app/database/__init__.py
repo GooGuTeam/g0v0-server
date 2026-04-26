@@ -47,16 +47,16 @@ from .item_attempts_count import (
     ItemAttemptsCountDict,
     ItemAttemptsCountModel,
 )
-from .matchmaking import (
-    MatchmakingPool,
-    MatchmakingPoolBeatmap,
-    MatchmakingUserStats,
-)
 from .mania_key_statistics import (
     ManiaKeyStatistics,
     ManiaKeyStatisticsDict,
     ManiaKeyStatisticsModel,
     recalculate_mania_key_statistics,
+)
+from .matchmaking import (
+    MatchmakingPool,
+    MatchmakingPoolBeatmap,
+    MatchmakingUserStats,
 )
 from .multiplayer_event import MultiplayerEvent, MultiplayerEventResp
 from .notification import Notification, UserNotification
