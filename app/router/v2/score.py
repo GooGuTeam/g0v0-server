@@ -81,9 +81,9 @@ from fastapi import (
     Form,
     Path,
     Query,
+    Response,
     Security,
 )
-from fastapi.responses import RedirectResponse
 from fastapi_limiter.depends import RateLimiter
 from httpx import HTTPError
 from pydantic import BaseModel
@@ -1450,6 +1450,18 @@ async def download_score_replay(
             downloader_user_id=user_id,
         )
     )
-    return RedirectResponse(
-        await storage_service.get_file_url(filepath), 301, headers={"Content-Type": "application/x-osu-replay"}
+
+    beatmap = await db.get(Beatmap, score.beatmap_id)
+    if beatmap is None:
+        raise RequestError(ErrorType.BEATMAP_NOT_FOUND)
+
+    return Response(
+        await storage_service.read_file(filepath),
+        headers={
+            "Content-Type": "application/x-osu-replay",
+            "Content-Disposition": (
+                f'attachment; filename="{score.user.username} playing {beatmap.beatmapset.artist} - {beatmap.beatmapset.title}'  # noqa: E501
+                f' [{beatmap.version}] {score.gamemode.readable()} ({score.ended_at:%Y-%m-%d}).osr"'
+            ),
+        },
     )
