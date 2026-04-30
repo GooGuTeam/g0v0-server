@@ -58,8 +58,7 @@ services:
       - osu-network
 
   spectator:
-    image:  ghcr.io/googuteam/osu-server-spectator:master
-    pull_policy: never
+    image:  ghcr.io/googuteam/osu-server-spectator:v2
     environment:
       - REPLAY_UPLOAD_THREADS=${REPLAY_UPLOAD_THREADS:-1}
       - TRACK_BUILD_USER_COUNTS=${TRACK_BUILD_USER_COUNTS:-}
