@@ -1409,6 +1409,11 @@ async def download_score_replay(
         raise RequestError(ErrorType.SCORE_NOT_FOUND)
 
     filepath = score.replay_filename
+    owner_id = score.user_id
+    owner_username = score.user.username
+    gamemode = score.gamemode
+    ended_at = score.ended_at
+    beatmap_id = score.beatmap_id
 
     if not await storage_service.is_exists(filepath):
         raise RequestError(ErrorType.REPLAY_FILE_NOT_FOUND)
@@ -1446,12 +1451,12 @@ async def download_score_replay(
     hub.emit(
         ReplayDownloadedEvent(
             score_id=score_id,
-            owner_user_id=score.user_id,
+            owner_user_id=owner_id,
             downloader_user_id=user_id,
         )
     )
 
-    beatmap = await db.get(Beatmap, score.beatmap_id)
+    beatmap = await db.get(Beatmap, beatmap_id)
     if beatmap is None:
         raise RequestError(ErrorType.BEATMAP_NOT_FOUND)
 
@@ -1460,8 +1465,8 @@ async def download_score_replay(
         headers={
             "Content-Type": "application/x-osu-replay",
             "Content-Disposition": (
-                f'attachment; filename="{score.user.username} playing {beatmap.beatmapset.artist} - {beatmap.beatmapset.title}'  # noqa: E501
-                f' [{beatmap.version}] {score.gamemode.readable()} ({score.ended_at:%Y-%m-%d}).osr"'
+                f'attachment; filename="{owner_username} playing {beatmap.beatmapset.artist} - {beatmap.beatmapset.title}'  # noqa: E501
+                f' [{beatmap.version}] {gamemode.readable()} ({ended_at:%Y-%m-%d}).osr"'
             ),
         },
     )
