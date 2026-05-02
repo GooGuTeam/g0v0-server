@@ -14,6 +14,7 @@ from . import (  # noqa: F401
     beatmapset,
     cover,
     gamemodes,
+    mania_key,
     oauth,
     password,
     relationship,

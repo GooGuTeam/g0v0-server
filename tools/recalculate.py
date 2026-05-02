@@ -17,10 +17,11 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from app.calculating import CalculateError, calculate_pp, calculate_score_to_level, init_calculator
 from app.config import settings
-from app.const import BANCHOBOT_ID
+from app.const import BANCHOBOT_ID, MANIA_MAX_KEY_COUNT, MANIA_MIN_KEY_COUNT
 from app.database import TotalScoreBestScore, UserStatistics
 from app.database.beatmap import Beatmap, calculate_beatmap_attributes, clear_cached_beatmap_raws
 from app.database.best_scores import BestScore
+from app.database.mania_key_statistics import recalculate_mania_key_statistics
 from app.database.score import Score, calculate_playtime, calculate_user_pp
 from app.dependencies.database import engine, get_redis
 from app.dependencies.fetcher import get_fetcher
@@ -746,6 +747,31 @@ def build_total_score_best_scores(scores: list[Score]) -> list[TotalScoreBestSco
     return result
 
 
+async def _recalculate_mania_key_stats(
+    session: AsyncSession,
+    user_id: int,
+    gamemode: GameMode,
+    scores: list[Score],
+) -> None:
+    """Recalculate all mania key statistics for a user in a given mode.
+
+    Finds all distinct key counts from the user's scores and recalculates
+    each key count's statistics from scratch.
+    """
+    # Collect distinct key counts from beatmap CS values
+    key_counts: set[int] = set()
+    for score in scores:
+        beatmap = score.beatmap
+        if beatmap is not None:
+            kc = int(beatmap.cs)
+            if MANIA_MIN_KEY_COUNT <= kc <= MANIA_MAX_KEY_COUNT:
+                key_counts.add(kc)
+
+    for key_count in sorted(key_counts):
+        await recalculate_mania_key_statistics(session, user_id, key_count, gamemode)
+        logger.debug(f"Recalculated mania key statistics for user {user_id} key_count={key_count}")
+
+
 async def _recalculate_statistics(
     statistics: UserStatistics,
     session: AsyncSession,
@@ -896,6 +922,10 @@ async def recalculate_user_mode_performance(
             await _recalculate_statistics(statistics, session, scores)
             await session.flush()
 
+            # Recalculate mania key statistics if this is a mania mode
+            if gamemode.is_mania():
+                await _recalculate_mania_key_stats(session, user_id, gamemode, scores)
+
             new_pp = float(statistics.pp or 0)
             new_acc = float(statistics.hit_accuracy or 0)
 
@@ -1009,6 +1039,11 @@ async def recalculate_user_mode_leaderboard(
             # Recalculate statistics using the helper function
             await _recalculate_statistics(statistics, session, scores)
             await session.flush()
+
+            # Recalculate mania key statistics if this is a mania mode
+            if gamemode.is_mania():
+                await _recalculate_mania_key_stats(session, user_id, gamemode, scores)
+
             changes = {
                 "ranked_score": statistics.ranked_score - previous_data["ranked_score"],
                 "maximum_combo": statistics.maximum_combo - previous_data["maximum_combo"],
