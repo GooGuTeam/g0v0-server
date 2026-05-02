@@ -313,16 +313,6 @@ logger.add(
     level=settings.log_level,
     diagnose=settings.debug,
 )
-logger.add(
-    "logs/{time:YYYY-MM-DD}.log",
-    rotation="00:00",
-    retention="30 days",
-    colorize=False,
-    format=dynamic_format,
-    level=settings.log_level,
-    diagnose=settings.debug,
-    encoding="utf8",
-)
 logging.basicConfig(handlers=[InterceptHandler()], level=settings.log_level, force=True)
 
 uvicorn_loggers = [
@@ -339,3 +329,17 @@ for logger_name in uvicorn_loggers:
 
 logging.getLogger("httpx").setLevel("WARNING")
 logging.getLogger("apscheduler").setLevel("WARNING")
+
+
+def add_file_logger() -> None:
+    logger.add(
+        "logs/{time:YYYY-MM-DD-HH:mm}.log.tar.gz",
+        rotation="6 hours",
+        retention="30 days",
+        compression="tar.gz",
+        colorize=False,
+        format=dynamic_format,
+        level=settings.log_level,
+        diagnose=settings.debug,
+        encoding="utf8",
+    )

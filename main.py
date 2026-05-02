@@ -16,7 +16,7 @@ from app.dependencies.database import (
 from app.dependencies.fetcher import get_fetcher
 from app.dependencies.scheduler import start_scheduler, stop_scheduler
 from app.helpers import bg_tasks, utcnow
-from app.log import system_logger
+from app.log import add_file_logger, system_logger
 from app.middleware.verify_session import VerifySessionMiddleware
 from app.models.error import RequestError
 from app.models.events.http import RequestHandledEvent, RequestReceivedEvent
@@ -60,6 +60,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 import sentry_sdk
 from sqlmodel import select
+
+add_file_logger()
 
 
 @asynccontextmanager
