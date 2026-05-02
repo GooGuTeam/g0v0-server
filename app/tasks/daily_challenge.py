@@ -67,7 +67,7 @@ async def create_daily_challenge_room(
         )
 
 
-@get_scheduler().scheduled_job("cron", hour=0, minute=0, second=0, id="daily_challenge")
+@get_scheduler().scheduled_job("cron", hour=0, minute=1, second=0, id="daily_challenge")
 async def daily_challenge_job() -> None:
     """Scheduled job to create daily challenge rooms.
 
@@ -132,11 +132,11 @@ async def daily_challenge_job() -> None:
         logger.warning(f"Error processing daily challenge data: {e} Will try again in 5 minutes.")
     except Exception as e:
         logger.exception(f"Unexpected error in daily challenge job: {e} Will try again in 5 minutes.")
-    get_scheduler().add_job(
-        daily_challenge_job,
-        "date",
-        run_date=utcnow() + timedelta(minutes=5),
-    )
+        get_scheduler().add_job(
+            daily_challenge_job,
+            "date",
+            run_date=utcnow() + timedelta(minutes=5),
+        )
 
 
 @get_scheduler().scheduled_job("cron", hour=0, minute=1, second=0, id="daily_challenge_last_top")
