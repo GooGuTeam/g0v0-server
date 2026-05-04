@@ -8,7 +8,9 @@ g0v0 v2 IPC specification:
     - request: a message that expects a response.
     - response: a message that is sent in reply to a request.
     - error: a message that indicates an error occurred while processing a request.
+  - name: a string identifier for the message type, used to route messages to the appropriate handlers.
   - uuid: a unique identifier for the message, used to correlate requests, responses, and errors.
+  - source_server: the identifier of the server that sent the message.
   - data: an object containing message-specific data.
 - Redis Pub/Sub channel format: g0v0:ipc:<server_identifier>. for this server, <server_identifier> is "lazer".
 """
@@ -46,6 +48,7 @@ class IPCMessage(BaseModel):
     type: IPCMessageType
     name: str
     uuid: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    source_server: str
     data: dict[str, Any]
 
 
@@ -95,7 +98,7 @@ class IPCClient:
         """
         self.notice_handlers[name] = handler
 
-    async def handle_request(self, name: str):
+    def handle_request(self, name: str):
         """A decorator for subscribing to IPC requests with a specific name.
 
         Args:
@@ -108,7 +111,7 @@ class IPCClient:
 
         return decorator
 
-    async def handle_notice(self, name: str):
+    def handle_notice(self, name: str):
         """A decorator for subscribing to IPC notices with a specific name.
 
         Args:
@@ -139,7 +142,7 @@ class IPCClient:
             data: A dictionary containing message-specific data.
         """
         channel = CHANNEL_NAME.format(server=server)
-        message = IPCMessage(type=IPCMessageType.NOTICE, name=name, data=data)
+        message = IPCMessage(type=IPCMessageType.NOTICE, name=name, data=data, source_server=SERVER_IDENTIFIER)
         await self.redis_client.publish(channel, message.model_dump_json())
 
     async def send_request(
@@ -152,7 +155,7 @@ class IPCClient:
     ) -> IPCMessage:
         """Send a request IPC message and return the UUID for correlation."""
         channel = CHANNEL_NAME.format(server=server)
-        message = IPCMessage(type=IPCMessageType.REQUEST, name=name, data=data)
+        message = IPCMessage(type=IPCMessageType.REQUEST, name=name, data=data, source_server=SERVER_IDENTIFIER)
         await self.redis_client.publish(channel, message.model_dump_json())
         result = await self._wait_for_response(message.uuid, timeout)
         if isinstance(result, IPCErrorBody):
@@ -175,7 +178,9 @@ class IPCClient:
             data: A dictionary containing message-specific data.
         """
         channel = CHANNEL_NAME.format(server=server)
-        message = IPCMessage(type=IPCMessageType.RESPONSE, name=name, uuid=uuid, data=data)
+        message = IPCMessage(
+            type=IPCMessageType.RESPONSE, name=name, uuid=uuid, data=data, source_server=SERVER_IDENTIFIER
+        )
         await self.redis_client.publish(channel, message.model_dump_json())
 
     def _add_result(self, uuid: str, result: IPCErrorBody | Any) -> None:
@@ -203,7 +208,7 @@ class IPCClient:
                     try:
                         body = IPCMessage.model_validate_json(message["data"])
                     except Exception:
-                        logger.warning("Received invalid IPC message: %s", message["data"])
+                        logger.warning("Received invalid IPC message: {}", message["data"])
                         continue
                     bg_tasks.add_task(self._handle_message, body)
             except Exception:
@@ -231,7 +236,7 @@ class IPCClient:
                 error_body = IPCErrorBody.model_validate(message.data)
                 self._add_result(message.uuid, error_body)
         except Exception:
-            logger.exception("Error while handling IPC message: %s", message)
+            logger.exception("Error while handling IPC message: {}", message)
 
 
 ipc_client: IPCClient | None = None
