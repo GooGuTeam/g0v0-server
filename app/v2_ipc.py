@@ -23,6 +23,7 @@ import uuid
 
 from app.helpers.background_task import bg_tasks
 from app.log import log
+from app.service.user_cache_service import get_user_cache_service
 
 from pydantic import BaseModel, Field
 from redis.asyncio import Redis
@@ -247,6 +248,22 @@ async def init_ipc(redis_client: Redis):
     global ipc_client
     ipc_client = IPCClient(redis_client)
     await ipc_client.init()
+
+    # handlers
+    @ipc_client.handle_notice("user_online_status_changed")
+    async def handle_user_online_status_changed(message: IPCMessage):
+        if message.source_server != "realtime":
+            logger.warning(
+                "Received user_online_status_changed notice isn't from 'realtime': {}", message.source_server
+            )
+            return
+
+        user_id = message.data.get("user_id")
+        if user_id is None:
+            logger.warning("Received user_online_status_changed notice without user_id")
+            return
+        logger.info(f"Received user online status update for user_id: {user_id}")
+        await get_user_cache_service(redis_client).invalidate_user_cache(user_id)
 
 
 def get_ipc_client() -> IPCClient:

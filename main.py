@@ -103,7 +103,9 @@ async def lifespan(app: FastAPI):
     init_beatmapset_update_service(fetcher)  # 初始化谱面集更新服务
     redis_message_system.start()
     start_scheduler()
-    await user_online_subscriber.start_subscribe()
+
+    if not settings.enable_v2_ipc:
+        await user_online_subscriber.start_subscribe()
 
     # show the status of AssetProxy
     if settings.enable_asset_proxy:
