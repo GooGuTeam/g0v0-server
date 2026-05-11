@@ -93,6 +93,18 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
     start_scheduler()
     await user_online_subscriber.start_subscribe()
 
+    # 注册 CountdownTick 事件处理器并启动订阅
+    from app.service.multiplayer_event_dispatcher import multiplayer_event_dispatcher
+    multiplayer_event_dispatcher.register_handler(
+        "CountdownTick",
+        lambda data: multiplayer_event_dispatcher.handle_countdown_tick(
+            room_id=data["room_id"],
+            _countdown_id=data["countdown_id"],
+            seconds=data["seconds"]
+        )
+    )
+    await multiplayer_event_dispatcher.start_subscribe()
+
     # show the status of AssetProxy
     if settings.enable_asset_proxy:
         system_logger("AssetProxy").info(f"Asset Proxy enabled - Domain: {settings.custom_asset_domain}")
@@ -105,6 +117,10 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
     await stop_cache_tasks()
     stop_scheduler()
     await download_service.stop_health_check()
+
+    # 停止多人游戏事件订阅
+    from app.service.multiplayer_event_dispatcher import multiplayer_event_dispatcher
+    await multiplayer_event_dispatcher.stop_subscribe()
     await stop_email_processor()
 
     # close database & redis
