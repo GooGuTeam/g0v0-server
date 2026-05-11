@@ -77,6 +77,7 @@ class MultiplayerEventDispatcher:
             if message["type"] == "pmessage":
                 try:
                     import json
+
                     data = json.loads(message["data"])
                     event_type = data.get("type")
 
@@ -131,6 +132,7 @@ class MultiplayerEventDispatcher:
                 logger.info(f"Sent countdown message to room {room_id}: {message}")
 
                 from app.service.redis_message_system import redis_message_system
+
                 await redis_message_system._initialize_message_counter()
 
         except Exception as e:

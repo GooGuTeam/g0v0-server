@@ -95,13 +95,12 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
 
     # 注册 CountdownTick 事件处理器并启动订阅
     from app.service.multiplayer_event_dispatcher import multiplayer_event_dispatcher
+
     multiplayer_event_dispatcher.register_handler(
         "CountdownTick",
         lambda data: multiplayer_event_dispatcher.handle_countdown_tick(
-            room_id=data["room_id"],
-            _countdown_id=data["countdown_id"],
-            seconds=data["seconds"]
-        )
+            room_id=data["room_id"], _countdown_id=data["countdown_id"], seconds=data["seconds"]
+        ),
     )
     await multiplayer_event_dispatcher.start_subscribe()
 
@@ -120,6 +119,7 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
 
     # 停止多人游戏事件订阅
     from app.service.multiplayer_event_dispatcher import multiplayer_event_dispatcher
+
     await multiplayer_event_dispatcher.stop_subscribe()
     await stop_email_processor()
 
