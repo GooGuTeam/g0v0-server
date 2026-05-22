@@ -328,7 +328,7 @@ for logger_name in uvicorn_loggers:
     _uvicorn_logger.propagate = False
 
 logging.getLogger("httpx").setLevel("WARNING")
-logging.getLogger("apscheduler").setLevel("WARNING")
+logging.getLogger("apscheduler").setLevel("INFO")
 
 
 def add_file_logger() -> None:

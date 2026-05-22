@@ -67,7 +67,7 @@ async def create_daily_challenge_room(
         )
 
 
-@get_scheduler().scheduled_job("cron", hour=0, minute=1, second=0, id="daily_challenge")
+@get_scheduler().scheduled_job("cron", hour=0, minute=1, second=0, id="daily_challenge", misfire_grace_time=300)
 async def daily_challenge_job() -> None:
     """Scheduled job to create daily challenge rooms.
 
@@ -77,7 +77,9 @@ async def daily_challenge_job() -> None:
     now = utcnow()
     redis = get_redis()
     key = f"daily_challenge:{now.date()}"
+    logger.info("Daily challenge job started for {}", now.date())
     if not await redis.exists(key):
+        logger.info("No daily challenge data in Redis for {}, skipping", now.date())
         return
     async with with_db() as session:
         room = (
@@ -89,6 +91,7 @@ async def daily_challenge_job() -> None:
             )
         ).first()
         if room:
+            logger.info("Daily challenge room already exists, skipping")
             return
 
     try:
@@ -139,7 +142,9 @@ async def daily_challenge_job() -> None:
         )
 
 
-@get_scheduler().scheduled_job("cron", hour=0, minute=1, second=0, id="daily_challenge_last_top")
+@get_scheduler().scheduled_job(
+    "cron", hour=0, minute=1, second=0, id="daily_challenge_last_top", misfire_grace_time=300
+)
 async def process_daily_challenge_top() -> None:
     """Process daily challenge results and update user statistics.
 
@@ -149,6 +154,7 @@ async def process_daily_challenge_top() -> None:
     """
     async with with_db() as session:
         now = utcnow()
+        logger.info("Daily challenge top processing started for {}", now.date())
         room = (
             await session.exec(
                 select(Room).where(
@@ -158,8 +164,9 @@ async def process_daily_challenge_top() -> None:
                 )
             )
         ).first()
-        participated_users = []
+        participated_users: list[int] = []
         if room is not None:
+            logger.info("Found previous day room {} for processing", room.id)
             scores = (
                 await session.exec(
                     select(PlaylistBestScore)
@@ -172,26 +179,28 @@ async def process_daily_challenge_top() -> None:
                 )
             ).all()
             total_score_count = len(scores)
-            s = []
+            logger.info("Processing {} scores for room {}", total_score_count, room.id)
             for i, score in enumerate(scores):
                 stats = await session.get(DailyChallengeStats, score.user_id)
-                if stats is None:  # not execute
+                if stats is None:
                     continue
                 if stats.last_update is None or stats.last_update.replace(tzinfo=UTC).date() != now.date():
-                    if total_score_count < 10 or ceil(i + 1 / total_score_count) <= 0.1:
+                    if total_score_count < 10 or ceil((i + 1) / total_score_count) <= 0.1:
                         stats.top_10p_placements += 1
-                    if total_score_count < 2 or ceil(i + 1 / total_score_count) <= 0.5:
+                    if total_score_count < 2 or ceil((i + 1) / total_score_count) <= 0.5:
                         stats.top_50p_placements += 1
-                s.append(s)
                 participated_users.append(score.user_id)
                 stats.last_update = now
             await session.commit()
-            del s
+            logger.info("Processed {} participating users for {}", len(participated_users), now.date())
 
         user_ids = (await session.exec(select(User.id).where(col(User.id).not_in(participated_users)))).all()
+        reset_count = 0
         for id in user_ids:
             stats = await session.get(DailyChallengeStats, id)
-            if stats is None:  # not execute
+            if stats is None:
+                continue
+            if stats.last_update is not None and stats.last_update.replace(tzinfo=UTC).date() == now.date():
                 continue
             stats.daily_streak_current = 0
             if stats.last_weekly_streak and not are_same_weeks(
@@ -199,4 +208,11 @@ async def process_daily_challenge_top() -> None:
             ):
                 stats.weekly_streak_current = 0
             stats.last_update = now
+            reset_count += 1
         await session.commit()
+        logger.info(
+            "Daily challenge top processing completed for {}: {} participants, {} streaks reset",
+            now.date(),
+            len(participated_users),
+            reset_count,
+        )
