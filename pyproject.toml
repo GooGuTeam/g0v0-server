@@ -135,5 +135,5 @@ dev = [
     "pre-commit>=4.6.0",
     "pyright>=1.1.409",
     "ruff>=0.15.12",
-    "types-aioboto3[aioboto3,essential]>=15.0.0",
+    "types-aioboto3[aioboto3,essential]>=15.5.0",
 ]

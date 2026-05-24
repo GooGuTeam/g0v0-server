@@ -879,7 +879,7 @@ dev = [
     { name = "pre-commit", specifier = ">=4.6.0" },
     { name = "pyright", specifier = ">=1.1.409" },
     { name = "ruff", specifier = ">=0.15.12" },
-    { name = "types-aioboto3", extras = ["aioboto3", "essential"], specifier = ">=15.0.0" },
+    { name = "types-aioboto3", extras = ["aioboto3", "essential"], specifier = ">=15.5.0" },
 ]
 
 [[package]]
