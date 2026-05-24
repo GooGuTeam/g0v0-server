@@ -124,10 +124,10 @@ class RosuPerformanceCalculator(BasePerformanceCalculator):
                 flashlight=attr.pp_flashlight or 0,
                 effective_miss_count=attr.effective_miss_count or 0,
                 speed_deviation=attr.speed_deviation,
-                combo_based_estimated_miss_count=0,
-                score_based_estimated_miss_count=0,
-                aim_estimated_slider_breaks=0,
-                speed_estimated_slider_breaks=0,
+                combo_based_estimated_miss_count=attr.combo_based_estimated_miss_count or 0,
+                score_based_estimated_miss_count=attr.score_based_estimated_miss_count,
+                aim_estimated_slider_breaks=attr.aim_estimated_slider_breaks or 0,
+                speed_estimated_slider_breaks=attr.speed_estimated_slider_breaks or 0,
             )
         elif attr_class is TaikoPerformanceAttributes:
             return TaikoPerformanceAttributes(
@@ -188,19 +188,19 @@ class RosuPerformanceCalculator(BasePerformanceCalculator):
                 aim_difficult_strain_count=diff.aim_difficult_strain_count or 0,
                 speed_difficult_strain_count=diff.speed_difficult_strain_count or 0,
                 flashlight_difficulty=diff.flashlight or 0,
-                aim_top_weighted_slider_factor=0,
-                speed_top_weighted_slider_factor=0,
-                nested_score_per_object=0,
-                legacy_score_base_multiplier=0,
-                maximum_legacy_combo_score=0,
+                aim_top_weighted_slider_factor=diff.aim_top_weighted_slider_factor or 0,
+                speed_top_weighted_slider_factor=diff.speed_top_weighted_slider_factor or 0,
+                nested_score_per_object=diff.nested_score_per_object or 0,
+                legacy_score_base_multiplier=diff.legacy_score_base_multiplier or 0,
+                maximum_legacy_combo_score=diff.maximum_legacy_combo_score or 0,
             )
         elif attr_class is TaikoDifficultyAttributes:
             return TaikoDifficultyAttributes(
                 star_rating=diff.stars,
                 max_combo=diff.max_combo,
                 rhythm_difficulty=diff.rhythm or 0,
-                mono_stamina_factor=diff.stamina or 0,
-                consistency_factor=0,
+                mono_stamina_factor=diff.mono_stamina_factor or 0,
+                consistency_factor=diff.consistency_factor or 0,
             )
         else:
             return DifficultyAttributes(
