@@ -856,7 +856,7 @@ requires-dist = [
     { name = "newrelic", specifier = ">=10.1.0" },
     { name = "passlib", extras = ["bcrypt"], specifier = ">=1.7.4" },
     { name = "pillow", specifier = ">=12.2.0" },
-    { name = "pydantic", extras = ["email"], specifier = ">=2.5.0" },
+    { name = "pydantic", extras = ["email"], specifier = ">=2.13.4" },
     { name = "pydantic-settings", specifier = ">=2.14.1" },
     { name = "pyotp", specifier = ">=2.9.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
