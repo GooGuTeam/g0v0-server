@@ -12,7 +12,7 @@ dependencies = [
     "apscheduler>=3.11.0",
     "bcrypt>=4.1.2",
     "bleach>=6.1.0",
-    "cryptography>=41.0.7",
+    "cryptography>=48.0.0",
     "fast-depends>=3.0.5",
     "fastapi>=0.136.1",
     "fastapi-limiter>=0.2.0",
@@ -21,7 +21,7 @@ dependencies = [
     "jinja2>=3.1.0",
     "loguru>=0.7.3",
     "maxminddb>=2.8.2",
-    "newrelic>=10.1.0",
+    "newrelic>=13.0.1",
     "passlib[bcrypt]>=1.7.4",
     "pillow>=12.2.0",
     "pydantic-settings>=2.14.1",
@@ -42,7 +42,7 @@ authors = [{ name = "GooGuTeam" }]
 
 [project.optional-dependencies]
 rosu = [
-    "rosu-pp-py>=3.1.0",
+    "rosu-pp-py>=4.0.2",
 ]
 
 [tool.ruff]
