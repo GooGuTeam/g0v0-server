@@ -16,6 +16,7 @@ from ._base import DatabaseModel, included, ondemand
 from .user import User, UserDict, UserModel
 
 from pydantic import BaseModel
+from sqlalchemy.orm import Mapped
 from sqlmodel import (
     VARCHAR,
     BigInteger,
@@ -292,8 +293,8 @@ class ChatMessage(ChatMessageModel, table=True):
     """Database table model for chat messages."""
 
     __tablename__: str = "chat_messages"
-    user: User = Relationship(sa_relationship_kwargs={"lazy": "joined"})
-    channel: "ChatChannel" = Relationship()
+    user: Mapped[User] = Relationship(sa_relationship_kwargs={"lazy": "joined"})
+    channel: Mapped["ChatChannel"] = Relationship()
 
 
 class SilenceUser(UTCBaseModel, SQLModel, table=True):

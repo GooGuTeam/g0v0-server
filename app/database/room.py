@@ -25,6 +25,7 @@ from .user import User, UserDict, UserModel
 
 from pydantic import field_validator
 from sqlalchemy.ext.asyncio import AsyncAttrs
+from sqlalchemy.orm import Mapped
 from sqlmodel import BigInteger, Column, DateTime, Field, ForeignKey, Relationship, SQLModel, col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -218,8 +219,8 @@ class Room(AsyncAttrs, RoomModel, table=True):
     host_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
     password: str | None = Field(default=None)
 
-    host: User = Relationship()
-    playlist: list[Playlist] = Relationship(
+    host: Mapped[User] = Relationship()
+    playlist: Mapped[list[Playlist]] = Relationship(
         sa_relationship_kwargs={
             "lazy": "selectin",
             "cascade": "all, delete-orphan",

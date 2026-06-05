@@ -12,6 +12,7 @@ from app.helpers import utcnow
 from app.models.model import UTCBaseModel
 
 from pydantic import model_serializer
+from sqlalchemy.orm import Mapped
 from sqlmodel import (
     JSON,
     BigInteger,
@@ -58,7 +59,7 @@ class Event(UTCBaseModel, SQLModel, table=True):
         default=None,
         sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True),
     )
-    user: "User" = Relationship(back_populates="events")
+    user: Mapped["User"] = Relationship(back_populates="events")
 
     @model_serializer
     def serialize(self) -> dict:

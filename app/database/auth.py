@@ -14,6 +14,7 @@ from app.models.model import UTCBaseModel
 from .verification import LoginSession
 
 from sqlalchemy import Column, DateTime
+from sqlalchemy.orm import Mapped
 from sqlmodel import (
     JSON,
     BigInteger,
@@ -45,8 +46,8 @@ class OAuthToken(UTCBaseModel, SQLModel, table=True):
     refresh_token_expires_at: datetime = Field(sa_column=Column(DateTime, index=True))
     created_at: datetime = Field(default_factory=utcnow, sa_column=Column(DateTime))
 
-    user: "User" = Relationship()
-    login_session: LoginSession | None = Relationship(back_populates="token", passive_deletes=True)
+    user: Mapped["User"] = Relationship()
+    login_session: Mapped[LoginSession | None] = Relationship(back_populates="token", passive_deletes=True)
 
 
 class OAuthClient(UTCBaseModel, SQLModel, table=True):
@@ -86,4 +87,4 @@ class TotpKeys(SQLModel, table=True):
     backup_keys: list[str] = Field(default_factory=list, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=utcnow, sa_column=Column(DateTime))
 
-    user: "User" = Relationship(back_populates="totp_key")
+    user: Mapped["User"] = Relationship(back_populates="totp_key")

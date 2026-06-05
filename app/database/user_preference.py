@@ -7,6 +7,7 @@ beatmap downloads, and profile customization.
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
+from sqlalchemy.orm import Mapped
 from sqlmodel import JSON, BigInteger, Column, Field, ForeignKey, Relationship, SQLModel
 
 if TYPE_CHECKING:
@@ -106,4 +107,4 @@ class UserPreference(SQLModel, table=True):
     user_list_sort: UserListSort = UserListSort.LAST_VISIT
     user_list_view: UserListView = UserListView.CARD
 
-    user: "User" = Relationship(back_populates="user_preference")
+    user: Mapped["User"] = Relationship(back_populates="user_preference")

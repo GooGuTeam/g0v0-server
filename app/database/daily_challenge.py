@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from app.helpers import are_adjacent_weeks, utcnow
 from app.models.model import UTCBaseModel
 
+from sqlalchemy.orm import Mapped
 from sqlmodel import (
     BigInteger,
     Column,
@@ -55,7 +56,7 @@ class DailyChallengeStats(DailyChallengeStatsBase, table=True):
             primary_key=True,
         ),
     )
-    user: "User" = Relationship(back_populates="daily_challenge_stats")
+    user: Mapped["User"] = Relationship(back_populates="daily_challenge_stats")
 
 
 class DailyChallengeStatsResp(DailyChallengeStatsBase):

@@ -51,7 +51,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 if TYPE_CHECKING:
     from .favourite_beatmapset import FavouriteBeatmapset
     from .matchmaking import MatchmakingUserStats
-    from .relationship import Relationship, RelationshipDict
+    from .relationship import RelationshipDict
     from .statistics import UserStatisticsDict
 
 

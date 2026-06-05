@@ -18,6 +18,7 @@ from .user import User, UserDict
 from pydantic import BaseModel
 from sqlalchemy import JSON, Boolean, Column, DateTime, Text
 from sqlalchemy.ext.asyncio import AsyncAttrs
+from sqlalchemy.orm import Mapped
 from sqlmodel import Field, Relationship, SQLModel, col, exists, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -477,7 +478,7 @@ class Beatmapset(AsyncAttrs, BeatmapsetModel, table=True):
     beatmap_status: BeatmapRankStatus = Field(default=BeatmapRankStatus.GRAVEYARD, index=True)
 
     # optional
-    beatmaps: list["Beatmap"] = Relationship(back_populates="beatmapset")
+    beatmaps: Mapped[list["Beatmap"]] = Relationship(back_populates="beatmapset")
     beatmap_genre: Genre = Field(default=Genre.UNSPECIFIED, index=True)
     beatmap_language: Language = Field(default=Language.UNSPECIFIED, index=True)
     nominations_required: int = Field(default=0)
@@ -488,7 +489,7 @@ class Beatmapset(AsyncAttrs, BeatmapsetModel, table=True):
     hype_required: int = Field(default=0)
     availability_info: str | None = Field(default=None)
     download_disabled: bool = Field(default=False, sa_column=Column(Boolean))
-    favourites: list["FavouriteBeatmapset"] = Relationship(back_populates="beatmapset")
+    favourites: Mapped[list["FavouriteBeatmapset"]] = Relationship(back_populates="beatmapset")
 
     @classmethod
     async def from_resp_no_save(cls, resp: BeatmapsetDict) -> "Beatmapset":

@@ -10,6 +10,7 @@ from typing import Any
 from app.helpers import utcnow
 from app.models.notification import NotificationDetail, NotificationName
 
+from sqlalchemy.orm import Mapped
 from sqlmodel import (
     JSON,
     BigInteger,
@@ -54,7 +55,7 @@ class UserNotification(SQLModel, table=True):
     user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
     is_read: bool = Field(index=True)
 
-    notification: Notification = Relationship(sa_relationship_kwargs={"lazy": "joined"})
+    notification: Mapped[Notification] = Relationship(sa_relationship_kwargs={"lazy": "joined"})
 
 
 async def insert_notification(session: AsyncSession, detail: NotificationDetail):

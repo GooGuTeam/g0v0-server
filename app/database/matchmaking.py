@@ -11,6 +11,7 @@ from app.models.model import UTCBaseModel
 from app.models.mods import APIMod
 
 from sqlalchemy import Column, DateTime, ForeignKey, Index, SmallInteger
+from sqlalchemy.orm import Mapped
 from sqlmodel import (
     JSON,
     BigInteger,
@@ -58,8 +59,8 @@ class MatchmakingUserStats(MatchmakingUserStatsBase, table=True):
         Index("matchmaking_user_stats_pool_points_idx", "pool_id", "total_points"),
     )
 
-    user: "User" = Relationship(back_populates="matchmaking_stats", sa_relationship_kwargs={"lazy": "joined"})
-    pool: "MatchmakingPool" = Relationship()
+    user: Mapped["User"] = Relationship(back_populates="matchmaking_stats", sa_relationship_kwargs={"lazy": "joined"})
+    pool: Mapped["MatchmakingPool"] = Relationship()
 
 
 class MatchmakingPoolBase(SQLModel, UTCBaseModel):
@@ -91,7 +92,7 @@ class MatchmakingPool(MatchmakingPoolBase, table=True):
     __tablename__: str = "matchmaking_pools"
     __table_args__ = (Index("matchmaking_pools_ruleset_active_idx", "ruleset_id", "active"),)
 
-    beatmaps: list["MatchmakingPoolBeatmap"] = Relationship(
+    beatmaps: Mapped[list["MatchmakingPoolBeatmap"]] = Relationship(
         back_populates="pool",
         # sa_relationship_kwargs={
         #     "lazy": "selectin",
@@ -119,7 +120,7 @@ class MatchmakingPoolBeatmapBase(SQLModel, UTCBaseModel):
 class MatchmakingPoolBeatmap(MatchmakingPoolBeatmapBase, table=True):
     __tablename__: str = "matchmaking_pool_beatmaps"
 
-    pool: MatchmakingPool = Relationship(back_populates="beatmaps")
-    beatmap: Optional["Beatmap"] = Relationship(
+    pool: Mapped[MatchmakingPool] = Relationship(back_populates="beatmaps")
+    beatmap: Mapped[Optional["Beatmap"]] = Relationship(
         # sa_relationship_kwargs={"lazy": "joined"},
     )

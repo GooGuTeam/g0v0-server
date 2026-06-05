@@ -12,6 +12,7 @@ from app.helpers import utcnow
 from app.models.score import GameMode
 
 from pydantic import BaseModel
+from sqlalchemy.orm import Mapped
 from sqlmodel import (
     BigInteger,
     Column,
@@ -43,7 +44,7 @@ class RankHistory(SQLModel, table=True):
         sa_column=Column(Date, index=True),
     )
 
-    user: Optional["User"] = Relationship(back_populates="rank_history")
+    user: Mapped[Optional["User"]] = Relationship(back_populates="rank_history")
 
 
 class RankTop(SQLModel, table=True):

@@ -8,6 +8,7 @@ from struct import Struct
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
+from sqlalchemy.orm import Mapped
 from sqlmodel import (
     VARBINARY,
     Column,
@@ -31,7 +32,7 @@ class FailTime(SQLModel, table=True):
     exit: bytes = Field(sa_column=Column(VARBINARY(400), nullable=False))
     fail: bytes = Field(sa_column=Column(VARBINARY(400), nullable=False))
 
-    beatmap: "Beatmap" = Relationship(back_populates="failtimes")
+    beatmap: Mapped["Beatmap"] = Relationship(back_populates="failtimes")
 
     @property
     def exit_(self) -> list[int]:

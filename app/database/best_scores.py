@@ -10,6 +10,7 @@ from app.models.score import GameMode
 from .statistics import UserStatistics
 from .user import User
 
+from sqlalchemy.orm import Mapped
 from sqlmodel import (
     BigInteger,
     Column,
@@ -42,11 +43,11 @@ class BestScore(SQLModel, table=True):
         sa_column=Column(Float, default=0),
     )
 
-    user: User = Relationship()
-    score: "Score" = Relationship(
+    user: Mapped[User] = Relationship()
+    score: Mapped["Score"] = Relationship(
         back_populates="ranked_score",
     )
-    beatmap: "Beatmap" = Relationship()
+    beatmap: Mapped["Beatmap"] = Relationship()
 
     async def delete(self, session: AsyncSession):
         from .score import calculate_user_pp

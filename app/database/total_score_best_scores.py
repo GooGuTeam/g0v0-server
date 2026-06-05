@@ -12,6 +12,7 @@ from .statistics import UserStatistics
 from .user import User
 
 from sqlalchemy import Index
+from sqlalchemy.orm import Mapped
 from sqlmodel import (
     JSON,
     BigInteger,
@@ -50,15 +51,15 @@ class TotalScoreBestScore(SQLModel, table=True):
     )
     rank: Rank
 
-    user: User = Relationship()
-    score: "Score" = Relationship(
+    user: Mapped[User] = Relationship()
+    score: Mapped["Score"] = Relationship(
         sa_relationship_kwargs={
             "foreign_keys": "[TotalScoreBestScore.score_id]",
             "lazy": "joined",
         },
         back_populates="best_score",
     )
-    beatmap: "Beatmap" = Relationship()
+    beatmap: Mapped["Beatmap"] = Relationship()
 
     async def delete(self, session: AsyncSession):
         from .score import Score

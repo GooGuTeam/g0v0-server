@@ -6,6 +6,7 @@ This module tracks monthly play counts and replay watched counts for users.
 from datetime import date
 from typing import TYPE_CHECKING
 
+from sqlalchemy.orm import Mapped
 from sqlmodel import (
     BigInteger,
     Column,
@@ -37,7 +38,7 @@ class MonthlyPlaycounts(CountBase, table=True):
         sa_column=Column(BigInteger, primary_key=True, autoincrement=True),
     )
     user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
-    user: "User" = Relationship(back_populates="monthly_playcounts")
+    user: Mapped["User"] = Relationship(back_populates="monthly_playcounts")
 
 
 class ReplayWatchedCount(CountBase, table=True):
@@ -50,7 +51,7 @@ class ReplayWatchedCount(CountBase, table=True):
         sa_column=Column(BigInteger, primary_key=True, autoincrement=True),
     )
     user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
-    user: "User" = Relationship(back_populates="replays_watched_counts")
+    user: Mapped["User"] = Relationship(back_populates="replays_watched_counts")
 
 
 class CountResp(SQLModel):

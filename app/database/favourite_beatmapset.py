@@ -9,6 +9,7 @@ from .beatmapset import Beatmapset
 from .user import User
 
 from sqlalchemy.ext.asyncio import AsyncAttrs
+from sqlalchemy.orm import Mapped
 from sqlmodel import (
     BigInteger,
     Column,
@@ -52,8 +53,8 @@ class FavouriteBeatmapset(AsyncAttrs, SQLModel, table=True):
         ),
     )
 
-    user: User = Relationship(back_populates="favourite_beatmapsets")
-    beatmapset: Beatmapset = Relationship(
+    user: Mapped[User] = Relationship(back_populates="favourite_beatmapsets")
+    beatmapset: Mapped[Beatmapset] = Relationship(
         sa_relationship_kwargs={
             "lazy": "selectin",
         },

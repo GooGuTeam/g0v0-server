@@ -16,6 +16,7 @@ from .rank_history import RankHistory
 
 from pydantic import field_validator
 from sqlalchemy.ext.asyncio import AsyncAttrs
+from sqlalchemy.orm import Mapped
 from sqlmodel import (
     BigInteger,
     Column,
@@ -174,7 +175,7 @@ class UserStatistics(AsyncAttrs, UserStatisticsModel, table=True):
 
     level_current: float = Field(default=1)
 
-    user: "User" = Relationship(back_populates="statistics")
+    user: Mapped["User"] = Relationship(back_populates="statistics")
 
 
 async def get_rank(session: AsyncSession, statistics: UserStatistics, country: str | None = None) -> int | None:

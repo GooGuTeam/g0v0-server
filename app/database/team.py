@@ -169,8 +169,8 @@ class TeamMember(SQLModel, UTCBaseModel, table=True):
     team_id: int = Field(foreign_key="teams.id")
     joined_at: datetime = Field(default_factory=utcnow, sa_column=Column(DateTime))
 
-    user: "User" = Relationship(back_populates="team_membership", sa_relationship_kwargs={"lazy": "joined"})
-    team: "Team" = Relationship(back_populates="members", sa_relationship_kwargs={"lazy": "joined"})
+    user: Mapped["User"] = Relationship(back_populates="team_membership", sa_relationship_kwargs={"lazy": "joined"})
+    team: Mapped["Team"] = Relationship(back_populates="members", sa_relationship_kwargs={"lazy": "joined"})
 
 
 class TeamRequest(SQLModel, UTCBaseModel, table=True):
@@ -182,5 +182,5 @@ class TeamRequest(SQLModel, UTCBaseModel, table=True):
     team_id: int = Field(foreign_key="teams.id", primary_key=True)
     requested_at: datetime = Field(default_factory=utcnow, sa_column=Column(DateTime))
 
-    user: "User" = Relationship(sa_relationship_kwargs={"lazy": "joined"})
-    team: "Team" = Relationship(sa_relationship_kwargs={"lazy": "joined"})
+    user: Mapped["User"] = Relationship(sa_relationship_kwargs={"lazy": "joined"})
+    team: Mapped["Team"] = Relationship(sa_relationship_kwargs={"lazy": "joined"})

@@ -12,6 +12,7 @@ from app.models.playlist import PlaylistItem
 from ._base import DatabaseModel, ondemand
 from .beatmap import Beatmap, BeatmapDict, BeatmapModel
 
+from sqlalchemy.orm import Mapped
 from sqlmodel import (
     JSON,
     BigInteger,
@@ -110,12 +111,12 @@ class Playlist(PlaylistModel, table=True):
     __tablename__: str = "room_playlists"
     db_id: int = Field(default=None, primary_key=True, index=True, exclude=True)
 
-    beatmap: Beatmap = Relationship(
+    beatmap: Mapped[Beatmap] = Relationship(
         sa_relationship_kwargs={
             "lazy": "joined",
         }
     )
-    room: "Room" = Relationship()
+    room: Mapped["Room"] = Relationship()
     updated_at: datetime | None = Field(
         default=None, sa_column_kwargs={"server_default": func.now(), "onupdate": func.now()}
     )

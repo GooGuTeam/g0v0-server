@@ -17,7 +17,7 @@ from app.models.score import GameMode
 from .events import Event, EventType
 
 from redis.asyncio import Redis
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import Mapped, joinedload
 from sqlmodel import (
     BigInteger,
     Column,
@@ -48,7 +48,7 @@ class UserAchievement(UserAchievementBase, table=True):
 
     id: int | None = Field(default=None, primary_key=True, index=True)
     user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id")), exclude=True)
-    user: "User" = Relationship(back_populates="achievement")
+    user: Mapped["User"] = Relationship(back_populates="achievement")
 
 
 class UserAchievementResp(UserAchievementBase):

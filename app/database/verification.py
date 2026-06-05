@@ -12,6 +12,7 @@ from app.models.model import UserAgentInfo, UTCBaseModel
 
 from pydantic import BaseModel
 from sqlalchemy import BigInteger, Column, ForeignKey
+from sqlalchemy.orm import Mapped
 from sqlmodel import VARCHAR, DateTime, Field, Integer, Relationship, SQLModel, Text
 
 if TYPE_CHECKING:
@@ -72,8 +73,8 @@ class LoginSession(LoginSessionBase, table=True):
     web_uuid: str | None = Field(sa_column=Column(VARCHAR(36), nullable=True), default=None, exclude=True)
     verification_method: str | None = Field(default=None, max_length=20, exclude=True)  # totp/mail
 
-    device: Optional["TrustedDevice"] = Relationship(back_populates="sessions")
-    token: Optional["OAuthToken"] = Relationship(back_populates="login_session")
+    device: Mapped[Optional["TrustedDevice"]] = Relationship(back_populates="sessions")
+    token: Mapped[Optional["OAuthToken"]] = Relationship(back_populates="login_session")
 
 
 class LoginSessionResp(UTCBaseModel, LoginSessionBase):
@@ -117,7 +118,7 @@ class TrustedDevice(TrustedDeviceBase, table=True):
     __tablename__: str = "trusted_devices"
     web_uuid: str | None = Field(sa_column=Column(VARCHAR(36), nullable=True), default=None)
 
-    sessions: list["LoginSession"] = Relationship(back_populates="device", passive_deletes=True)
+    sessions: Mapped[list["LoginSession"]] = Relationship(back_populates="device", passive_deletes=True)
 
 
 class TrustedDeviceResp(UTCBaseModel, TrustedDeviceBase):

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from .user import User
 
 from redis.asyncio import Redis
+from sqlalchemy.orm import Mapped
 from sqlmodel import (
     BigInteger,
     Column,
@@ -37,8 +38,8 @@ class PlaylistBestScore(SQLModel, table=True):
     total_score: int = Field(default=0, sa_column=Column(BigInteger))
     attempts: int = Field(default=0)  # playlist
 
-    user: User = Relationship()
-    score: "Score" = Relationship(
+    user: Mapped[User] = Relationship()
+    score: Mapped["Score"] = Relationship(
         sa_relationship_kwargs={
             "foreign_keys": "[PlaylistBestScore.score_id]",
             "lazy": "joined",

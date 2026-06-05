@@ -10,6 +10,7 @@ from .playlist_best_score import PlaylistBestScore
 from .user import User, UserDict, UserModel
 
 from sqlalchemy.ext.asyncio import AsyncAttrs
+from sqlalchemy.orm import Mapped
 from sqlmodel import (
     BigInteger,
     Column,
@@ -92,7 +93,7 @@ class ItemAttemptsCount(AsyncAttrs, ItemAttemptsCountModel, table=True):
     __tablename__: str = "item_attempts_count"
     id: int | None = Field(default=None, primary_key=True)
 
-    user: User = Relationship()
+    user: Mapped[User] = Relationship()
 
     async def get_position(self, session: AsyncSession) -> int:
         rownum = (

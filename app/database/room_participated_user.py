@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from app.helpers import utcnow
 
 from sqlalchemy.ext.asyncio import AsyncAttrs
+from sqlalchemy.orm import Mapped
 from sqlmodel import (
     BigInteger,
     Column,
@@ -38,5 +39,5 @@ class RoomParticipatedUser(AsyncAttrs, SQLModel, table=True):
     )
     left_at: datetime | None = Field(sa_column=Column(DateTime(timezone=True), nullable=True), default=None)
 
-    room: "Room" = Relationship()
-    user: "User" = Relationship()
+    room: Mapped["Room"] = Relationship()
+    user: Mapped["User"] = Relationship()

@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from app.helpers import utcnow
 from app.models.model import UTCBaseModel
 
+from sqlalchemy.orm import Mapped
 from sqlmodel import BigInteger, Column, Field, ForeignKey, Integer, Relationship, SQLModel
 
 if TYPE_CHECKING:
@@ -51,7 +52,7 @@ class UserAccountHistory(UserAccountHistoryBase, table=True):
     )
     user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
 
-    user: "User" = Relationship(back_populates="account_history")
+    user: Mapped["User"] = Relationship(back_populates="account_history")
 
 
 class UserAccountHistoryResp(UserAccountHistoryBase):

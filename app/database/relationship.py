@@ -10,6 +10,7 @@ from app.models.score import GameMode
 
 from ._base import DatabaseModel, included, ondemand
 
+from sqlalchemy.orm import Mapped
 from sqlmodel import (
     BigInteger,
     Column,
@@ -103,7 +104,7 @@ class RelationshipModel(DatabaseModel[RelationshipDict]):
 class Relationship(RelationshipModel, table=True):
     """Database table for user relationships (friends/blocks)."""
 
-    target: "User" = SQLRelationship(
+    target: Mapped["User"] = SQLRelationship(
         sa_relationship_kwargs={
             "foreign_keys": "[Relationship.target_id]",
             "lazy": "selectin",
