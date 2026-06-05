@@ -8,7 +8,6 @@ Unified email service providing:
 
 import asyncio
 from collections.abc import Mapping
-import concurrent.futures
 from datetime import datetime
 import json
 import secrets
@@ -17,13 +16,14 @@ from typing import Any, ClassVar, cast
 import uuid
 
 from app.config import settings
+from app.dependencies.database import get_redis
 from app.helpers import bg_tasks
 from app.log import logger
 from app.path import STATIC_DIR
 from app.service.mail_providers import get_provider, init_provider
 
 from jinja2 import Environment, FileSystemLoader, Template
-import redis as sync_redis
+from redis.asyncio import Redis
 from redis.typing import EncodableT, FieldT
 
 
@@ -49,9 +49,8 @@ class EmailService:
     def __init__(self):
         """Initialize email service with Redis queue and Jinja2 templates."""
         # Redis queue setup
-        self.redis = sync_redis.from_url(settings.redis_url, decode_responses=True, db=0)
+        self.redis: Redis = get_redis()
         self._processing = False
-        self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
         self._retry_limit = 3
 
         # Jinja2 template setup
@@ -66,11 +65,6 @@ class EmailService:
         logger.info(f"Email service initialized with template directory: {template_dir}")
 
     # ==================== Queue Management ====================
-
-    async def _run_in_executor(self, func, *args):
-        """Run synchronous operation in thread pool."""
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(self._executor, func, *args)
 
     async def start_processing(self):
         """Start email processing task."""
@@ -119,14 +113,12 @@ class EmailService:
             "retry_count": "0",
         }
 
-        await self._run_in_executor(
-            lambda: self.redis.hset(
-                f"email:{email_id}",
-                mapping=cast(Mapping[FieldT, EncodableT], email_data),
-            )
+        await self.redis.hset(
+            f"email:{email_id}",
+            mapping=cast(Mapping[FieldT, EncodableT], email_data),
         )
-        await self._run_in_executor(self.redis.expire, f"email:{email_id}", 86400)
-        await self._run_in_executor(self.redis.lpush, "email_queue", email_id)
+        await self.redis.expire(f"email:{email_id}", 86400)
+        await self.redis.lpush("email_queue", email_id)
 
         logger.info(f"Email enqueued with id: {email_id} to {to_email}")
         return email_id
@@ -140,7 +132,7 @@ class EmailService:
         Returns:
             Email task status information.
         """
-        email_data = await self._run_in_executor(self.redis.hgetall, f"email:{email_id}")
+        email_data = await self.redis.hgetall(f"email:{email_id}")
 
         if email_data:
             return {
@@ -156,11 +148,7 @@ class EmailService:
 
         while self._processing:
             try:
-
-                def brpop_operation():
-                    return self.redis.brpop(["email_queue"], timeout=5)
-
-                result = await self._run_in_executor(brpop_operation)
+                result = await self.redis.brpop(["email_queue"], timeout=5)
 
                 if not result:
                     await asyncio.sleep(1)
@@ -175,14 +163,13 @@ class EmailService:
                     logger.warning(f"Email data not found for id: {email_id}")
                     continue
 
-                await self._run_in_executor(self.redis.hset, f"email:{email_id}", "status", "sending")
+                await self.redis.hset(f"email:{email_id}", "status", "sending")
 
                 success = await self._send_email(email_data)
 
                 if success:
-                    await self._run_in_executor(self.redis.hset, f"email:{email_id}", "status", "sent")
-                    await self._run_in_executor(
-                        self.redis.hset,
+                    await self.redis.hset(f"email:{email_id}", "status", "sent")
+                    await self.redis.hset(
                         f"email:{email_id}",
                         "sent_at",
                         datetime.now().isoformat(),
@@ -192,15 +179,13 @@ class EmailService:
                     retry_count = int(email_data.get("retry_count", "0")) + 1
 
                     if retry_count <= self._retry_limit:
-                        await self._run_in_executor(
-                            self.redis.hset,
+                        await self.redis.hset(
                             f"email:{email_id}",
                             "retry_count",
                             str(retry_count),
                         )
-                        await self._run_in_executor(self.redis.hset, f"email:{email_id}", "status", "pending")
-                        await self._run_in_executor(
-                            self.redis.hset,
+                        await self.redis.hset(f"email:{email_id}", "status", "pending")
+                        await self.redis.hset(
                             f"email:{email_id}",
                             "last_retry",
                             datetime.now().isoformat(),
@@ -211,7 +196,7 @@ class EmailService:
 
                         logger.warning(f"Email {email_id} will be retried in {delay} seconds (attempt {retry_count})")
                     else:
-                        await self._run_in_executor(self.redis.hset, f"email:{email_id}", "status", "failed")
+                        await self.redis.hset(f"email:{email_id}", "status", "failed")
                         logger.error(f"Email {email_id} failed after {retry_count} attempts")
 
             except Exception as e:
@@ -221,7 +206,7 @@ class EmailService:
     async def _delayed_retry(self, email_id: str, delay: int):
         """Delayed retry for sending email."""
         await asyncio.sleep(delay)
-        await self._run_in_executor(self.redis.lpush, "email_queue", email_id)
+        await self.redis.lpush("email_queue", email_id)
         logger.info(f"Re-queued email {email_id} for retry after {delay} seconds")
 
     async def _send_email(self, email_data: dict[str, Any]) -> bool:
