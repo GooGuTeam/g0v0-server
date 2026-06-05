@@ -549,7 +549,12 @@ class Score(ScoreModel, table=True):
         return ScoreData.from_score(self)
 
 
-MultiplayScoreDict = ScoreModel.generate_typeddict(tuple(Score.MULTIPLAYER_BASE_INCLUDES))
+if TYPE_CHECKING:
+
+    class MultiplayScoreDict(ScoreDict):
+        pass
+else:
+    MultiplayScoreDict = ScoreModel.generate_typeddict(tuple(Score.MULTIPLAYER_BASE_INCLUDES))
 
 
 class LegacyStatistics(BaseModel):
