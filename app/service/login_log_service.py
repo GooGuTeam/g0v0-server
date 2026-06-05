@@ -3,11 +3,9 @@
 Records user login attempts with IP and geolocation information.
 """
 
-import asyncio
-
 from app.database.user_login_log import UserLoginLog
 from app.dependencies.geoip import get_client_ip, get_geoip_helper, normalize_ip
-from app.helpers import utcnow
+from app.helpers import run_in_threadpool, utcnow
 from app.log import logger
 
 from fastapi import Request
@@ -65,8 +63,7 @@ class LoginLogService:
             geoip = get_geoip_helper()
 
             # Run GeoIP query in background thread (avoid blocking)
-            loop = asyncio.get_event_loop()
-            geo_info = await loop.run_in_executor(None, lambda: geoip.lookup(ip_address))
+            geo_info = await run_in_threadpool(geoip.lookup, ip_address)
 
             if geo_info:
                 login_log.country_code = geo_info.get("country_iso", "")

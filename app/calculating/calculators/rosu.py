@@ -4,11 +4,11 @@ References:
   - https://github.com/MaxOhn/rosu-pp-py
 """
 
-from asyncio import get_event_loop
 from copy import deepcopy
 from typing import ClassVar
 
 from app.calculating import clamp
+from app.helpers import run_in_threadpool
 from app.models.mods import APIMod
 from app.models.performance import (
     DifficultyAttributes,
@@ -165,7 +165,7 @@ class RosuPerformanceCalculator(BasePerformanceCalculator):
                 n50=score.n50,
                 misses=score.nmiss,
             )
-            attr = await get_event_loop().run_in_executor(None, perf.calculate, map)
+            attr = await run_in_threadpool(perf.calculate, map)
             return self._perf_attr_to_model(attr, score.gamemode.to_base_ruleset())
         except rosu.ParseError as e:  # pyright: ignore[reportAttributeAccessIssue]
             raise PerformanceError(f"Beatmap parse error: {e}")
@@ -216,7 +216,7 @@ class RosuPerformanceCalculator(BasePerformanceCalculator):
             if gamemode is not None:
                 map.convert(self._to_rosu_mode(gamemode), mods)  # pyright: ignore[reportArgumentType]
             diff_calculator = rosu.Difficulty(mods=mods)
-            diff = await get_event_loop().run_in_executor(None, diff_calculator.calculate, map)
+            diff = await run_in_threadpool(diff_calculator.calculate, map)
             return self._diff_attr_to_model(
                 diff, gamemode.to_base_ruleset() if gamemode else self._from_rosu_mode(diff.mode)
             )
