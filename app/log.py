@@ -333,7 +333,7 @@ logging.getLogger("apscheduler").setLevel("INFO")
 
 def add_file_logger() -> None:
     logger.add(
-        "logs/{time:YYYY-MM-DD-HH:mm}.log.tar.gz",
+        "logs/{time:YYYY-MM-DD-HH:mm}.log",
         rotation="6 hours",
         retention="30 days",
         compression="tar.gz",
