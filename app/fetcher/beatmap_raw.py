@@ -234,6 +234,8 @@ class BeatmapRawFetcher(BaseFetcher):
             if content:
                 # Extend cache TTL
                 await redis.expire(cache_key, cache_expire)
+                if isinstance(content, bytes):
+                    return content.decode("utf-8")
                 return content
 
         # Fetch and cache

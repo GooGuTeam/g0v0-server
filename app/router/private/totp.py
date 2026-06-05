@@ -3,7 +3,7 @@
 Provides APIs for enabling, disabling, and managing two-factor authentication.
 """
 
-from typing import Annotated
+from typing import Annotated, cast
 
 from app.auth import (
     check_totp_backup_code,
@@ -76,8 +76,8 @@ async def start_create_totp(
     if await current_user.awaitable_attrs.totp_key:
         raise RequestError(ErrorType.TOTP_ALREADY_ENABLED)
 
-    previous = await redis.hgetall(totp_redis_key(current_user))  # pyright: ignore[reportGeneralTypeIssues]
-    if previous:  # pyright: ignore[reportGeneralTypeIssues]
+    previous = cast(dict[str, str], await redis.hgetall(totp_redis_key(current_user)))
+    if previous:
         from app.auth import _generate_totp_account_label, _generate_totp_issuer_name
 
         account_label = _generate_totp_account_label(current_user)

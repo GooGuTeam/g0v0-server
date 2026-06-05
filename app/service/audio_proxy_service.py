@@ -56,8 +56,11 @@ class AudioProxyService:
             metadata = await self.redis_text.get(metadata_key)
 
             if audio_data and metadata:
+                if isinstance(audio_data, str):
+                    audio_data = audio_data.encode("utf-8")
+                if isinstance(metadata, bytes):
+                    metadata = metadata.decode("utf-8")
                 logger.debug(f"Beatmapset audio cache hit for ID: {beatmapset_id}")
-                # audio_data is already bytes type, metadata is str type
                 return audio_data, metadata
             return None
         except (redis.RedisError, redis.ConnectionError) as e:

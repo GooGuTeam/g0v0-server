@@ -358,7 +358,9 @@ class UserCacheService:
         try:
             user_keys = await self.redis.keys("user:*")
             v1_user_keys = await self.redis.keys("v1_user:*")
-            all_keys = user_keys + v1_user_keys
+            decoded_user_keys = [key.decode("utf-8") if isinstance(key, bytes) else key for key in user_keys]
+            decoded_v1_user_keys = [key.decode("utf-8") if isinstance(key, bytes) else key for key in v1_user_keys]
+            all_keys = decoded_user_keys + decoded_v1_user_keys
             total_size = 0
 
             for key in all_keys[:100]:  # Limit check count
@@ -371,10 +373,12 @@ class UserCacheService:
                     continue
 
             return {
-                "cached_users": len([k for k in user_keys if ":scores:" not in k and ":beatmapsets:" not in k]),
-                "cached_v1_users": len([k for k in v1_user_keys if ":scores:" not in k]),
-                "cached_user_scores": len([k for k in user_keys if ":scores:" in k]),
-                "cached_user_beatmapsets": len([k for k in user_keys if ":beatmapsets:" in k]),
+                "cached_users": len(
+                    [k for k in decoded_user_keys if ":scores:" not in k and ":beatmapsets:" not in k]
+                ),
+                "cached_v1_users": len([k for k in decoded_v1_user_keys if ":scores:" not in k]),
+                "cached_user_scores": len([k for k in decoded_user_keys if ":scores:" in k]),
+                "cached_user_beatmapsets": len([k for k in decoded_user_keys if ":beatmapsets:" in k]),
                 "total_cached_entries": len(all_keys),
                 "estimated_total_size_mb": (round(total_size / 1024 / 1024, 2) if total_size > 0 else 0),
                 "refreshing": self._refreshing,

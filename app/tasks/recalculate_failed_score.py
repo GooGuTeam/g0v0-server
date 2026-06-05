@@ -29,7 +29,7 @@ async def recalculate_failed_score() -> None:
     need_add = set()
     affected_user = set()
     while True:
-        scores = await redis.lpop("score:need_recalculate", 100)  # pyright: ignore[reportGeneralTypeIssues]
+        scores = await redis.lpop("score:need_recalculate", 100)
         if not scores:
             break
         if isinstance(scores, bytes):
@@ -67,4 +67,4 @@ async def recalculate_failed_score() -> None:
                 stats.pp, stats.hit_accuracy = await calculate_user_pp(session, user_id, gamemode)
             await session.commit()
     if need_add:
-        await redis.rpush("score:need_recalculate", *need_add)  # pyright: ignore[reportGeneralTypeIssues]
+        await redis.rpush("score:need_recalculate", *need_add)

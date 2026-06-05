@@ -95,10 +95,10 @@ async def daily_challenge_job() -> None:
             return
 
     try:
-        beatmap = await redis.hget(key, "beatmap")  # pyright: ignore[reportGeneralTypeIssues]
-        ruleset_id = await redis.hget(key, "ruleset_id")  # pyright: ignore[reportGeneralTypeIssues]
-        required_mods = await redis.hget(key, "required_mods")  # pyright: ignore[reportGeneralTypeIssues]
-        allowed_mods = await redis.hget(key, "allowed_mods")  # pyright: ignore[reportGeneralTypeIssues]
+        beatmap = await redis.hget(key, "beatmap")
+        ruleset_id = await redis.hget(key, "ruleset_id")
+        required_mods = await redis.hget(key, "required_mods")
+        allowed_mods = await redis.hget(key, "allowed_mods")
 
         if beatmap is None or ruleset_id is None:
             logger.warning(f"Missing required data for daily challenge {now}. Will try again in 5 minutes.")

@@ -202,7 +202,7 @@ async def generate_oauth_code(
         raise RequestError(ErrorType.REDIRECT_URI_NOT_ALLOWED)
 
     code = secrets.token_urlsafe(80)
-    await redis.hset(  # pyright: ignore[reportGeneralTypeIssues]
+    await redis.hset(
         f"oauth:code:{client_id}:{code}",
         mapping={"user_id": current_user.id, "scopes": ",".join(scopes)},
     )

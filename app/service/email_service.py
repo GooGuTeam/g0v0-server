@@ -7,12 +7,13 @@ Unified email service providing:
 """
 
 import asyncio
+from collections.abc import Mapping
 import concurrent.futures
 from datetime import datetime
 import json
 import secrets
 import string
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 import uuid
 
 from app.config import settings
@@ -23,6 +24,7 @@ from app.service.mail_providers import get_provider, init_provider
 
 from jinja2 import Environment, FileSystemLoader, Template
 import redis as sync_redis
+from redis.typing import EncodableT, FieldT
 
 
 class EmailService:
@@ -117,7 +119,12 @@ class EmailService:
             "retry_count": "0",
         }
 
-        await self._run_in_executor(lambda: self.redis.hset(f"email:{email_id}", mapping=email_data))
+        await self._run_in_executor(
+            lambda: self.redis.hset(
+                f"email:{email_id}",
+                mapping=cast(Mapping[FieldT, EncodableT], email_data),
+            )
+        )
         await self._run_in_executor(self.redis.expire, f"email:{email_id}", 86400)
         await self._run_in_executor(self.redis.lpush, "email_queue", email_id)
 

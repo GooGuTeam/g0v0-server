@@ -20,6 +20,7 @@ import hashlib
 import re
 import secrets
 import string
+from typing import cast
 
 from app.config import settings
 from app.const import BACKUP_CODE_LENGTH
@@ -450,12 +451,12 @@ async def get_user_by_authorization_code(
     Returns:
         A tuple of (User, scopes) if found, None otherwise.
     """
-    user_id = await redis.hget(f"oauth:code:{client_id}:{code}", "user_id")  # pyright: ignore[reportGeneralTypeIssues]
-    scopes = await redis.hget(f"oauth:code:{client_id}:{code}", "scopes")  # pyright: ignore[reportGeneralTypeIssues]
+    user_id = await redis.hget(f"oauth:code:{client_id}:{code}", "user_id")
+    scopes = cast(str, await redis.hget(f"oauth:code:{client_id}:{code}", "scopes"))
     if not user_id or not scopes:
         return None
 
-    await redis.hdel(f"oauth:code:{client_id}:{code}", "user_id", "scopes")  # pyright: ignore[reportGeneralTypeIssues]
+    await redis.hdel(f"oauth:code:{client_id}:{code}", "user_id", "scopes")
 
     statement = select(User).where(User.id == int(user_id))
     user = (await db.exec(statement)).first()
@@ -528,7 +529,7 @@ async def start_create_totp_key(user: User, redis: Redis) -> StartCreateTotpKeyR
         StartCreateTotpKeyResp with secret and provisioning URI.
     """
     secret = pyotp.random_base32()
-    await redis.hset(totp_redis_key(user), mapping={"secret": secret, "fails": 0})  # pyright: ignore[reportGeneralTypeIssues]
+    await redis.hset(totp_redis_key(user), mapping={"secret": secret, "fails": 0})
     await redis.expire(totp_redis_key(user), 300)
 
     # Generate complete account label and issuer info
@@ -631,24 +632,24 @@ async def finish_create_totp_key(
         A tuple of (FinishStatus, backup_codes). Backup codes are only
         returned on success.
     """
-    data = await redis.hgetall(totp_redis_key(user))  # pyright: ignore[reportGeneralTypeIssues]
+    data = await redis.hgetall(totp_redis_key(user))
     if not data or "secret" not in data or "fails" not in data:
         return FinishStatus.INVALID, []
 
-    secret = data["secret"]
+    secret = cast(str, data["secret"])
     fails = int(data["fails"])
 
     if fails >= 3:
-        await redis.delete(totp_redis_key(user))  # pyright: ignore[reportGeneralTypeIssues]
+        await redis.delete(totp_redis_key(user))
         return FinishStatus.TOO_MANY_ATTEMPTS, []
 
     if verify_totp_key(secret, code):
-        await redis.delete(totp_redis_key(user))  # pyright: ignore[reportGeneralTypeIssues]
+        await redis.delete(totp_redis_key(user))
         backup_codes = await _store_totp_key(user, secret, db)
         return FinishStatus.SUCCESS, backup_codes
     else:
         fails += 1
-        await redis.hset(totp_redis_key(user), "fails", str(fails))  # pyright: ignore[reportGeneralTypeIssues]
+        await redis.hset(totp_redis_key(user), "fails", str(fails))
         return FinishStatus.FAILED, []
 
 

@@ -549,7 +549,7 @@ class Score(ScoreModel, table=True):
         return ScoreData.from_score(self)
 
 
-MultiplayScoreDict = ScoreModel.generate_typeddict(tuple(Score.MULTIPLAYER_BASE_INCLUDES))  # pyright: ignore[reportGeneralTypeIssues]
+MultiplayScoreDict = ScoreModel.generate_typeddict(tuple(Score.MULTIPLAYER_BASE_INCLUDES))
 
 
 class LegacyStatistics(BaseModel):
@@ -1229,7 +1229,7 @@ async def _process_score_pp(score: "Score", session: AsyncSession, redis: Redis,
         return
     pp, successed = await pre_fetch_and_calculate_pp(score, session, redis, fetcher)
     if not successed:
-        await redis.rpush("score:need_recalculate", score.id)  # pyright: ignore[reportGeneralTypeIssues]
+        await redis.rpush("score:need_recalculate", score.id)
         logger.warning("Queued score {score_id} for PP recalculation", score_id=score.id)
         return
     score.pp = pp

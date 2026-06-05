@@ -358,7 +358,14 @@ class LoginSessionService:
 
     @classmethod
     async def get_login_method(cls, user_id: int, token_id: int, redis: Redis) -> Literal["totp", "mail"] | None:
-        return await redis.get(cls._session_verify_redis_key(user_id, token_id))
+        method = await redis.get(cls._session_verify_redis_key(user_id, token_id))
+        if method is None:
+            return None
+        if isinstance(method, bytes):
+            method = method.decode("utf-8")
+        if method in ("totp", "mail"):
+            return method
+        return None
 
     @classmethod
     async def set_login_method(cls, user_id: int, token_id: int, method: Literal["totp", "mail"], redis: Redis) -> None:
