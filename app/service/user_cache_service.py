@@ -373,9 +373,7 @@ class UserCacheService:
                     continue
 
             return {
-                "cached_users": len(
-                    [k for k in decoded_user_keys if ":scores:" not in k and ":beatmapsets:" not in k]
-                ),
+                "cached_users": len([k for k in decoded_user_keys if ":scores:" not in k and ":beatmapsets:" not in k]),
                 "cached_v1_users": len([k for k in decoded_v1_user_keys if ":scores:" not in k]),
                 "cached_user_scores": len([k for k in decoded_user_keys if ":scores:" in k]),
                 "cached_user_beatmapsets": len([k for k in decoded_user_keys if ":beatmapsets:" in k]),
