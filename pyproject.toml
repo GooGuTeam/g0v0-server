@@ -11,7 +11,7 @@ dependencies = [
     "alembic>=1.12.1",
     "apscheduler>=3.11.0",
     "bcrypt>=4.1.2",
-    "bleach>=6.1.0",
+    "bleach>=6.4.0",
     "cryptography>=48.0.0",
     "fast-depends>=3.0.5",
     "fastapi>=0.136.3",
@@ -21,7 +21,7 @@ dependencies = [
     "jinja2>=3.1.0",
     "loguru>=0.7.3",
     "maxminddb>=2.8.2",
-    "newrelic>=13.1.0",
+    "newrelic>=13.1.1",
     "passlib[bcrypt]>=1.7.4",
     "pillow>=12.2.0",
     "pydantic-settings>=2.14.1",
@@ -29,7 +29,7 @@ dependencies = [
     "pyotp>=2.9.0",
     "python-dotenv>=1.0.0",
     "python-jose[cryptography]>=3.5.0",
-    "python-multipart>=0.0.31",
+    "python-multipart>=0.0.32",
     "redis>=8.0.0",
     "regex>=2026.5.9",
     "sentry-sdk[fastapi,httpx,loguru,sqlalchemy]>=2.61.0",
@@ -131,9 +131,9 @@ g0v0-migrations = { workspace = true }
 
 [dependency-groups]
 dev = [
-    "datamodel-code-generator>=0.59.1",
+    "datamodel-code-generator>=0.60.0",
     "pre-commit>=4.6.0",
     "pyright>=1.1.410",
-    "ruff>=0.15.15",
+    "ruff>=0.15.16",
     "types-aioboto3[aioboto3,essential]>=15.5.0",
 ]
