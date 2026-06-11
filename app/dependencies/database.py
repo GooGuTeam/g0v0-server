@@ -37,6 +37,16 @@ engine = create_async_engine(
 # Redis connection
 redis_client = redis.from_url(settings.redis_url, decode_responses=True, db=0)
 
+# Dedicated client for blocking reads. redis-py 8 applies a default socket timeout
+# to connections, which breaks blocking commands like pubsub reads and BRPOP.
+redis_blocking_client = redis.from_url(
+    settings.redis_url,
+    decode_responses=True,
+    db=0,
+    socket_timeout=None,
+    socket_connect_timeout=5,
+)
+
 # Redis message cache connection (db1)
 redis_message_client = redis.from_url(settings.redis_url, decode_responses=True, db=1)
 
@@ -93,6 +103,10 @@ def get_redis():
     return redis_client
 
 
+def get_blocking_redis():
+    return redis_blocking_client
+
+
 Redis = Annotated[redis.Redis, Depends(get_redis), FastDepends(get_redis)]
 
 
@@ -107,4 +121,4 @@ def get_redis_message() -> redis.Redis:
 
 
 def get_redis_pubsub():
-    return redis_client.pubsub()
+    return redis_blocking_client.pubsub()
