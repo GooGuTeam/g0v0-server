@@ -100,12 +100,12 @@ class ClientVerificationService:
         Returns:
             VersionCheckResult: The result of the validation.
         """
-        if not settings.check_client_version:
-            return VersionCheckResult(is_valid=True)
         async with self._lock:
             if client_version in self.versions:
                 name, version, os_name = self.versions[client_version]
                 return VersionCheckResult(is_valid=True, client_name=name, version=version, os=os_name)
+        if not settings.check_client_version:
+            return VersionCheckResult(is_valid=True)
         return VersionCheckResult(is_valid=False)
 
 

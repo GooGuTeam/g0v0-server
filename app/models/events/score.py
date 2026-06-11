@@ -29,6 +29,7 @@ class ScoreCreatedEvent(PluginEvent):
     gamemode: GameMode
     score_token: int
     score_type: ScoreType
+    client_version: str
 
 
 class SoloScoreCreatedEvent(ScoreCreatedEvent):

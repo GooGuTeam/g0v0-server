@@ -52,6 +52,8 @@ class ScoreToken(ScoreTokenBase, table=True):
     user: Mapped[User] = Relationship()
     beatmap: Mapped[Beatmap] = Relationship()
 
+    client_version: str = Field(default="", exclude=True, max_length=50)
+
 
 class ScoreTokenResp(ScoreTokenBase):
     """Response model for score tokens."""

@@ -21,6 +21,7 @@ from .legacy import (
     int_to_mods,
     mods_to_int,
 )
+from .multiplier import ModMultiplierCalculator, ModMultiplierContext, get_mod_multiplier_calculator
 from .performance import (
     RANKED_MODS,
     RankedMods,
@@ -40,12 +41,15 @@ __all__ = [
     "RANKED_MODS",
     "APIMod",
     "Mod",
+    "ModMultiplierCalculator",
+    "ModMultiplierContext",
     "RankedMods",
     "RulesetRankedMods",
     "Settings",
     "check_settings",
     "generate_ranked_mod_settings",
     "get_available_mods",
+    "get_mod_multiplier_calculator",
     "get_speed_rate",
     "init_mods",
     "init_ranked_mods",
