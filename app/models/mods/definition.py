@@ -21,6 +21,7 @@ class Settings(TypedDict):
     Type: str
     Label: str
     Description: str
+    DefaultValue: bool | float | str | int | None
 
 
 class Mod(TypedDict):
@@ -105,3 +106,18 @@ def get_speed_rate(mods: list[APIMod]):
                 continue
             rate *= mod_rate  # pyright: ignore[reportOperatorIssue]
     return rate
+
+
+def get_default_setting(mod: APIMod, setting_name: str) -> bool | float | str | int | None:
+    """Helper to get a setting's default value from a mod's static metadata."""
+
+    ruleset_mods = API_MODS.get(0, {})
+    mod_data = ruleset_mods.get(mod["acronym"])
+    if not mod_data:
+        return None
+
+    for setting in mod_data["Settings"]:
+        if setting["Name"] == setting_name:
+            return setting["DefaultValue"]
+
+    return None
