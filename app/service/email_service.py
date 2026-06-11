@@ -16,7 +16,7 @@ from typing import Any, ClassVar, cast
 import uuid
 
 from app.config import settings
-from app.dependencies.database import get_redis
+from app.dependencies.database import get_blocking_redis
 from app.helpers import bg_tasks
 from app.log import logger
 from app.path import STATIC_DIR
@@ -49,7 +49,7 @@ class EmailService:
     def __init__(self):
         """Initialize email service with Redis queue and Jinja2 templates."""
         # Redis queue setup
-        self.redis: Redis = get_redis()
+        self.redis: Redis = get_blocking_redis()
         self._processing = False
         self._retry_limit = 3
 

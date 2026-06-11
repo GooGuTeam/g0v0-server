@@ -36,6 +36,9 @@ class InterceptHandler(logging.Handler):
         Args:
             record: The log record to emit.
         """
+        if record.name.startswith("sentry_sdk"):
+            return
+
         # Get corresponding Loguru level if it exists.
         try:
             level: str | int = logger.level(record.levelname).name
@@ -54,14 +57,14 @@ class InterceptHandler(logging.Handler):
             depth += 1
 
         message = record.getMessage()
-        _logger = logger
+        _logger = logger.bind(real_name=record.name)
         if record.name == "uvicorn.access":
             message = self._format_uvicorn_access_log(message)
             color = True
-            _logger = uvicorn_logger()
+            _logger = uvicorn_logger().bind(real_name=record.name)
         elif record.name == "uvicorn.error":
             message = self._format_uvicorn_error_log(message)
-            _logger = uvicorn_logger()
+            _logger = uvicorn_logger().bind(real_name=record.name)
             color = True
         else:
             color = False
@@ -329,6 +332,9 @@ for logger_name in uvicorn_loggers:
 
 logging.getLogger("httpx").setLevel("WARNING")
 logging.getLogger("apscheduler").setLevel("INFO")
+logging.getLogger("sentry_sdk").setLevel("CRITICAL")
+logging.getLogger("urllib3.connectionpool").setLevel("ERROR")
+logging.getLogger("watchfiles.main").setLevel("WARNING")
 
 
 def add_file_logger() -> None:

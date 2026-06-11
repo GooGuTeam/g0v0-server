@@ -21,6 +21,7 @@ from enum import StrEnum
 from typing import Any, NoReturn
 import uuid
 
+from app.dependencies.database import get_redis_pubsub
 from app.helpers.background_task import bg_tasks
 from app.log import log
 from app.service.user_cache_service import get_user_cache_service
@@ -74,7 +75,7 @@ class IPCClient:
 
     def __init__(self, redis_client: Redis):
         self.redis_client = redis_client
-        self.pubsub = redis_client.pubsub()
+        self.pubsub = get_redis_pubsub()
 
         self.request_handlers: dict[str, Callable[[IPCMessage], Awaitable[Any]]] = {}
         self.notice_handlers: dict[str, Callable[[IPCMessage], Awaitable[Any]]] = {}
