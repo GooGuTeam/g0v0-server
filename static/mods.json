@@ -400,7 +400,7 @@
             "Type": "string",
             "Label": "Accuracy mode",
             "Description": "The mode of accuracy that will trigger failure.",
-            "DefaultValue": 0
+            "DefaultValue": "0"
           },
           {
             "Name": "restart",
@@ -609,7 +609,7 @@
             "Type": "string",
             "Label": "Flipped axes",
             "Description": "",
-            "DefaultValue": 0
+            "DefaultValue": "0"
           }
         ],
         "IncompatibleMods": [
@@ -1007,7 +1007,7 @@
             "Type": "string",
             "Label": "Direction",
             "Description": "The direction of rotation",
-            "DefaultValue": 0
+            "DefaultValue": "0"
           }
         ],
         "IncompatibleMods": [
@@ -1038,7 +1038,7 @@
             "Type": "string",
             "Label": "Style",
             "Description": "Change the animation style of the approach circles.",
-            "DefaultValue": 1
+            "DefaultValue": "1"
           }
         ],
         "IncompatibleMods": [
@@ -1726,7 +1726,7 @@
             "Type": "string",
             "Label": "Accuracy mode",
             "Description": "The mode of accuracy that will trigger failure.",
-            "DefaultValue": 0
+            "DefaultValue": "0"
           },
           {
             "Name": "restart",
@@ -2434,7 +2434,7 @@
             "Type": "string",
             "Label": "Accuracy mode",
             "Description": "The mode of accuracy that will trigger failure.",
-            "DefaultValue": 0
+            "DefaultValue": "0"
           },
           {
             "Name": "restart",
@@ -3132,7 +3132,7 @@
             "Type": "string",
             "Label": "Direction",
             "Description": "The direction on which the cover is applied",
-            "DefaultValue": 0
+            "DefaultValue": "0"
           }
         ],
         "IncompatibleMods": [
@@ -3198,7 +3198,7 @@
             "Type": "string",
             "Label": "Accuracy mode",
             "Description": "The mode of accuracy that will trigger failure.",
-            "DefaultValue": 0
+            "DefaultValue": "0"
           },
           {
             "Name": "restart",
