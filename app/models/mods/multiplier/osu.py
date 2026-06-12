@@ -95,7 +95,7 @@ class OsuModMultiplierCalculatorV2(ModMultiplierCalculator):
     @staticmethod
     def _easy_multiplier(easy: _ModWrapper) -> float:
         retries = easy.retries
-        default_retries = get_default_setting(easy.mod, "retries")
+        default_retries = get_default_setting(0, easy.mod, "retries")
 
         if retries is None or default_retries is None:
             return 0.8
@@ -219,7 +219,7 @@ class OsuModMultiplierCalculatorV2(ModMultiplierCalculator):
     @staticmethod
     def _deflate_multiplier(deflate: _ModWrapper) -> float:
         start_scale = deflate.start_scale
-        default_start_scale = get_default_setting(deflate.mod, "start_scale")
+        default_start_scale = get_default_setting(0, deflate.mod, "start_scale")
 
         if start_scale is None or default_start_scale is None:
             return 1.0

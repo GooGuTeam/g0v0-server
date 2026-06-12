@@ -1,7 +1,7 @@
 """Core mod schema and helpers backed by static/mods.json."""
 
 import json
-from typing import Literal, NotRequired, TypedDict
+from typing import NotRequired, TypedDict
 
 from app.path import STATIC_DIR
 
@@ -41,7 +41,7 @@ class Mod(TypedDict):
     AlwaysValidForSubmission: bool
 
 
-API_MODS: dict[Literal[0, 1, 2, 3], dict[str, Mod]] = {}
+API_MODS: dict[int, dict[str, Mod]] = {}
 
 
 def init_mods():
@@ -108,10 +108,10 @@ def get_speed_rate(mods: list[APIMod]):
     return rate
 
 
-def get_default_setting(mod: APIMod, setting_name: str) -> bool | float | str | int | None:
+def get_default_setting(ruleset_id: int, mod: APIMod, setting_name: str) -> bool | float | str | int | None:
     """Helper to get a setting's default value from a mod's static metadata."""
 
-    ruleset_mods = API_MODS.get(0, {})
+    ruleset_mods = API_MODS.get(ruleset_id, {})
     mod_data = ruleset_mods.get(mod["acronym"])
     if not mod_data:
         return None

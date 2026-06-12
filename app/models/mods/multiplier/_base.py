@@ -26,8 +26,9 @@ def _mod_method_name(acronym: str) -> str:
 
 
 class _ModWrapper:
-    def __init__(self, mod: APIMod):
+    def __init__(self, mod: APIMod, ruleset_id: int):
         self.mod = mod
+        self.ruleset_id = ruleset_id
 
     @property
     def mod_name(self) -> str:
@@ -36,11 +37,12 @@ class _ModWrapper:
     def __getattr__(self, item) -> Any:
         if "settings" in self.mod and item in self.mod["settings"]:
             return self.mod["settings"][item]
-        return get_default_setting(self.mod, item)
+        return get_default_setting(self.ruleset_id, self.mod, item)
 
     def is_uses_default(self) -> bool:
         return all(
-            value == get_default_setting(self.mod, setting) for setting, value in self.mod.get("settings", {}).items()
+            value == get_default_setting(self.ruleset_id, self.mod, setting)
+            for setting, value in self.mod.get("settings", {}).items()
         )
 
 
@@ -53,15 +55,16 @@ class ModMultiplierContext:
     hp: float
     client_version: str
     date: datetime
+    ruleset_id: int
 
     def mod(self, acronym: str) -> _ModWrapper | None:
         for mod in self.mods:
             if mod["acronym"] == acronym.upper():
-                return _ModWrapper(mod)
+                return _ModWrapper(mod, self.ruleset_id)
         return None
 
     @property
-    def self(self) -> _ModWrapper:
+    def me(self) -> _ModWrapper:
         caller = _get_caller_name()
         mod = self.mod(caller)
         if mod is None:
