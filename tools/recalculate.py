@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from collections.abc import Awaitable, Sequence
+from collections.abc import Awaitable, Mapping, Sequence
 import contextlib
 import csv
 from dataclasses import dataclass
@@ -27,7 +27,7 @@ from app.dependencies.fetcher import get_fetcher
 from app.fetcher import Fetcher
 from app.fetcher.beatmap_raw import NoBeatmapError
 from app.log import log
-from app.models.mods import init_mods, init_ranked_mods, mod_to_save, mods_can_get_pp
+from app.models.mods import get_mod_multiplier_calculator, init_mods, init_ranked_mods, mod_to_save, mods_can_get_pp
 from app.models.score import GameMode, Rank
 from app.plugins import manager
 
@@ -145,6 +145,15 @@ class LeaderboardConfig:
 
 
 @dataclass(frozen=True)
+class ScoreConfig:
+    user_ids: set[int]
+    modes: set[GameMode]
+    beatmap_ids: set[int]
+    beatmapset_ids: set[int]
+    recalculate_all: bool
+
+
+@dataclass(frozen=True)
 class RatingConfig:
     modes: set[GameMode]
     beatmap_ids: set[int]
@@ -154,7 +163,7 @@ class RatingConfig:
 
 def parse_cli_args(
     argv: list[str],
-) -> tuple[str, GlobalConfig, PerformanceConfig | LeaderboardConfig | RatingConfig | None]:
+) -> tuple[str, GlobalConfig, PerformanceConfig | LeaderboardConfig | ScoreConfig | RatingConfig | None]:
     parser = argparse.ArgumentParser(description="Recalculate stored performance data")
     parser.add_argument("--dry-run", dest="dry_run", action="store_true", help="Execute without committing changes")
     parser.add_argument(
@@ -247,6 +256,39 @@ def parse_cli_args(
         help="Recalculate all users across all modes (ignores filter requirement)",
     )
 
+    # score subcommand
+    score_parser = subparsers.add_parser(
+        "score",
+        help="Recalculate score total_score using mod multiplier and rebuild leaderboard",
+    )
+    score_parser.add_argument("--user-id", dest="user_ids", action="append", type=int, help="Filter by user id")
+    score_parser.add_argument(
+        "--mode",
+        dest="modes",
+        action="append",
+        help="Filter by game mode (accepts names like osu, taiko or numeric ids)",
+    )
+    score_parser.add_argument(
+        "--beatmap-id",
+        dest="beatmap_ids",
+        action="append",
+        type=int,
+        help="Filter by beatmap id",
+    )
+    score_parser.add_argument(
+        "--beatmapset-id",
+        dest="beatmapset_ids",
+        action="append",
+        type=int,
+        help="Filter by beatmapset id",
+    )
+    score_parser.add_argument(
+        "--all",
+        dest="recalculate_all",
+        action="store_true",
+        help="Recalculate all scores (ignores filter requirement)",
+    )
+
     # rating subcommand
     rating_parser = subparsers.add_parser("rating", help="Recalculate beatmap difficulty ratings")
     rating_parser.add_argument(
@@ -292,14 +334,14 @@ def parse_cli_args(
     if args.command == "all":
         return args.command, global_config, None
 
-    if args.command in ("performance", "leaderboard"):
+    if args.command in ("performance", "leaderboard", "score"):
         if not args.recalculate_all and not any(
             (
                 args.user_ids,
                 args.modes,
-                args.mods,
                 args.beatmap_ids,
                 args.beatmapset_ids,
+                getattr(args, "mods", None),
             )
         ):
             parser.error(
@@ -318,7 +360,7 @@ def parse_cli_args(
                     parser.error(f"Unknown game mode: {piece}")
                 modes.add(mode)
 
-        mods = {mod.strip().upper() for raw in args.mods or [] for mod in raw.split(",") if mod.strip()}
+        mods = {mod.strip().upper() for raw in getattr(args, "mods", []) or [] for mod in raw.split(",") if mod.strip()}
         beatmap_ids = set(args.beatmap_ids or [])
         beatmapset_ids = set(args.beatmapset_ids or [])
 
@@ -335,7 +377,7 @@ def parse_cli_args(
                     recalculate_all=args.recalculate_all,
                 ),
             )
-        else:  # leaderboard
+        elif args.command == "leaderboard":
             return (
                 args.command,
                 global_config,
@@ -343,6 +385,18 @@ def parse_cli_args(
                     user_ids=user_ids,
                     modes=modes,
                     mods=mods,
+                    beatmap_ids=beatmap_ids,
+                    beatmapset_ids=beatmapset_ids,
+                    recalculate_all=args.recalculate_all,
+                ),
+            )
+        else:  # score
+            return (
+                args.command,
+                global_config,
+                ScoreConfig(
+                    user_ids=user_ids,
+                    modes=modes,
                     beatmap_ids=beatmap_ids,
                     beatmapset_ids=beatmapset_ids,
                     recalculate_all=args.recalculate_all,
@@ -500,6 +554,19 @@ class CSVWriter:
             )
             self.file.flush()
 
+    async def write_score(self, user_id: int, mode: str, recalculated: int, changed: int):
+        """Write score total recalculation result."""
+        if not self.file:
+            return
+
+        async with self.lock:
+            if not self.writer:
+                self.writer = csv.writer(self.file)
+                self.writer.writerow(["type", "user_id", "mode", "recalculated", "changed"])
+
+            self.writer.writerow(["score", user_id, mode, recalculated, changed])
+            self.file.flush()
+
     async def write_rating(self, beatmap_id: int, old_rating: float, new_rating: float):
         """Write beatmap rating recalculation result."""
         if not self.file:
@@ -573,6 +640,35 @@ async def determine_targets(
 
     targets = {key: value for key, value in targets.items() if key[0] != BANCHOBOT_ID}
     return targets
+
+
+async def determine_score_targets(config: ScoreConfig) -> dict[tuple[int, GameMode], set[int]]:
+    targets: dict[tuple[int, GameMode], set[int]] = {}
+    async with AsyncSession(engine, expire_on_commit=False, autoflush=False) as session:
+        stmt = select(Score.id, Score.user_id, Score.gamemode).where(col(Score.user_id) != BANCHOBOT_ID)
+        if config.user_ids:
+            stmt = stmt.where(col(Score.user_id).in_(list(config.user_ids)))
+        if config.modes:
+            stmt = stmt.where(col(Score.gamemode).in_(list(config.modes)))
+        if config.beatmap_ids:
+            stmt = stmt.where(col(Score.beatmap_id).in_(list(config.beatmap_ids)))
+        if config.beatmapset_ids:
+            stmt = stmt.join(Beatmap).where(col(Beatmap.beatmapset_id).in_(list(config.beatmapset_ids)))
+
+        result = await session.exec(stmt)
+        for score_id, user_id, gamemode in result:
+            mode = gamemode if isinstance(gamemode, GameMode) else GameMode(gamemode)
+            targets.setdefault((user_id, mode), set()).add(score_id)
+    return targets
+
+
+def recalculate_score_total(score: Score, beatmap: Beatmap) -> int:
+    try:
+        mod_multiplier_calculator = get_mod_multiplier_calculator(score, beatmap, score.client_version)
+        mod_multiplier = mod_multiplier_calculator.calculate()
+    except ValueError:
+        mod_multiplier = 1.0
+    return round(score.total_score_without_mods * mod_multiplier)
 
 
 async def _populate_targets_from_scores(
@@ -1072,6 +1168,84 @@ async def recalculate_user_mode_leaderboard(
             logger.exception(f"Failed to process leaderboard for user {user_id} mode {gamemode}")
 
 
+async def recalculate_user_mode_score(
+    user_id: int,
+    gamemode: GameMode,
+    score_filter: set[int],
+    global_config: GlobalConfig,
+    semaphore: asyncio.Semaphore,
+    csv_writer: CSVWriter | None = None,
+) -> None:
+    init_mods()
+
+    async with semaphore, AsyncSession(engine, expire_on_commit=False, autoflush=False) as session:
+        try:
+            score_stmt = (
+                select(Score)
+                .where(Score.user_id == user_id, Score.gamemode == gamemode)
+                .options(joinedload(Score.beatmap))
+            )
+            result = await session.exec(score_stmt)
+            scores: list[Score] = list(result)
+
+            target_scores = [score for score in scores if score.id in score_filter]
+            if not target_scores:
+                logger.info(f"User {user_id} mode {gamemode}: no scores matched filters")
+                return
+
+            recalculated = 0
+            changed = 0
+            for score in target_scores:
+                beatmap = score.beatmap
+                if beatmap is None:
+                    logger.warning(f"Score {score.id} beatmap {score.beatmap_id} not loaded; skipping")
+                    continue
+
+                old_total_score = score.total_score
+                score.total_score = recalculate_score_total(score, beatmap)
+                recalculated += 1
+                if score.total_score != old_total_score:
+                    changed += 1
+
+            await session.flush()
+
+            message = (
+                "Dry-run | user {user_id} mode {mode} | recalculated {recalculated} scores | changed {changed} totals"
+            )
+            success_message = (
+                "Recalculated scores | user {user_id} mode {mode} | updated {recalculated} scores | "
+                "changed {changed} totals"
+            )
+
+            if global_config.dry_run:
+                await session.rollback()
+                logger.info(
+                    message.format(
+                        user_id=user_id,
+                        mode=gamemode,
+                        recalculated=recalculated,
+                        changed=changed,
+                    )
+                )
+            else:
+                await session.commit()
+                logger.success(
+                    success_message.format(
+                        user_id=user_id,
+                        mode=gamemode,
+                        recalculated=recalculated,
+                        changed=changed,
+                    )
+                )
+
+            if csv_writer:
+                await csv_writer.write_score(user_id, str(gamemode), recalculated, changed)
+        except Exception:
+            if session.in_transaction():
+                await session.rollback()
+            logger.exception(f"Failed to process score totals for user {user_id} mode {gamemode}")
+
+
 async def recalculate_beatmap_rating(
     beatmap_id: int,
     global_config: GlobalConfig,
@@ -1232,11 +1406,19 @@ async def recalculate_leaderboard(
 ) -> None:
     """Execute leaderboard recalculation."""
     targets = await determine_targets(config)
+    await _recalculate_leaderboard_targets(targets, config.recalculate_all, global_config)
+
+
+async def _recalculate_leaderboard_targets(
+    targets: Mapping[tuple[int, GameMode], set[int] | None],
+    recalculate_all: bool,
+    global_config: GlobalConfig,
+) -> None:
     if not targets:
         logger.info("No targets matched the provided filters; nothing to recalculate")
         return
 
-    scope = "full" if config.recalculate_all else "filtered"
+    scope = "full" if recalculate_all else "filtered"
     logger.info(
         "Recalculating leaderboard for {} user/mode pairs ({}) | dry-run={} | concurrency={}",
         len(targets),
@@ -1252,6 +1434,39 @@ async def recalculate_leaderboard(
             for (user_id, mode), score_ids in targets.items()
         ]
         await run_in_batches(coroutines, global_config.concurrency)
+
+
+async def recalculate_score(
+    config: ScoreConfig,
+    global_config: GlobalConfig,
+) -> None:
+    """Execute score total recalculation followed by leaderboard rebuild."""
+    targets = await determine_score_targets(config)
+    if not targets:
+        logger.info("No scores matched the provided filters; nothing to recalculate")
+        return
+
+    scope = "full" if config.recalculate_all else "filtered"
+    total_scores = sum(len(score_ids) for score_ids in targets.values())
+    logger.info(
+        "Recalculating score totals for {} scores across {} user/mode pairs ({}) | dry-run={} | concurrency={}",
+        total_scores,
+        len(targets),
+        scope,
+        global_config.dry_run,
+        global_config.concurrency,
+    )
+
+    semaphore = asyncio.Semaphore(global_config.concurrency)
+    async with CSVWriter(global_config.output_csv) as csv_writer:
+        coroutines = [
+            recalculate_user_mode_score(user_id, mode, score_ids, global_config, semaphore, csv_writer)
+            for (user_id, mode), score_ids in targets.items()
+        ]
+        await run_in_batches(coroutines, global_config.concurrency)
+
+    leaderboard_targets = {key: set(score_ids) for key, score_ids in targets.items()}
+    await _recalculate_leaderboard_targets(leaderboard_targets, config.recalculate_all, global_config)
 
 
 async def recalculate_rating(
@@ -1394,6 +1609,9 @@ async def main() -> None:
     elif command == "leaderboard":
         assert isinstance(sub_config, LeaderboardConfig)
         await recalculate_leaderboard(sub_config, global_config)
+    elif command == "score":
+        assert isinstance(sub_config, ScoreConfig)
+        await recalculate_score(sub_config, global_config)
     elif command == "rating":
         assert isinstance(sub_config, RatingConfig)
         await recalculate_rating(sub_config, global_config)
