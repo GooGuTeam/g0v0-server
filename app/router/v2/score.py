@@ -223,14 +223,12 @@ async def submit_score(
             db_beatmap = await Beatmap.get_or_fetch(db, fetcher, bid=beatmap)
         except HTTPError:
             raise RequestError(ErrorType.BEATMAP_NOT_FOUND)
-        status = db_beatmap.beatmap_status
         score = await process_score(
-            current_user,
-            beatmap,
-            status.has_pp() or settings.enable_all_beatmap_pp,
-            score_token,
-            info,
-            db,
+            user=current_user,
+            beatmap=db_beatmap,
+            score_token=score_token,
+            info=info,
+            session=db,
         )
         await db.refresh(score_token)
         score_id = score.id
@@ -620,6 +618,7 @@ async def create_solo_score(
             user_id=user_id,
             beatmap_id=beatmap_id,
             ruleset_id=GameMode.from_int(ruleset_id),
+            client_version=client_version.version if client_version else "",
         )
         db.add(score_token)
         await db.commit()
@@ -631,7 +630,7 @@ async def create_solo_score(
             score_token=score_token.id,
             beatmap_id=beatmap_id,
             mode=ruleset_id,
-            client_version=str(client_version),
+            client_version=client_version,
         )
 
         hub.emit(
@@ -641,6 +640,7 @@ async def create_solo_score(
                 beatmap_hash=beatmap_hash,
                 gamemode=GameMode.from_int(ruleset_id),
                 score_token=score_token.id,
+                client_version=client_version.version,
             )
         )
 
@@ -803,6 +803,7 @@ async def create_playlist_score(
         ruleset_id=GameMode.from_int(ruleset_id),
         playlist_item_id=playlist_id,
         room_id=room_id,
+        client_version=client_version.version if client_version else "",
     )
     session.add(score_token)
     await session.commit()
@@ -816,7 +817,7 @@ async def create_playlist_score(
         mode=ruleset_id,
         room_id=room_id,
         playlist_id=playlist_id,
-        client_version=str(client_version),
+        client_version=client_version,
     )
 
     hub.emit(
@@ -829,6 +830,7 @@ async def create_playlist_score(
             score_type=ScoreType.MULTIPLAYER,
             room_id=room_id,
             playlist_id=playlist_id,
+            client_version=client_version.version,
         )
     )
     return ScoreTokenResp.from_db(score_token)

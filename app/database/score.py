@@ -33,7 +33,7 @@ from app.models.model import (
     RespWithCursor,
     UTCBaseModel,
 )
-from app.models.mods import APIMod, get_speed_rate, mod_to_save, mods_can_get_pp
+from app.models.mods import APIMod, get_mod_multiplier_calculator, get_speed_rate, mod_to_save, mods_can_get_pp
 from app.models.score import (
     GameMode,
     HitResult,
@@ -447,6 +447,7 @@ class Score(ScoreModel, table=True):
     gamemode: GameMode = Field(index=True)
     pinned_order: int = Field(default=0, exclude=True)
     map_md5: str = Field(max_length=32, index=True, exclude=True)
+    client_version: str = Field(default="", exclude=True, max_length=50)
 
     @field_validator("gamemode", mode="before")
     @classmethod
@@ -1141,8 +1142,7 @@ def calculate_playtime(score: "Score", beatmap_length: int) -> tuple[int, bool]:
 
 async def process_score(
     user: User,
-    beatmap_id: int,
-    ranked: bool,
+    beatmap: Beatmap,
     score_token: ScoreToken,
     info: SoloScoreSubmissionInfo,
     session: AsyncSession,
@@ -1151,8 +1151,7 @@ async def process_score(
 
     Args:
         user: The user who submitted the score.
-        beatmap_id: The ID of the beatmap for which the score was submitted.
-        ranked: A boolean indicating whether the beatmap is ranked.
+        beatmap: The beatmap associated with the score submission.
         score_token: The token associated with the score submission, containing metadata about the submission.
         info: An object containing detailed information about the score submission, such as accuracy, mods, and statistics.
         session: The database session to use for creating the Score record.
@@ -1161,14 +1160,9 @@ async def process_score(
         The newly created Score record representing the submitted score.
     """  # noqa: E501
     gamemode = GameMode.from_int(info.ruleset_id).to_special_mode(info.mods)
-    logger.info(
-        "Creating score for user {user_id} | beatmap={beatmap_id} ruleset={ruleset} passed={passed} total={total}",
-        user_id=user.id,
-        beatmap_id=beatmap_id,
-        ruleset=gamemode,
-        passed=info.passed,
-        total=info.total_score,
-    )
+    beatmap_id = score_token.beatmap_id
+    ranked = beatmap.beatmap_status.has_pp() or settings.enable_all_beatmap_pp
+
     score = Score(
         accuracy=info.accuracy,
         max_combo=info.max_combo,
@@ -1201,7 +1195,25 @@ async def process_score(
         maximum_statistics=info.maximum_statistics,
         processed=False,
         ranked=ranked,
+        client_version=score_token.client_version,
     )
+
+    try:
+        mod_multiplier_calculator = get_mod_multiplier_calculator(score, beatmap, score_token.client_version)
+        mod_multiplier = mod_multiplier_calculator.calculate()
+    except NotImplementedError:
+        mod_multiplier = 1.0
+    score.total_score = round(score.total_score_without_mods * mod_multiplier)
+
+    logger.info(
+        "Creating score for user {user_id} | beatmap={beatmap_id} ruleset={ruleset} passed={passed} total={total}",
+        user_id=user.id,
+        beatmap_id=beatmap_id,
+        ruleset=gamemode,
+        passed=info.passed,
+        total=score.total_score,
+    )
+
     session.add(score)
     logger.debug(
         "Score staged for commit | token={token} mods={mods} total_hits={hits}",

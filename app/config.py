@@ -165,6 +165,7 @@ class Settings(BaseSettings):
     beatmap_tag_top_count: Annotated[int, Field(default=2), "game"]
     old_score_processing_mode: Annotated[OldScoreProcessingMode, Field(default=OldScoreProcessingMode.NORMAL), "game"]
     scoring_mode: Annotated[ScoringMode, Field(default=ScoringMode.STANDARDISED), "game"]
+    use_old_score_multiplier: Annotated[bool, Field(default=False), "game"]
 
     # calculator
     calculator: Annotated[str, Field(default="performance_server"), "calculator"]
