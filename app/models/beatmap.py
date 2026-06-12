@@ -76,9 +76,11 @@ def _parse_list(v: Any):
 
 
 class SearchQueryModel(BaseModel):
+    """Beatmap search query parameters model."""
+
     # model_config = ConfigDict(serialize_by_alias=True)
 
-    q: str = Field("", description="搜索关键词")
+    q: str = Field("", description="Search keywords")
     c: Annotated[
         list[Literal["recommended", "converts", "follows", "spotlights", "featured_artists"]],
         BeforeValidator(_parse_list),
@@ -86,11 +88,11 @@ class SearchQueryModel(BaseModel):
     ] = Field(
         default_factory=list,
         description=(
-            "常规：recommended 推荐难度 / converts 包括转谱 / follows 已关注谱师 / "
-            "spotlights 聚光灯谱面 / featured_artists 精选艺术家"
+            "General filters: recommended / converts (include converts) / "
+            "follows (followed mappers) / spotlights / featured_artists"
         ),
     )
-    m: int | None = Field(None, description="模式", alias="m")
+    m: int | None = Field(None, description="Game mode", alias="m")
     s: Literal[
         "any",
         "leaderboard",
@@ -105,9 +107,8 @@ class SearchQueryModel(BaseModel):
     ] = Field(
         default="leaderboard",
         description=(
-            "分类：any 全部 / leaderboard 拥有排行榜 / ranked 上架 / "
-            "qualified 过审 / loved 社区喜爱 / favourites 收藏 / "
-            "pending 待定 / wip 制作中 / graveyard 坟场 / mine 我做的谱面"
+            "Category: any / leaderboard (has leaderboard) / ranked / "
+            "qualified / loved / favourites / pending / wip / graveyard / mine"
         ),
     )
     l: Literal[  # noqa: E741
@@ -129,11 +130,9 @@ class SearchQueryModel(BaseModel):
     ] = Field(
         default="any",
         description=(
-            "语言：any 全部 / unspecified 未指定 / english 英语 / japanese 日语 / "
-            "chinese 中文 / instrumental 器乐 / korean 韩语 / "
-            "french 法语 / german 德语 / swedish 瑞典语 / "
-            "spanish 西班牙语 / italian 意大利语 / russian 俄语 / "
-            "polish 波兰语 / other 其他"
+            "Language: any / unspecified / english / japanese / chinese / "
+            "instrumental / korean / french / german / swedish / spanish / "
+            "italian / russian / polish / other"
         ),
     )
     sort: Literal[
@@ -160,30 +159,29 @@ class SearchQueryModel(BaseModel):
     ] = Field(
         ...,
         description=(
-            "排序方式： title 标题 / artist 艺术家 / difficulty 难度 / updated 更新时间"
-            " / ranked 上架时间 / rating 评分 / plays 游玩次数 / favourites 收藏量"
-            " / relevance 相关性 / nominations 提名"
+            "Sort by: title / artist / difficulty / updated / ranked / "
+            "rating / plays / favourites / relevance / nominations"
         ),
     )
     e: Annotated[
         list[Literal["video", "storyboard"]],
         BeforeValidator(_parse_list),
         PlainSerializer(lambda x: ".".join(x)),
-    ] = Field(default_factory=list, description=("其他：video 有视频 / storyboard 有故事板"))
+    ] = Field(default_factory=list, description="Extra: video / storyboard")
     r: Annotated[list[Rank], BeforeValidator(_parse_list), PlainSerializer(lambda x: ".".join(x))] = Field(
-        default_factory=list, description="成绩"
+        default_factory=list, description="Achieved ranks"
     )
     played: bool = Field(
         default=False,
-        description="玩过",
+        description="Played before",
     )
     nsfw: bool = Field(
         default=False,
-        description="不良内容",
+        description="Include explicit content",
     )
     cursor_string: str | None = Field(
         default=None,
-        description="游标字符串，用于分页",
+        description="Cursor string for pagination",
     )
 
 

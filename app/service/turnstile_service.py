@@ -1,6 +1,6 @@
-"""Cloudflare Turnstile 验证服务
+"""Cloudflare Turnstile verification service.
 
-负责验证 Cloudflare Turnstile token 的有效性
+Responsible for verifying the validity of Cloudflare Turnstile tokens.
 """
 
 from app.config import settings
@@ -15,39 +15,39 @@ DUMMY_TOKEN = "XXXX.DUMMY.TOKEN.XXXX"  # noqa: S105
 
 
 class TurnstileService:
-    """Cloudflare Turnstile 验证服务"""
+    """Cloudflare Turnstile verification service."""
 
     @staticmethod
     async def verify_token(token: str, remoteip: str | None = None) -> tuple[bool, str]:
-        """验证 Turnstile token
+        """Verify Turnstile token.
 
         Args:
-            token: Turnstile 响应 token
-            remoteip: 客户端 IP 地址（可选）
+            token: Turnstile response token.
+            remoteip: Client IP address (optional).
 
         Returns:
-            tuple[bool, str]: (是否成功, 错误消息)
+            tuple[bool, str]: (success, error_message)
         """
-        # 如果未启用 Turnstile 验证，直接返回成功
+        # If Turnstile verification disabled, return success directly
         if not settings.enable_turnstile_verification:
             return True, ""
 
-        # 开发模式：直接跳过验证
+        # Dev mode: skip verification
         if settings.turnstile_dev_mode:
             logger.debug("Turnstile dev mode enabled, skipping verification")
             return True, ""
 
-        # 检查是否为 dummy token（仅在开发模式下接受）
+        # Check if dummy token (only accept in dev mode)
         if token == DUMMY_TOKEN:
             logger.warning(f"Dummy token provided but dev mode is disabled (IP: {remoteip})")
             return False, "Invalid verification token"
 
-        # 检查配置
+        # Check configuration
         if not settings.turnstile_secret_key:
             logger.error("Turnstile secret key not configured")
             return False, "Turnstile verification not configured"
 
-        # 准备请求数据
+        # Prepare request data
         data = {"secret": settings.turnstile_secret_key, "response": token}
 
         if remoteip:
@@ -66,7 +66,7 @@ class TurnstileService:
                     error_codes = result.get("error-codes", [])
                     logger.warning(f"Turnstile verification failed for IP {remoteip}, errors: {error_codes}")
 
-                    # 根据错误代码提供友好的错误消息
+                    # Provide friendly error message based on error code
                     if "timeout-or-duplicate" in error_codes:
                         return False, "Verification token expired or already used"
                     elif "invalid-input-response" in error_codes:

@@ -1,8 +1,15 @@
+"""Beatmap database models and related utilities.
+
+This module provides models for individual beatmaps (difficulty levels),
+including transformation, fetching, caching, and difficulty attribute
+calculations.
+"""
+
 from datetime import datetime
 import hashlib
 from typing import TYPE_CHECKING, ClassVar, NotRequired, TypedDict
 
-from app.calculator import get_calculator
+from app.calculating import get_calculator
 from app.config import settings
 from app.models.beatmap import BeatmapRankStatus
 from app.models.mods import APIMod
@@ -20,6 +27,7 @@ from pydantic import BaseModel, TypeAdapter
 from redis.asyncio import Redis
 from sqlalchemy import Column, DateTime
 from sqlalchemy.ext.asyncio import AsyncAttrs
+from sqlalchemy.orm import Mapped
 from sqlmodel import VARCHAR, Field, Relationship, SQLModel, col, exists, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -28,11 +36,15 @@ if TYPE_CHECKING:
 
 
 class BeatmapOwner(SQLModel):
+    """Represents a beatmap owner (mapper)."""
+
     id: int
     username: str
 
 
 class BeatmapDict(TypedDict):
+    """TypedDict representation of a beatmap for API responses."""
+
     beatmapset_id: int
     difficulty_rating: float
     id: int
@@ -72,6 +84,8 @@ class BeatmapDict(TypedDict):
 
 
 class BeatmapModel(DatabaseModel[BeatmapDict]):
+    """Base model for beatmap data with transformation support."""
+
     BEATMAP_TRANSFORMER_INCLUDES: ClassVar[list[str]] = [
         "checksum",
         "accuracy",
@@ -268,12 +282,18 @@ class BeatmapModel(DatabaseModel[BeatmapDict]):
 
 
 class Beatmap(AsyncAttrs, BeatmapModel, table=True):
+    """Database table model for beatmaps (individual difficulties)."""
+
     __tablename__: str = "beatmaps"
 
     beatmap_status: BeatmapRankStatus = Field(index=True)
     # optional
-    beatmapset: "Beatmapset" = Relationship(back_populates="beatmaps", sa_relationship_kwargs={"lazy": "joined"})
-    failtimes: FailTime | None = Relationship(back_populates="beatmap", sa_relationship_kwargs={"lazy": "joined"})
+    beatmapset: Mapped["Beatmapset"] = Relationship(
+        back_populates="beatmaps", sa_relationship_kwargs={"lazy": "joined"}
+    )
+    failtimes: Mapped[FailTime | None] = Relationship(
+        back_populates="beatmap", sa_relationship_kwargs={"lazy": "joined"}
+    )
 
     @classmethod
     async def from_resp_no_save(cls, _session: AsyncSession, resp: BeatmapDict) -> "Beatmap":
@@ -317,7 +337,7 @@ class Beatmap(AsyncAttrs, BeatmapModel, table=True):
             if beatmapset_id is None or ranked is None:
                 continue
 
-            # 创建 beatmap 字典,移除 beatmapset
+            # Create beatmap dict, removing beatmapset
             d = {k: v for k, v in resp_dict.items() if k != "beatmapset"}
 
             beatmap = Beatmap.model_validate(
@@ -367,14 +387,10 @@ class Beatmap(AsyncAttrs, BeatmapModel, table=True):
 
 
 class APIBeatmapTag(BaseModel):
+    """Beatmap tag with vote count."""
+
     tag_id: int
     count: int
-
-
-class BannedBeatmaps(SQLModel, table=True):
-    __tablename__: str = "banned_beatmaps"
-    id: int | None = Field(primary_key=True, index=True, default=None)
-    beatmap_id: int = Field(index=True)
 
 
 async def calculate_beatmap_attributes(
@@ -385,8 +401,8 @@ async def calculate_beatmap_attributes(
     fetcher: "Fetcher",
 ) -> DifficultyAttributesUnion:
     key = f"beatmap:{beatmap_id}:{ruleset}:{hashlib.sha256(str(mods_).encode()).hexdigest()}:attributes"
-    if await redis.exists(key):
-        return TypeAdapter(DifficultyAttributesUnion).validate_json(await redis.get(key))
+    if result := await redis.get(key):
+        return TypeAdapter(DifficultyAttributesUnion).validate_json(result)
     resp = await fetcher.get_or_fetch_beatmap_raw(redis, beatmap_id)
 
     attr = await get_calculator().calculate_difficulty(resp, mods_, ruleset)
@@ -395,18 +411,23 @@ async def calculate_beatmap_attributes(
 
 
 async def clear_cached_beatmap_raws(redis: Redis, beatmaps: list[int] = []):
-    """清理缓存的 beatmap 原始数据，使用非阻塞方式"""
+    """Clear cached beatmap raw data using non-blocking operations.
+
+    Args:
+        redis: Redis client instance.
+        beatmaps: List of beatmap IDs to clear. If empty, clears all.
+    """
     if beatmaps:
-        # 分批删除，避免一次删除太多 key 导致阻塞
+        # Delete in batches to avoid blocking with too many keys
         batch_size = 50
         for i in range(0, len(beatmaps), batch_size):
             batch = beatmaps[i : i + batch_size]
             keys = [f"beatmap:{bid}:raw" for bid in batch]
-            # 使用 unlink 而不是 delete（非阻塞，更快）
+            # Use unlink instead of delete (non-blocking, faster)
             try:
                 await redis.unlink(*keys)
             except Exception:
-                # 如果 unlink 不支持，回退到 delete
+                # Fallback to delete if unlink is not supported
                 await redis.delete(*keys)
         return
 

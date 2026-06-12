@@ -1,10 +1,18 @@
+"""Beatmapset rating database models.
+
+This module handles user ratings (1-10 stars) for beatmapsets.
+"""
+
 from .beatmapset import Beatmapset
 from .user import User
 
+from sqlalchemy.orm import Mapped
 from sqlmodel import BigInteger, Column, Field, ForeignKey, Relationship, SQLModel
 
 
 class BeatmapRating(SQLModel, table=True):
+    """Records user ratings for beatmapsets."""
+
     __tablename__: str = "beatmap_ratings"
     id: int | None = Field(
         default=None,
@@ -14,5 +22,5 @@ class BeatmapRating(SQLModel, table=True):
     user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
     rating: int
 
-    beatmapset: Beatmapset = Relationship()
-    user: User = Relationship()
+    beatmapset: Mapped[Beatmapset] = Relationship()
+    user: Mapped[User] = Relationship()

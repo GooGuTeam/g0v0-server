@@ -1,3 +1,9 @@
+"""Beatmapset database models and related utilities.
+
+This module provides models for beatmapsets (collections of beatmap difficulties),
+including metadata, covers, nominations, and transformation logic.
+"""
+
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, ClassVar, NotRequired, TypedDict
 
@@ -12,6 +18,7 @@ from .user import User, UserDict
 from pydantic import BaseModel
 from sqlalchemy import JSON, Boolean, Column, DateTime, Text
 from sqlalchemy.ext.asyncio import AsyncAttrs
+from sqlalchemy.orm import Mapped
 from sqlmodel import Field, Relationship, SQLModel, col, exists, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -35,24 +42,33 @@ BeatmapCovers = TypedDict(
         "slimcover@2x": NotRequired[str | None],
     },
 )
+"""TypedDict for beatmapset cover image URLs."""
 
 
 class BeatmapHype(BaseModel):
+    """Beatmapset hype status."""
+
     current: int
     required: int
 
 
 class BeatmapAvailability(BaseModel):
+    """Beatmapset download availability information."""
+
     more_information: str | None = Field(default=None)
     download_disabled: bool | None = Field(default=None)
 
 
 class BeatmapNominations(SQLModel):
+    """Beatmapset nomination status."""
+
     current: int | None = Field(default=None)
     required: int | None = Field(default=None)
 
 
 class BeatmapNomination(TypedDict):
+    """Single nomination record."""
+
     beatmapset_id: int
     reset: bool
     user_id: int
@@ -60,16 +76,22 @@ class BeatmapNomination(TypedDict):
 
 
 class BeatmapDescription(TypedDict):
+    """Beatmapset description in bbcode and rendered HTML."""
+
     bbcode: NotRequired[str | None]
     description: NotRequired[str | None]
 
 
 class BeatmapTranslationText(BaseModel):
+    """Localized text for genre/language."""
+
     name: str
     id: int | None = None
 
 
 class BeatmapsetDict(TypedDict):
+    """TypedDict representation of a beatmapset for API responses."""
+
     id: int
     artist: str
     artist_unicode: str
@@ -117,6 +139,8 @@ class BeatmapsetDict(TypedDict):
 
 
 class BeatmapsetModel(DatabaseModel[BeatmapsetDict]):
+    """Base model for beatmapset data with transformation support."""
+
     BEATMAPSET_TRANSFORMER_INCLUDES: ClassVar[list[str]] = [
         "availability",
         "has_favourited",
@@ -446,13 +470,15 @@ class BeatmapsetModel(DatabaseModel[BeatmapsetDict]):
 
 
 class Beatmapset(AsyncAttrs, BeatmapsetModel, table=True):
+    """Database table model for beatmapsets."""
+
     __tablename__: str = "beatmapsets"
 
     # Beatmapset
     beatmap_status: BeatmapRankStatus = Field(default=BeatmapRankStatus.GRAVEYARD, index=True)
 
     # optional
-    beatmaps: list["Beatmap"] = Relationship(back_populates="beatmapset")
+    beatmaps: Mapped[list["Beatmap"]] = Relationship(back_populates="beatmapset")
     beatmap_genre: Genre = Field(default=Genre.UNSPECIFIED, index=True)
     beatmap_language: Language = Field(default=Language.UNSPECIFIED, index=True)
     nominations_required: int = Field(default=0)
@@ -463,7 +489,7 @@ class Beatmapset(AsyncAttrs, BeatmapsetModel, table=True):
     hype_required: int = Field(default=0)
     availability_info: str | None = Field(default=None)
     download_disabled: bool = Field(default=False, sa_column=Column(Boolean))
-    favourites: list["FavouriteBeatmapset"] = Relationship(back_populates="beatmapset")
+    favourites: Mapped[list["FavouriteBeatmapset"]] = Relationship(back_populates="beatmapset")
 
     @classmethod
     async def from_resp_no_save(cls, resp: BeatmapsetDict) -> "Beatmapset":

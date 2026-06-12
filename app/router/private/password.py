@@ -1,3 +1,8 @@
+"""Password change endpoint.
+
+Provides API for users to change their account password with TOTP or password verification.
+"""
+
 from typing import Annotated
 
 from app.auth import (
@@ -27,38 +32,29 @@ logger = log("Auth")
 
 @router.post(
     "/password/change",
-    name="更改密码",
-    tags=["验证", "g0v0 API"],
+    name="Change password",
+    tags=["Authentication", "g0v0 API"],
     status_code=204,
     dependencies=[Depends(RateLimiter(limiter=Limiter(Rate(3, Duration.MINUTE * 5))))],
+    description="Change user password.",
 )
 async def change_password(
     current_user: ClientUser,
     session: Database,
     redis: Redis,
-    new_password: Annotated[str, Form(description="新密码")],
-    current_password: Annotated[str | None, Form(description="当前密码（未启用TOTP时必填）")] = None,
-    totp_code: Annotated[str | None, Form(description="TOTP验证码或备份码（已启用TOTP时必填）")] = None,
+    new_password: Annotated[str, Form(description="New password")],
+    current_password: Annotated[str | None, Form(description="Current password (required if TOTP not enabled)")] = None,
+    totp_code: Annotated[str | None, Form(description="TOTP code or backup code (required if TOTP enabled)")] = None,
 ):
-    """更改用户密码
-
-    验证方式：
-    - 如果用户已启用TOTP，必须提供 totp_code（6位数字验证码或备份码），优先验证TOTP
-    - 如果用户未启用TOTP，必须提供 current_password 进行密码验证
-
-    同时删除所有的已登录会话和信任设备
-
-    速率限制: 5 分钟内最多 3 次
-    """
-    # 验证新密码格式
+    # Validate new password format
     if errors := validate_password(new_password):
         raise RequestError(ErrorType.INVALID_PASSWORD, {"errors": errors}, status_code=400)
 
-    # 检查用户是否启用了TOTP
+    # Check if user has TOTP enabled
     totp_key = await session.get(TotpKeys, current_user.id)
 
     if totp_key:
-        # 用户已启用TOTP，必须验证TOTP
+        # User has TOTP enabled, must verify TOTP
         if not totp_code:
             raise RequestError(ErrorType.TOTP_CODE_REQUIRED)
 
@@ -80,7 +76,7 @@ async def change_password(
         logger.info(f"User {current_user.id} verified identity with TOTP for password change")
 
     else:
-        # 用户未启用TOTP，必须验证当前密码
+        # User does not have TOTP enabled, must verify current password
         if not current_password:
             raise FieldMissingError(["current_password"])
 

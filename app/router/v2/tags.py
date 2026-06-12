@@ -1,3 +1,9 @@
+"""Beatmap tag voting API endpoints.
+
+This module provides endpoints for managing user-submitted tags on beatmaps,
+including viewing available tags and voting/unvoting on beatmap tags.
+"""
+
 from typing import Annotated
 
 from app.database.beatmap import Beatmap
@@ -19,21 +25,45 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 
 class APITagCollection(BaseModel):
+    """Collection of available beatmap tags.
+
+    Attributes:
+        tags: List of all available beatmap tags.
+    """
+
     tags: list[BeatmapTags]
 
 
 @router.get(
     "/tags",
-    tags=["用户标签"],
+    tags=["User Tags"],
     response_model=APITagCollection,
-    name="获取所有标签",
-    description="获取所有可用的谱面标签。",
+    name="Get all tags",
+    description="Get all available beatmap tags.",
 )
-async def router_get_all_tags():
+async def router_get_all_tags() -> APITagCollection:
+    """Retrieve all available beatmap tags.
+
+    Returns:
+        APITagCollection: Collection containing all available tags.
+    """
     return APITagCollection(tags=get_all_tags())
 
 
-async def check_user_can_vote(user: User, beatmap_id: int, session: AsyncSession):
+async def check_user_can_vote(user: User, beatmap_id: int, session: AsyncSession) -> bool:
+    """Check if a user is eligible to vote on a beatmap's tags.
+
+    A user can vote if they have a passing score (not F or D rank) on the beatmap
+    in its original game mode.
+
+    Args:
+        user: The user attempting to vote.
+        beatmap_id: The beatmap ID to check voting eligibility for.
+        session: The database session.
+
+    Returns:
+        bool: True if the user can vote, False otherwise.
+    """
     user_beatmap_score = (
         await session.exec(
             select(exists())
@@ -48,17 +78,28 @@ async def check_user_can_vote(user: User, beatmap_id: int, session: AsyncSession
 
 @router.put(
     "/beatmaps/{beatmap_id}/tags/{tag_id}",
-    tags=["用户标签"],
+    tags=["User Tags"],
     status_code=204,
-    name="为谱面投票标签",
-    description="为指定谱面添加标签投票。",
+    name="Vote for beatmap tag",
+    description="Add a tag vote for the specified beatmap.",
 )
 async def vote_beatmap_tags(
-    beatmap_id: Annotated[int, Path(..., description="谱面 ID")],
-    tag_id: Annotated[int, Path(..., description="标签 ID")],
+    beatmap_id: Annotated[int, Path(..., description="Beatmap ID")],
+    tag_id: Annotated[int, Path(..., description="Tag ID")],
     session: Database,
     current_user: Annotated[User, Depends(get_client_user)],
-):
+) -> None:
+    """Vote for a tag on a beatmap.
+
+    Args:
+        beatmap_id: The ID of the beatmap to tag.
+        tag_id: The ID of the tag to vote for.
+        session: Database session dependency.
+        current_user: The authenticated user.
+
+    Raises:
+        RequestError: If the user is restricted, beatmap not found, or tag not found.
+    """
     if await current_user.is_restricted(session):
         raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
 
@@ -85,22 +126,27 @@ async def vote_beatmap_tags(
 
 @router.delete(
     "/beatmaps/{beatmap_id}/tags/{tag_id}",
-    tags=["用户标签", "谱面"],
+    tags=["User Tags", "Beatmaps"],
     status_code=204,
-    name="取消谱面标签投票",
-    description="取消对指定谱面标签的投票。",
+    name="Remove beatmap tag vote",
+    description="Remove your tag vote from the specified beatmap.",
 )
 async def devote_beatmap_tags(
-    beatmap_id: Annotated[int, Path(..., description="谱面 ID")],
-    tag_id: Annotated[int, Path(..., description="标签 ID")],
+    beatmap_id: Annotated[int, Path(..., description="Beatmap ID")],
+    tag_id: Annotated[int, Path(..., description="Tag ID")],
     session: Database,
     current_user: Annotated[User, Depends(get_client_user)],
-):
-    """
-    取消对谱面指定标签的投票。
+) -> None:
+    """Remove a tag vote from a beatmap.
 
-    - **beatmap_id**: 谱面ID
-    - **tag_id**: 标签ID
+    Args:
+        beatmap_id: The ID of the beatmap.
+        tag_id: The ID of the tag to remove the vote from.
+        session: Database session dependency.
+        current_user: The authenticated user.
+
+    Raises:
+        RequestError: If the user is restricted, beatmap not found, or tag not found.
     """
     if await current_user.is_restricted(session):
         raise RequestError(ErrorType.ACCOUNT_RESTRICTED)

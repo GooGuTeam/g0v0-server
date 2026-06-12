@@ -14,6 +14,7 @@ class Achievement(NamedTuple):
     assets_id: str
     medal_url: str | None = None
     medal_url2x: str | None = None
+    clientside: bool = False
 
     @property
     def url(self) -> str:
@@ -27,3 +28,4 @@ class Achievement(NamedTuple):
 MedalProcessor = Callable[[AsyncSession, "Score", "Beatmap"], Awaitable[bool]]
 Medals = dict[Achievement, MedalProcessor]
 MEDALS: Medals = {}
+CLIENTSIDE_MEDALS: dict[int, Achievement] = {}

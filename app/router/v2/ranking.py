@@ -1,3 +1,9 @@
+"""Ranking API endpoints.
+
+This module provides endpoints for retrieving various leaderboards including
+user rankings, team rankings, and country rankings across different game modes.
+"""
+
 from typing import Annotated, Literal
 
 from app.config import settings
@@ -5,9 +11,9 @@ from app.database import Team, TeamMember, User, UserStatistics
 from app.database.statistics import UserStatisticsModel
 from app.dependencies.database import Database, get_redis
 from app.dependencies.user import get_current_user
+from app.helpers import api_doc
 from app.models.score import GameMode
 from app.service.ranking_cache_service import get_ranking_cache_service
-from app.utils import api_doc
 
 from .router import router
 
@@ -17,6 +23,18 @@ from sqlmodel import col, func, select
 
 
 class TeamStatistics(BaseModel):
+    """Statistics for a team in the rankings.
+
+    Attributes:
+        team_id: The team's ID.
+        ruleset_id: The game mode ID.
+        play_count: Total play count across all team members.
+        ranked_score: Total ranked score across all team members.
+        performance: Total performance points across all team members.
+        team: The team information.
+        member_count: Number of active members in the team.
+    """
+
     team_id: int
     ruleset_id: int
     play_count: int
@@ -28,8 +46,15 @@ class TeamStatistics(BaseModel):
 
 
 class TeamResponse(BaseModel):
+    """Response model for team rankings.
+
+    Attributes:
+        ranking: List of team statistics.
+        total: Total number of teams.
+    """
+
     ranking: list[TeamStatistics]
-    total: int = Field(0, description="战队总数")
+    total: int = Field(0, description="Total number of teams")
 
 
 SortType = Literal["performance", "score"]
@@ -37,27 +62,39 @@ SortType = Literal["performance", "score"]
 
 @router.get(
     "/rankings/{ruleset}/team",
-    name="获取战队排行榜",
-    description="获取在指定模式下按照 pp 排序的战队排行榜",
-    tags=["排行榜"],
+    name="Get team rankings",
+    description="Get team rankings sorted by pp for the specified game mode",
+    tags=["Rankings"],
     response_model=TeamResponse,
 )
 async def get_team_ranking_pp(
     session: Database,
     background_tasks: BackgroundTasks,
-    ruleset: Annotated[GameMode, Path(..., description="指定 ruleset")],
+    ruleset: Annotated[GameMode, Path(..., description="The specified ruleset")],
     current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
-    page: Annotated[int, Query(ge=1, description="页码")] = 1,
+    page: Annotated[int, Query(ge=1, description="Page number")] = 1,
 ):
+    """Get team rankings sorted by performance points.
+
+    Args:
+        session: Database session dependency.
+        background_tasks: Background tasks handler.
+        ruleset: The game mode to get rankings for.
+        current_user: The authenticated user.
+        page: Page number (1-indexed).
+
+    Returns:
+        TeamResponse: Team rankings with statistics.
+    """
     return await get_team_ranking(session, background_tasks, "performance", ruleset, current_user, page)
 
 
 @router.get(
     "/rankings/{ruleset}/team/{sort}",
     response_model=TeamResponse,
-    name="获取战队排行榜",
-    description="获取在指定模式下的战队排行榜",
-    tags=["排行榜"],
+    name="Get team rankings",
+    description="Get team rankings for the specified game mode",
+    tags=["Rankings"],
 )
 async def get_team_ranking(
     session: Database,
@@ -66,33 +103,46 @@ async def get_team_ranking(
         SortType,
         Path(
             ...,
-            description="排名类型：performance 表现分 / score 计分成绩总分 "
-            "**这个参数是本服务器额外添加的，不属于 v2 API 的一部分**",
+            description="Ranking type: performance (pp) / score (ranked score) "
+            "**This parameter is an extension added by this server, not part of the v2 API**",
         ),
     ],
-    ruleset: Annotated[GameMode, Path(..., description="指定 ruleset")],
+    ruleset: Annotated[GameMode, Path(..., description="The specified ruleset")],
     current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
-    page: Annotated[int, Query(ge=1, description="页码")] = 1,
+    page: Annotated[int, Query(ge=1, description="Page number")] = 1,
 ):
-    # 获取 Redis 连接和缓存服务
+    """Get team rankings with configurable sorting.
+
+    Args:
+        session: Database session dependency.
+        background_tasks: Background tasks handler.
+        sort: Sort type (performance or score).
+        ruleset: The game mode to get rankings for.
+        current_user: The authenticated user.
+        page: Page number (1-indexed).
+
+    Returns:
+        TeamResponse: Team rankings with statistics.
+    """
+    # Get Redis connection and cache service
     redis = get_redis()
     cache_service = get_ranking_cache_service(redis)
 
-    # 尝试从缓存获取数据（战队排行榜）
+    # Try to get data from cache (team rankings)
     cached_data = await cache_service.get_cached_team_ranking(ruleset, page)
     cached_stats = await cache_service.get_cached_team_stats(ruleset)
 
     if cached_data and cached_stats:
-        # 从缓存返回数据
+        # Return data from cache
         return TeamResponse(
             ranking=[TeamStatistics.model_validate(item) for item in cached_data],
             total=cached_stats.get("total", 0),
         )
 
-    # 缓存未命中，从数据库查询
+    # Cache miss, query from database
     response = TeamResponse(ranking=[], total=0)
     teams = (await session.exec(select(Team))).all()
-    valid_teams = []  # 存储有效的战队统计
+    valid_teams = []  # Store valid team statistics
 
     for team in teams:
         statistics = (
@@ -131,28 +181,28 @@ async def get_team_ranking(
         )
         valid_teams.append(stats)
 
-    # 排序
+    # Sort
     if sort == "performance":
         valid_teams.sort(key=lambda x: x.performance, reverse=True)
     else:
         valid_teams.sort(key=lambda x: x.ranked_score, reverse=True)
 
-    # 计算总数
+    # Calculate total
     total_count = len(valid_teams)
 
-    # 分页处理
+    # Pagination
     page_size = 50
     start_idx = (page - 1) * page_size
     end_idx = start_idx + page_size
 
-    # 获取当前页的数据
+    # Get current page data
     current_page_data = valid_teams[start_idx:end_idx]
 
-    # 异步缓存数据（不等待完成）
+    # Async cache data (don't wait for completion)
     cache_data = [item.model_dump() for item in current_page_data]
     stats_data = {"total": total_count}
 
-    # 创建后台任务来缓存数据
+    # Create background task to cache data
     background_tasks.add_task(
         cache_service.cache_team_ranking,
         ruleset,
@@ -161,7 +211,7 @@ async def get_team_ranking(
         ttl=settings.ranking_cache_expire_minutes * 60,
     )
 
-    # 缓存统计信息
+    # Cache statistics
     background_tasks.add_task(
         cache_service.cache_team_stats,
         ruleset,
@@ -169,13 +219,23 @@ async def get_team_ranking(
         ttl=settings.ranking_cache_expire_minutes * 60,
     )
 
-    # 返回当前页的结果
+    # Return current page results
     response.ranking = current_page_data
     response.total = total_count
     return response
 
 
 class CountryStatistics(BaseModel):
+    """Statistics for a country in the rankings.
+
+    Attributes:
+        code: Country code (ISO 3166-1 alpha-2).
+        active_users: Number of active users from this country.
+        play_count: Total play count for users from this country.
+        ranked_score: Total ranked score for users from this country.
+        performance: Total performance points for users from this country.
+    """
+
     code: str
     active_users: int
     play_count: int
@@ -184,65 +244,96 @@ class CountryStatistics(BaseModel):
 
 
 class CountryResponse(BaseModel):
+    """Response model for country rankings.
+
+    Attributes:
+        ranking: List of country statistics.
+    """
+
     ranking: list[CountryStatistics]
 
 
 @router.get(
     "/rankings/{ruleset}/country",
-    name="获取地区排行榜",
-    description="获取在指定模式下按照 pp 排序的地区排行榜",
-    tags=["排行榜"],
+    name="Get country rankings",
+    description="Get country rankings sorted by pp for the specified game mode",
+    tags=["Rankings"],
     response_model=CountryResponse,
 )
 async def get_country_ranking_pp(
     session: Database,
     background_tasks: BackgroundTasks,
-    ruleset: Annotated[GameMode, Path(..., description="指定 ruleset")],
+    ruleset: Annotated[GameMode, Path(..., description="The specified ruleset")],
     current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
-    page: Annotated[int, Query(ge=1, description="页码")] = 1,
+    page: Annotated[int, Query(ge=1, description="Page number")] = 1,
 ):
+    """Get country rankings sorted by performance points.
+
+    Args:
+        session: Database session dependency.
+        background_tasks: Background tasks handler.
+        ruleset: The game mode to get rankings for.
+        current_user: The authenticated user.
+        page: Page number (1-indexed).
+
+    Returns:
+        CountryResponse: Country rankings with statistics.
+    """
     return await get_country_ranking(session, background_tasks, ruleset, "performance", current_user, page)
 
 
 @router.get(
     "/rankings/{ruleset}/country/{sort}",
     response_model=CountryResponse,
-    name="获取地区排行榜",
-    description="获取在指定模式下的地区排行榜",
-    tags=["排行榜"],
+    name="Get country rankings",
+    description="Get country rankings for the specified game mode",
+    tags=["Rankings"],
 )
 async def get_country_ranking(
     session: Database,
     background_tasks: BackgroundTasks,
-    ruleset: Annotated[GameMode, Path(..., description="指定 ruleset")],
+    ruleset: Annotated[GameMode, Path(..., description="The specified ruleset")],
     sort: Annotated[
         SortType,
         Path(
             ...,
-            description="排名类型：performance 表现分 / score 计分成绩总分 "
-            "**这个参数是本服务器额外添加的，不属于 v2 API 的一部分**",
+            description="Ranking type: performance (pp) / score (ranked score) "
+            "**This parameter is an extension added by this server, not part of the v2 API**",
         ),
     ],
     current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
-    page: Annotated[int, Query(ge=1, description="页码")] = 1,
+    page: Annotated[int, Query(ge=1, description="Page number")] = 1,
 ):
-    # 获取 Redis 连接和缓存服务
+    """Get country rankings with configurable sorting.
+
+    Args:
+        session: Database session dependency.
+        background_tasks: Background tasks handler.
+        ruleset: The game mode to get rankings for.
+        sort: Sort type (performance or score).
+        current_user: The authenticated user.
+        page: Page number (1-indexed).
+
+    Returns:
+        CountryResponse: Country rankings with statistics.
+    """
+    # Get Redis connection and cache service
     redis = get_redis()
     cache_service = get_ranking_cache_service(redis)
 
-    # 尝试从缓存获取数据
+    # Try to get data from cache
     cached_data = await cache_service.get_cached_country_ranking(ruleset, page)
 
     if cached_data:
-        # 从缓存返回数据
+        # Return data from cache
         return CountryResponse(ranking=[CountryStatistics.model_validate(item) for item in cached_data])
 
-    # 缓存未命中，从数据库查询
+    # Cache miss, query from database
     response = CountryResponse(ranking=[])
     countries = (await session.exec(select(User.country_code).distinct())).all()
 
     for country in countries:
-        if not country:  # 跳过空的国家代码
+        if not country:  # Skip empty country codes
             continue
 
         statistics = (
@@ -257,7 +348,7 @@ async def get_country_ranking(
             )
         ).all()
 
-        if not statistics:  # 跳过没有数据的国家
+        if not statistics:  # Skip countries with no data
             continue
 
         pp = 0
@@ -285,18 +376,18 @@ async def get_country_ranking(
     else:
         response.ranking.sort(key=lambda x: x.ranked_score, reverse=True)
 
-    # 分页处理
+    # Pagination
     page_size = 50
     start_idx = (page - 1) * page_size
     end_idx = start_idx + page_size
 
-    # 获取当前页的数据
+    # Get current page data
     current_page_data = response.ranking[start_idx:end_idx]
 
-    # 异步缓存数据（不等待完成）
+    # Async cache data (don't wait for completion)
     cache_data = [item.model_dump() for item in current_page_data]
 
-    # 创建后台任务来缓存数据
+    # Create background task to cache data
     background_tasks.add_task(
         cache_service.cache_country_ranking,
         ruleset,
@@ -305,7 +396,7 @@ async def get_country_ranking(
         ttl=settings.ranking_cache_expire_minutes * 60,
     )
 
-    # 返回当前页的结果
+    # Return current page results
     response.ranking = current_page_data
     return response
 
@@ -314,41 +405,55 @@ async def get_country_ranking(
     "/rankings/{ruleset}/{sort}",
     responses={
         200: api_doc(
-            "用户排行榜",
+            "User rankings",
             {"ranking": list[UserStatisticsModel], "total": int},
             ["user.country", "user.cover"],
             name="TopUsersResponse",
         )
     },
-    name="获取用户排行榜",
-    description="获取在指定模式下的用户排行榜",
-    tags=["排行榜"],
+    name="Get user rankings",
+    description="Get user rankings for the specified game mode",
+    tags=["Rankings"],
 )
 async def get_user_ranking(
     session: Database,
     background_tasks: BackgroundTasks,
-    ruleset: Annotated[GameMode, Path(..., description="指定 ruleset")],
-    sort: Annotated[SortType, Path(..., description="排名类型：performance 表现分 / score 计分成绩总分")],
+    ruleset: Annotated[GameMode, Path(..., description="The specified ruleset")],
+    sort: Annotated[SortType, Path(..., description="Ranking type: performance (pp) / score (ranked score)")],
     current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
-    country: Annotated[str | None, Query(description="国家代码")] = None,
-    page: Annotated[int, Query(ge=1, description="页码")] = 1,
+    country: Annotated[str | None, Query(description="Country code")] = None,
+    page: Annotated[int, Query(ge=1, description="Page number")] = 1,
 ):
-    # 获取 Redis 连接和缓存服务
+    """Get user rankings with configurable sorting.
+
+    Args:
+        session: Database session dependency.
+        background_tasks: Background tasks handler.
+        ruleset: The game mode to get rankings for.
+        sort: Sort type (performance or score).
+        current_user: The authenticated user.
+        country: Optional country code filter.
+        page: Page number (1-indexed).
+
+    Returns:
+        dict: User rankings with statistics and total count.
+    """
+    # Get Redis connection and cache service
     redis = get_redis()
     cache_service = get_ranking_cache_service(redis)
 
-    # 尝试从缓存获取数据
+    # Try to get data from cache
     cached_data = await cache_service.get_cached_ranking(ruleset, sort, country, page)
     cached_stats = await cache_service.get_cached_stats(ruleset, sort, country)
 
     if cached_data and cached_stats:
-        # 从缓存返回数据
+        # Return data from cache
         return {
             "ranking": cached_data,
             "total": cached_stats.get("total", 0),
         }
 
-    # 缓存未命中，从数据库查询
+    # Cache miss, query from database
     wheres = [
         col(UserStatistics.mode) == ruleset,
         col(UserStatistics.pp) > 0,
@@ -364,7 +469,7 @@ async def get_user_ranking(
         wheres.append(col(UserStatistics.user).has(country_code=country.upper()))
         include.append("country_rank")
 
-    # 查询总数
+    # Query total count
     count_query = select(func.count()).select_from(UserStatistics).where(*wheres)
     total_count_result = await session.exec(count_query)
     total_count = total_count_result.one()
@@ -380,7 +485,7 @@ async def get_user_ranking(
         .offset(50 * (page - 1))
     )
 
-    # 转换为响应格式
+    # Transform to response format
     ranking_data = []
     for statistics in statistics_list:
         user_stats_resp = await UserStatisticsModel.transform(
@@ -388,12 +493,12 @@ async def get_user_ranking(
         )
         ranking_data.append(user_stats_resp)
 
-    # 异步缓存数据（不等待完成）
-    # 使用配置文件中的TTL设置
+    # Async cache data (don't wait for completion)
+    # Use TTL setting from config
     cache_data = ranking_data
     stats_data = {"total": total_count}
 
-    # 创建后台任务来缓存数据
+    # Create background task to cache data
     background_tasks.add_task(
         cache_service.cache_ranking,
         ruleset,
@@ -404,7 +509,7 @@ async def get_user_ranking(
         ttl=settings.ranking_cache_expire_minutes * 60,
     )
 
-    # 缓存统计信息
+    # Cache statistics
     background_tasks.add_task(
         cache_service.cache_stats,
         ruleset,

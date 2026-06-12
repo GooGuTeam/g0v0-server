@@ -1,12 +1,18 @@
+"""Rank history database models.
+
+This module tracks historical rank data for users over time.
+"""
+
 from datetime import (
     date as dt,
 )
 from typing import TYPE_CHECKING, Optional
 
+from app.helpers import utcnow
 from app.models.score import GameMode
-from app.utils import utcnow
 
 from pydantic import BaseModel
+from sqlalchemy.orm import Mapped
 from sqlmodel import (
     BigInteger,
     Column,
@@ -25,6 +31,8 @@ if TYPE_CHECKING:
 
 
 class RankHistory(SQLModel, table=True):
+    """Daily rank history records for users."""
+
     __tablename__: str = "rank_history"
 
     id: int | None = Field(default=None, sa_column=Column(BigInteger, primary_key=True))
@@ -36,10 +44,12 @@ class RankHistory(SQLModel, table=True):
         sa_column=Column(Date, index=True),
     )
 
-    user: Optional["User"] = Relationship(back_populates="rank_history")
+    user: Mapped[Optional["User"]] = Relationship(back_populates="rank_history")
 
 
 class RankTop(SQLModel, table=True):
+    """Tracks users' peak/highest ranks achieved."""
+
     __tablename__: str = "rank_top"
 
     id: int | None = Field(default=None, sa_column=Column(BigInteger, primary_key=True))
@@ -53,6 +63,8 @@ class RankTop(SQLModel, table=True):
 
 
 class RankHistoryResp(BaseModel):
+    """Response model for rank history data."""
+
     mode: GameMode
     data: list[int]
 

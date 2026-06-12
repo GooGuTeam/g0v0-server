@@ -1,10 +1,17 @@
+"""User account history database models.
+
+This module tracks user account actions such as restrictions,
+silences, and tournament bans.
+"""
+
 from datetime import datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
+from app.helpers import utcnow
 from app.models.model import UTCBaseModel
-from app.utils import utcnow
 
+from sqlalchemy.orm import Mapped
 from sqlmodel import BigInteger, Column, Field, ForeignKey, Integer, Relationship, SQLModel
 
 if TYPE_CHECKING:
@@ -12,6 +19,8 @@ if TYPE_CHECKING:
 
 
 class UserAccountHistoryType(StrEnum):
+    """Types of account history entries."""
+
     NOTE = "note"
     RESTRICTION = "restriction"
     SLIENCE = "silence"
@@ -19,6 +28,8 @@ class UserAccountHistoryType(StrEnum):
 
 
 class UserAccountHistoryBase(SQLModel, UTCBaseModel):
+    """Base fields for account history entries."""
+
     description: str | None = None
     length: int
     permanent: bool = False
@@ -27,6 +38,8 @@ class UserAccountHistoryBase(SQLModel, UTCBaseModel):
 
 
 class UserAccountHistory(UserAccountHistoryBase, table=True):
+    """Database table for user account history entries."""
+
     __tablename__: str = "user_account_history"
 
     id: int | None = Field(
@@ -39,10 +52,12 @@ class UserAccountHistory(UserAccountHistoryBase, table=True):
     )
     user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
 
-    user: "User" = Relationship(back_populates="account_history")
+    user: Mapped["User"] = Relationship(back_populates="account_history")
 
 
 class UserAccountHistoryResp(UserAccountHistoryBase):
+    """Response model for account history entries."""
+
     id: int | None = None
 
     @classmethod

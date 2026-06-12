@@ -1,3 +1,12 @@
+"""AWS S3 storage service implementation.
+
+This module provides a storage service implementation using AWS S3
+for file storage.
+
+Classes:
+    AWSS3StorageService: Storage service using AWS S3.
+"""
+
 from __future__ import annotations
 
 from urllib.parse import urlparse
@@ -9,6 +18,20 @@ from botocore.exceptions import ClientError
 
 
 class AWSS3StorageService(StorageService):
+    """Storage service implementation using AWS S3.
+
+    Provides file storage operations using Amazon S3 or S3-compatible
+    services.
+
+    Attributes:
+        bucket_name: The S3 bucket name.
+        public_url_base: Optional base URL for public file access.
+        session: The aioboto3 session.
+        access_key_id: AWS access key ID.
+        secret_access_key: AWS secret access key.
+        region_name: AWS region name.
+    """
+
     def __init__(
         self,
         access_key_id: str,
@@ -17,6 +40,16 @@ class AWSS3StorageService(StorageService):
         region_name: str,
         public_url_base: str | None = None,
     ):
+        """Initialize the AWS S3 storage service.
+
+        Args:
+            access_key_id: AWS access key ID.
+            secret_access_key: AWS secret access key.
+            bucket_name: The S3 bucket name.
+            region_name: AWS region name.
+            public_url_base: Optional base URL for public access.
+                Defaults to None.
+        """
         self.bucket_name = bucket_name
         self.public_url_base = public_url_base
         self.session = aioboto3.Session()
@@ -26,9 +59,15 @@ class AWSS3StorageService(StorageService):
 
     @property
     def endpoint_url(self) -> str | None:
+        """Get the S3 endpoint URL.
+
+        Returns:
+            The endpoint URL, or None for AWS default.
+        """
         return None
 
     def _get_client(self):
+        """Get an S3 client context manager."""
         return self.session.client(
             "s3",
             endpoint_url=self.endpoint_url,
@@ -105,21 +144,32 @@ class AWSS3StorageService(StorageService):
                 raise RuntimeError(f"Failed to generate file URL: {e}")
 
     def get_file_name_by_url(self, url: str) -> str | None:
+        """Extract the file path from a URL.
+
+        Handles various URL formats including public URL base,
+        S3 path-style, and virtual-hosted-style URLs.
+
+        Args:
+            url: The URL to parse.
+
+        Returns:
+            The file path/key, or None if the URL doesn't match.
+        """
         parsed = urlparse(url)
         path = parsed.path.lstrip("/")
 
-        # 1. 如果是 public_url_base 拼接出来的
+        # 1. If it's a URL constructed with public_url_base
         if self.public_url_base and url.startswith(self.public_url_base.rstrip("/")):
             return path
 
-        # 2. 如果是 S3 path-style: s3.amazonaws.com/<bucket>/<key>
+        # 2. If it's S3 path-style: s3.amazonaws.com/<bucket>/<key>
         if parsed.netloc == "s3.amazonaws.com":
             parts = path.split("/", 1)
             return parts[1] if len(parts) > 1 else None
 
-        # 3. 如果是 virtual-hosted-style: <bucket>.s3.<region>.amazonaws.com/<key>
+        # 3. If it's virtual-hosted-style: <bucket>.s3.<region>.amazonaws.com/<key>
         if ".s3." in parsed.netloc or parsed.netloc.endswith(".s3.amazonaws.com"):
             return path
 
-        # 4. 直接返回 path
+        # 4. Return path directly
         return path or None

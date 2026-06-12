@@ -1,3 +1,9 @@
+"""Room endpoints for osu! API v2.
+
+This module provides endpoints for managing multiplayer rooms (playlist mode),
+including room creation, participation, leaderboards, and events.
+"""
+
 from datetime import UTC
 from typing import Annotated, Literal
 
@@ -15,10 +21,10 @@ from app.database.score import Score
 from app.database.user import User, UserModel
 from app.dependencies.database import Database, Redis
 from app.dependencies.user import ClientUser, get_current_user
+from app.helpers import api_doc, utcnow
 from app.models.error import ErrorType, RequestError
 from app.models.room import MatchType, RoomCategory, RoomStatus
 from app.service.room import create_playlist_room_from_api
-from app.utils import api_doc, utcnow
 
 from .router import router
 
@@ -30,10 +36,10 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 @router.get(
     "/rooms",
-    tags=["房间"],
+    tags=["Rooms"],
     responses={
         200: api_doc(
-            "房间列表",
+            "Room list",
             list[RoomModel],
             [
                 "current_playlist_item.beatmap.beatmapset",
@@ -44,8 +50,8 @@ from sqlmodel.ext.asyncio.session import AsyncSession
             ],
         )
     },
-    name="获取房间列表",
-    description="获取房间列表。支持按状态/模式筛选",
+    name="Get room list",
+    description="Get room list. Supports filtering by status/mode",
 )
 async def get_all_rooms(
     db: Database,
@@ -53,17 +59,32 @@ async def get_all_rooms(
     mode: Annotated[
         Literal["open", "ended", "participated", "owned"] | None,
         Query(
-            description=("房间模式：open 当前开放 / ended 已经结束 / participated 参与过 / owned 自己创建的房间"),
+            description=(
+                "Room mode: open (currently active) / ended (finished) / "
+                "participated (user joined) / owned (created by user)"
+            ),
         ),
     ] = "open",
     category: Annotated[
         RoomCategory,
         Query(
-            description=("房间分类：NORMAL 普通歌单模式房间 / REALTIME 多人游戏房间 / DAILY_CHALLENGE 每日挑战"),
+            description=("Room category: NORMAL (playlist mode) / REALTIME (multiplayer) / DAILY_CHALLENGE"),
         ),
     ] = RoomCategory.NORMAL,
-    status: Annotated[RoomStatus | None, Query(description="房间状态（可选）")] = None,
+    status: Annotated[RoomStatus | None, Query(description="Room status (optional)")] = None,
 ):
+    """Get all rooms matching the specified filters.
+
+    Args:
+        db: Database session dependency.
+        current_user: The authenticated user.
+        mode: Room mode filter (open/ended/participated/owned).
+        category: Room category filter.
+        status: Optional room status filter.
+
+    Returns:
+        list[RoomModel]: List of rooms matching the filters.
+    """
     resp_list = []
     where_clauses: list[ColumnElement[bool]] = [col(Room.category) == category, col(Room.type) != MatchType.MATCHMAKING]
     now = utcnow()
@@ -124,6 +145,15 @@ async def get_all_rooms(
 
 
 async def _participate_room(room_id: int, user_id: int, db_room: Room, session: AsyncSession, redis: Redis):
+    """Add or update a user's participation in a room.
+
+    Args:
+        room_id: The room ID.
+        user_id: The user ID.
+        db_room: The room database object.
+        session: Database session.
+        redis: Redis connection for publishing events.
+    """
     participated_user = (
         await session.exec(
             select(RoomParticipatedUser).where(
@@ -149,12 +179,12 @@ async def _participate_room(room_id: int, user_id: int, db_room: Room, session: 
 
 @router.post(
     "/rooms",
-    tags=["房间"],
-    name="创建房间",
-    description="\n创建一个新的房间。",
+    tags=["Rooms"],
+    name="Create room",
+    description="\nCreate a new room.",
     responses={
         200: api_doc(
-            "创建的房间信息",
+            "Created room information",
             RoomModel,
             Room.SHOW_RESPONSE_INCLUDES,
         )
@@ -166,6 +196,20 @@ async def create_room(
     current_user: ClientUser,
     redis: Redis,
 ):
+    """Create a new playlist mode room.
+
+    Args:
+        db: Database session dependency.
+        room: Room creation data.
+        current_user: The authenticated client user.
+        redis: Redis connection.
+
+    Returns:
+        RoomModel: The created room information.
+
+    Raises:
+        RequestError: If the user account is restricted.
+    """
     if await current_user.is_restricted(db):
         raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
     user_id = current_user.id
@@ -179,28 +223,42 @@ async def create_room(
 
 @router.get(
     "/rooms/{room_id}",
-    tags=["房间"],
+    tags=["Rooms"],
     responses={
         200: api_doc(
-            "房间详细信息",
+            "Room details",
             RoomModel,
             Room.SHOW_RESPONSE_INCLUDES,
         )
     },
-    name="获取房间详情",
-    description="获取指定房间详情。",
+    name="Get room details",
+    description="Get details for a specific room.",
 )
 async def get_room(
     db: Database,
-    room_id: Annotated[int, Path(..., description="房间 ID")],
+    room_id: Annotated[int, Path(..., description="Room ID")],
     current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
     category: Annotated[
         str,
         Query(
-            description=("房间分类：NORMAL 普通歌单模式房间 / REALTIME 多人游戏房间 / DAILY_CHALLENGE 每日挑战 (可选)"),
+            description=("Room category: NORMAL (playlist mode) / REALTIME (multiplayer) / DAILY_CHALLENGE (optional)"),
         ),
     ] = "",
 ):
+    """Get room details by ID.
+
+    Args:
+        db: Database session dependency.
+        room_id: The room ID.
+        current_user: The authenticated user.
+        category: Optional room category hint.
+
+    Returns:
+        RoomModel: Room details.
+
+    Raises:
+        RequestError: If the room is not found.
+    """
     db_room = (await db.exec(select(Room).where(Room.id == room_id))).first()
     if db_room is None:
         raise RequestError(ErrorType.ROOM_NOT_FOUND)
@@ -210,15 +268,28 @@ async def get_room(
 
 @router.delete(
     "/rooms/{room_id}",
-    tags=["房间"],
-    name="结束房间",
-    description="\n结束歌单模式房间。",
+    tags=["Rooms"],
+    name="End room",
+    description="\nEnd a playlist mode room.",
 )
 async def delete_room(
     db: Database,
-    room_id: Annotated[int, Path(..., description="房间 ID")],
+    room_id: Annotated[int, Path(..., description="Room ID")],
     current_user: ClientUser,
 ):
+    """End a playlist mode room.
+
+    Args:
+        db: Database session dependency.
+        room_id: The room ID.
+        current_user: The authenticated client user.
+
+    Returns:
+        None
+
+    Raises:
+        RequestError: If user is restricted or room not found.
+    """
     if await current_user.is_restricted(db):
         raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
 
@@ -233,17 +304,32 @@ async def delete_room(
 
 @router.put(
     "/rooms/{room_id}/users/{user_id}",
-    tags=["房间"],
-    name="加入房间",
-    description="\n加入指定歌单模式房间。",
+    tags=["Rooms"],
+    name="Join room",
+    description="\nJoin a specified playlist mode room.",
 )
 async def add_user_to_room(
     db: Database,
-    room_id: Annotated[int, Path(..., description="房间 ID")],
-    user_id: Annotated[int, Path(..., description="用户 ID")],
+    room_id: Annotated[int, Path(..., description="Room ID")],
+    user_id: Annotated[int, Path(..., description="User ID")],
     redis: Redis,
     current_user: ClientUser,
 ):
+    """Join a playlist mode room.
+
+    Args:
+        db: Database session dependency.
+        room_id: The room ID.
+        user_id: The user ID to add.
+        redis: Redis connection.
+        current_user: The authenticated client user.
+
+    Returns:
+        RoomModel: Updated room information.
+
+    Raises:
+        RequestError: If user is restricted or room not found.
+    """
     if await current_user.is_restricted(db):
         raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
 
@@ -260,17 +346,32 @@ async def add_user_to_room(
 
 @router.delete(
     "/rooms/{room_id}/users/{user_id}",
-    tags=["房间"],
-    name="离开房间",
-    description="\n离开指定歌单模式房间。",
+    tags=["Rooms"],
+    name="Leave room",
+    description="\nLeave a specified playlist mode room.",
 )
 async def remove_user_from_room(
     db: Database,
-    room_id: Annotated[int, Path(..., description="房间 ID")],
-    user_id: Annotated[int, Path(..., description="用户 ID")],
+    room_id: Annotated[int, Path(..., description="Room ID")],
+    user_id: Annotated[int, Path(..., description="User ID")],
     current_user: ClientUser,
     redis: Redis,
 ):
+    """Leave a playlist mode room.
+
+    Args:
+        db: Database session dependency.
+        room_id: The room ID.
+        user_id: The user ID to remove.
+        current_user: The authenticated client user.
+        redis: Redis connection.
+
+    Returns:
+        None
+
+    Raises:
+        RequestError: If user is restricted or room not found.
+    """
     if await current_user.is_restricted(db):
         raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
 
@@ -297,12 +398,12 @@ async def remove_user_from_room(
 
 @router.get(
     "/rooms/{room_id}/leaderboard",
-    tags=["房间"],
-    name="获取房间排行榜",
-    description="获取房间内累计得分排行榜。",
+    tags=["Rooms"],
+    name="Get room leaderboard",
+    description="Get cumulative score leaderboard for a room.",
     responses={
         200: api_doc(
-            "房间排行榜",
+            "Room leaderboard",
             {
                 "leaderboard": list[ItemAttemptsCountModel],
                 "user_score": ItemAttemptsCountModel | None,
@@ -314,9 +415,22 @@ async def remove_user_from_room(
 )
 async def get_room_leaderboard(
     db: Database,
-    room_id: Annotated[int, Path(..., description="房间 ID")],
+    room_id: Annotated[int, Path(..., description="Room ID")],
     current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
 ):
+    """Get the leaderboard for a room.
+
+    Args:
+        db: Database session dependency.
+        room_id: The room ID.
+        current_user: The authenticated user.
+
+    Returns:
+        dict: Leaderboard data with user scores.
+
+    Raises:
+        RequestError: If the room is not found.
+    """
     db_room = (await db.exec(select(Room).where(Room.id == room_id))).first()
     if db_room is None:
         raise RequestError(ErrorType.ROOM_NOT_FOUND)
@@ -344,12 +458,12 @@ async def get_room_leaderboard(
 
 @router.get(
     "/rooms/{room_id}/events",
-    tags=["房间"],
-    name="获取房间事件",
-    description="获取房间事件列表 （倒序，可按 after / before 进行范围截取）。",
+    tags=["Rooms"],
+    name="Get room events",
+    description="Get room event list (descending order, supports after/before range filtering).",
     responses={
         200: api_doc(
-            "房间事件",
+            "Room events",
             {
                 "beatmaps": list[BeatmapModel],
                 "beatmapsets": list[BeatmapsetModel],
@@ -368,12 +482,28 @@ async def get_room_leaderboard(
 )
 async def get_room_events(
     db: Database,
-    room_id: Annotated[int, Path(..., description="房间 ID")],
+    room_id: Annotated[int, Path(..., description="Room ID")],
     current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
-    limit: Annotated[int, Query(ge=1, le=1000, description="返回条数 (1-1000)")] = 100,
-    after: Annotated[int | None, Query(ge=0, description="仅包含大于该事件 ID 的事件")] = None,
-    before: Annotated[int | None, Query(ge=0, description="仅包含小于该事件 ID 的事件")] = None,
+    limit: Annotated[int, Query(ge=1, le=1000, description="Number of results to return (1-1000)")] = 100,
+    after: Annotated[int | None, Query(ge=0, description="Only include events with ID greater than this")] = None,
+    before: Annotated[int | None, Query(ge=0, description="Only include events with ID less than this")] = None,
 ):
+    """Get events for a room.
+
+    Args:
+        db: Database session dependency.
+        room_id: The room ID.
+        current_user: The authenticated user.
+        limit: Maximum number of events to return.
+        after: Only include events after this event ID.
+        before: Only include events before this event ID.
+
+    Returns:
+        dict: Room events with related beatmaps, beatmapsets, users, and playlist items.
+
+    Raises:
+        RequestError: If the room is not found.
+    """
     events = (
         await db.exec(
             select(MultiplayerEvent)

@@ -1,10 +1,14 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
+
+META_FILENAME = "plugin.json"
 
 
 class PluginMeta(BaseModel):
-    id: str
+    model_config = ConfigDict(frozen=True)
+
+    id: str = Field(..., pattern=r"^[a-z0-9\-_]+$")
     name: str
     author: str
     version: str
     description: str | None = None
-    dependencies: list[str] = []
+    dependencies: tuple[str, ...] = ()

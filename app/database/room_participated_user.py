@@ -1,9 +1,15 @@
+"""Room participation tracking database models.
+
+This module tracks users who have joined/left multiplayer rooms.
+"""
+
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from app.utils import utcnow
+from app.helpers import utcnow
 
 from sqlalchemy.ext.asyncio import AsyncAttrs
+from sqlalchemy.orm import Mapped
 from sqlmodel import (
     BigInteger,
     Column,
@@ -20,6 +26,8 @@ if TYPE_CHECKING:
 
 
 class RoomParticipatedUser(AsyncAttrs, SQLModel, table=True):
+    """Tracks user participation history in multiplayer rooms."""
+
     __tablename__: str = "room_participated_users"
 
     id: int | None = Field(default=None, sa_column=Column(BigInteger, primary_key=True, autoincrement=True))
@@ -31,5 +39,5 @@ class RoomParticipatedUser(AsyncAttrs, SQLModel, table=True):
     )
     left_at: datetime | None = Field(sa_column=Column(DateTime(timezone=True), nullable=True), default=None)
 
-    room: "Room" = Relationship()
-    user: "User" = Relationship()
+    room: Mapped["Room"] = Relationship()
+    user: Mapped["User"] = Relationship()

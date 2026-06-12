@@ -1,3 +1,8 @@
+"""Multiplayer room attempt count database models.
+
+This module tracks user attempts and scores in multiplayer rooms.
+"""
+
 from typing import Any, NotRequired, TypedDict
 
 from ._base import DatabaseModel, ondemand
@@ -5,6 +10,7 @@ from .playlist_best_score import PlaylistBestScore
 from .user import User, UserDict, UserModel
 
 from sqlalchemy.ext.asyncio import AsyncAttrs
+from sqlalchemy.orm import Mapped
 from sqlmodel import (
     BigInteger,
     Column,
@@ -19,6 +25,8 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 
 class ItemAttemptsCountDict(TypedDict):
+    """TypedDict representation of room attempt counts."""
+
     accuracy: float
     attempts: int
     completed: int
@@ -32,6 +40,8 @@ class ItemAttemptsCountDict(TypedDict):
 
 
 class ItemAttemptsCountModel(DatabaseModel[ItemAttemptsCountDict]):
+    """Base model for room attempt counts with transformation support."""
+
     accuracy: float = 0.0
     attempts: int = Field(default=0)
     completed: int = Field(default=0)
@@ -78,10 +88,12 @@ class ItemAttemptsCountModel(DatabaseModel[ItemAttemptsCountDict]):
 
 
 class ItemAttemptsCount(AsyncAttrs, ItemAttemptsCountModel, table=True):
+    """Database table for tracking user attempts in multiplayer rooms."""
+
     __tablename__: str = "item_attempts_count"
     id: int | None = Field(default=None, primary_key=True)
 
-    user: User = Relationship()
+    user: Mapped[User] = Relationship()
 
     async def get_position(self, session: AsyncSession) -> int:
         rownum = (

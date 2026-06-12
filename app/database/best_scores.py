@@ -1,3 +1,8 @@
+"""Best PP scores database models.
+
+This module tracks users' best PP (performance points) scores for ranking purposes.
+"""
+
 from typing import TYPE_CHECKING
 
 from app.models.score import GameMode
@@ -5,6 +10,7 @@ from app.models.score import GameMode
 from .statistics import UserStatistics
 from .user import User
 
+from sqlalchemy.orm import Mapped
 from sqlmodel import (
     BigInteger,
     Column,
@@ -23,6 +29,8 @@ if TYPE_CHECKING:
 
 
 class BestScore(SQLModel, table=True):
+    """Tracks a user's best PP scores for each beatmap/mode combination."""
+
     __tablename__: str = "best_scores"
     user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
     score_id: int = Field(sa_column=Column(BigInteger, ForeignKey("scores.id"), primary_key=True))
@@ -35,11 +43,11 @@ class BestScore(SQLModel, table=True):
         sa_column=Column(Float, default=0),
     )
 
-    user: User = Relationship()
-    score: "Score" = Relationship(
+    user: Mapped[User] = Relationship()
+    score: Mapped["Score"] = Relationship(
         back_populates="ranked_score",
     )
-    beatmap: "Beatmap" = Relationship()
+    beatmap: Mapped["Beatmap"] = Relationship()
 
     async def delete(self, session: AsyncSession):
         from .score import calculate_user_pp

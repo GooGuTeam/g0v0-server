@@ -1,8 +1,14 @@
+"""Multiplayer room event database models.
+
+This module tracks events that occur in multiplayer rooms
+such as player joins, game starts, and score submissions.
+"""
+
 from datetime import datetime
 from typing import Any
 
+from app.helpers import utcnow
 from app.models.model import UTCBaseModel
-from app.utils import utcnow
 
 from sqlmodel import (
     JSON,
@@ -16,6 +22,8 @@ from sqlmodel import (
 
 
 class MultiplayerEventBase(SQLModel, UTCBaseModel):
+    """Base fields for multiplayer events."""
+
     playlist_item_id: int | None = None
     user_id: int | None = Field(
         default=None,
@@ -31,6 +39,8 @@ class MultiplayerEventBase(SQLModel, UTCBaseModel):
 
 
 class MultiplayerEvent(MultiplayerEventBase, table=True):
+    """Database table for multiplayer room events."""
+
     __tablename__: str = "multiplayer_events"
     id: int = Field(
         default=None,
@@ -50,6 +60,8 @@ class MultiplayerEvent(MultiplayerEventBase, table=True):
 
 
 class MultiplayerEventResp(MultiplayerEventBase):
+    """Response model for multiplayer events."""
+
     id: int
 
     @classmethod

@@ -24,6 +24,7 @@ COPY migrations/ ./migrations/
 COPY static/ ./static/
 COPY app/ ./app/
 COPY main.py ./
+COPY install-all-deps.py ./
 
 # ---
 
@@ -31,7 +32,7 @@ FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim
 WORKDIR /app
 
 RUN apt-get update \
- && apt-get install -y curl netcat-openbsd \
+ && apt-get install -y curl netcat-openbsd git \
  && rm -rf /var/lib/apt/lists/*
 
 ENV PATH="/app/.venv/bin:${PATH}" \

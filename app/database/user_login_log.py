@@ -1,16 +1,18 @@
-"""
-User Login Log Database Model
+"""User login log database models.
+
+This module tracks user login attempts including IP addresses,
+geolocation data, and login status.
 """
 
 from datetime import datetime
 
-from app.utils import utcnow
+from app.helpers import utcnow
 
 from sqlmodel import Field, SQLModel
 
 
 class UserLoginLog(SQLModel, table=True):
-    """User login log table"""
+    """Database table for user login logs."""
 
     __tablename__: str = "user_login_log"
 

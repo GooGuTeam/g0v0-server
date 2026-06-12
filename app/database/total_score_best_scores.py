@@ -1,12 +1,18 @@
+"""Total score best scores database models.
+
+This module tracks users' best total scores for each beatmap/mode combination.
+"""
+
 from typing import TYPE_CHECKING
 
-from app.calculator import calculate_score_to_level
+from app.calculating import calculate_score_to_level
 from app.models.score import GameMode, Rank
 
 from .statistics import UserStatistics
 from .user import User
 
 from sqlalchemy import Index
+from sqlalchemy.orm import Mapped
 from sqlmodel import (
     JSON,
     BigInteger,
@@ -27,6 +33,8 @@ if TYPE_CHECKING:
 
 
 class TotalScoreBestScore(SQLModel, table=True):
+    """Tracks users' best total scores for ranking purposes."""
+
     __tablename__: str = "total_score_best_scores"
     __table_args__ = (
         Index("ix_total_score_best_scores_user_mode_score", "user_id", "gamemode", "score_id"),
@@ -43,15 +51,15 @@ class TotalScoreBestScore(SQLModel, table=True):
     )
     rank: Rank
 
-    user: User = Relationship()
-    score: "Score" = Relationship(
+    user: Mapped[User] = Relationship()
+    score: Mapped["Score"] = Relationship(
         sa_relationship_kwargs={
             "foreign_keys": "[TotalScoreBestScore.score_id]",
             "lazy": "joined",
         },
         back_populates="best_score",
     )
-    beatmap: "Beatmap" = Relationship()
+    beatmap: Mapped["Beatmap"] = Relationship()
 
     async def delete(self, session: AsyncSession):
         from .score import Score

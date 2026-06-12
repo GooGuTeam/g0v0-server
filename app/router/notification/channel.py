@@ -1,3 +1,9 @@
+"""Channel router module for chat channel operations.
+
+This module provides endpoints for managing chat channels, including
+joining/leaving channels, listing channels, and creating new channels.
+"""
+
 from typing import Annotated, Literal, Self
 
 from app.database.chat import (
@@ -12,9 +18,9 @@ from app.database.user import User, UserModel
 from app.dependencies.database import Database, Redis
 from app.dependencies.param import BodyOrForm
 from app.dependencies.user import get_current_user
+from app.helpers import api_doc
 from app.models.error import ErrorType, RequestError
 from app.router.v2 import api_v2_router as router
-from app.utils import api_doc
 
 from .server import server
 
@@ -25,12 +31,12 @@ from sqlmodel import col, select
 
 @router.get(
     "/chat/updates",
-    name="获取更新",
-    description="获取当前用户所在频道的最新的禁言情况。",
-    tags=["聊天"],
+    name="Get Updates",
+    description="Get the latest silence records for channels the current user has joined.",
+    tags=["Chat"],
     responses={
         200: api_doc(
-            "获取更新响应。",
+            "Update response.",
             {"presence": list[ChatChannelModel], "silences": list[UserSilenceResp]},
             ChatChannel.LISTING_INCLUDES,
             name="UpdateResponse",
@@ -41,13 +47,26 @@ async def get_update(
     session: Database,
     current_user: Annotated[User, Security(get_current_user, scopes=["chat.read"])],
     redis: Redis,
-    history_since: Annotated[int | None, Query(description="获取自此禁言 ID 之后的禁言记录")] = None,
-    since: Annotated[int | None, Query(description="获取自此消息 ID 之后的禁言记录")] = None,
+    history_since: Annotated[int | None, Query(description="Get silence records after this silence ID")] = None,
+    since: Annotated[int | None, Query(description="Get silence records after this message ID")] = None,
     includes: Annotated[
         list[str],
-        Query(alias="includes[]", description="要包含的更新类型"),
+        Query(alias="includes[]", description="Types of updates to include"),
     ] = ["presence", "silences"],
 ):
+    """Get channel presence and silence updates.
+
+    Args:
+        session: Database session.
+        current_user: The authenticated user.
+        redis: Redis client.
+        history_since: Get silence records after this silence ID.
+        since: Get silence records after this message ID.
+        includes: Types of updates to include.
+
+    Returns:
+        Dict containing presence and silence information.
+    """
     resp = {
         "presence": [],
         "silences": [],
@@ -55,7 +74,7 @@ async def get_update(
     if "presence" in includes:
         channel_ids = server.get_user_joined_channel(current_user.id)
         for channel_id in channel_ids:
-            # 使用明确的查询避免延迟加载
+            # Use explicit query to avoid lazy loading
             db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.channel_id == channel_id))).first()
             if db_channel:
                 resp["presence"].append(
@@ -82,21 +101,35 @@ async def get_update(
 
 @router.put(
     "/chat/channels/{channel}/users/{user}",
-    name="加入频道",
-    description="加入指定的公开/房间频道。",
-    tags=["聊天"],
-    responses={200: api_doc("加入的频道", ChatChannelModel, ChatChannel.LISTING_INCLUDES)},
+    name="Join Channel",
+    description="Join a specified public/room channel.",
+    tags=["Chat"],
+    responses={200: api_doc("The joined channel", ChatChannelModel, ChatChannel.LISTING_INCLUDES)},
 )
 async def join_channel(
     session: Database,
-    channel: Annotated[str, Path(..., description="频道 ID/名称")],
-    user: Annotated[str, Path(..., description="用户 ID")],
+    channel: Annotated[str, Path(..., description="Channel ID/name")],
+    user: Annotated[str, Path(..., description="User ID")],
     current_user: Annotated[User, Security(get_current_user, scopes=["chat.write_manage"])],
 ):
+    """Join a chat channel.
+
+    Args:
+        session: Database session.
+        channel: Channel ID or name.
+        user: User ID.
+        current_user: The authenticated user.
+
+    Returns:
+        The joined channel information.
+
+    Raises:
+        RequestError: If user is restricted or channel not found.
+    """
     if await current_user.is_restricted(session):
         raise RequestError(ErrorType.MESSAGING_RESTRICTED)
 
-    # 使用明确的查询避免延迟加载
+    # Use explicit query to avoid lazy loading
     if channel.isdigit():
         db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.channel_id == int(channel)))).first()
     else:
@@ -110,20 +143,31 @@ async def join_channel(
 @router.delete(
     "/chat/channels/{channel}/users/{user}",
     status_code=204,
-    name="离开频道",
-    description="将用户移出指定的公开/房间频道。",
-    tags=["聊天"],
+    name="Leave Channel",
+    description="Remove user from a specified public/room channel.",
+    tags=["Chat"],
 )
 async def leave_channel(
     session: Database,
-    channel: Annotated[str, Path(..., description="频道 ID/名称")],
-    user: Annotated[str, Path(..., description="用户 ID")],
+    channel: Annotated[str, Path(..., description="Channel ID/name")],
+    user: Annotated[str, Path(..., description="User ID")],
     current_user: Annotated[User, Security(get_current_user, scopes=["chat.write_manage"])],
 ):
+    """Leave a chat channel.
+
+    Args:
+        session: Database session.
+        channel: Channel ID or name.
+        user: User ID.
+        current_user: The authenticated user.
+
+    Raises:
+        RequestError: If user is restricted or channel not found.
+    """
     if await current_user.is_restricted(session):
         raise RequestError(ErrorType.MESSAGING_RESTRICTED)
 
-    # 使用明确的查询避免延迟加载
+    # Use explicit query to avoid lazy loading
     if channel.isdigit():
         db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.channel_id == int(channel)))).first()
     else:
@@ -137,15 +181,24 @@ async def leave_channel(
 
 @router.get(
     "/chat/channels",
-    responses={200: api_doc("加入的频道", list[ChatChannelModel])},
-    name="获取频道列表",
-    description="获取所有公开频道。",
-    tags=["聊天"],
+    responses={200: api_doc("Joined channels", list[ChatChannelModel])},
+    name="Get Channel List",
+    description="Get all public channels.",
+    tags=["Chat"],
 )
 async def get_channel_list(
     session: Database,
     current_user: Annotated[User, Security(get_current_user, scopes=["chat.read"])],
 ):
+    """Get list of all public channels.
+
+    Args:
+        session: Database session.
+        current_user: The authenticated user.
+
+    Returns:
+        List of public chat channels.
+    """
     channels = (await session.exec(select(ChatChannel).where(ChatChannel.type == ChannelType.PUBLIC))).all()
     results = await ChatChannelModel.transform_many(
         channels,
@@ -160,7 +213,7 @@ async def get_channel_list(
     "/chat/channels/{channel}",
     responses={
         200: api_doc(
-            "频道详细信息",
+            "Channel details",
             {
                 "channel": ChatChannelModel,
                 "users": list[UserModel],
@@ -169,17 +222,31 @@ async def get_channel_list(
             name="GetChannelResponse",
         )
     },
-    name="获取频道信息",
-    description="获取指定频道的信息。",
-    tags=["聊天"],
+    name="Get Channel Info",
+    description="Get information for a specified channel.",
+    tags=["Chat"],
 )
 async def get_channel(
     session: Database,
-    channel: Annotated[str, Path(..., description="频道 ID/名称")],
+    channel: Annotated[str, Path(..., description="Channel ID/name")],
     current_user: Annotated[User, Security(get_current_user, scopes=["chat.read"])],
     redis: Redis,
 ):
-    # 使用明确的查询避免延迟加载
+    """Get detailed information for a channel.
+
+    Args:
+        session: Database session.
+        channel: Channel ID or name.
+        current_user: The authenticated user.
+        redis: Redis client.
+
+    Returns:
+        Dict containing channel info and user list.
+
+    Raises:
+        RequestError: If channel or target user not found.
+    """
+    # Use explicit query to avoid lazy loading
     if channel.isdigit():
         db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.channel_id == int(channel)))).first()
     else:
@@ -188,7 +255,7 @@ async def get_channel(
     if db_channel is None:
         raise RequestError(ErrorType.CHANNEL_NOT_FOUND)
 
-    # 立即提取需要的属性
+    # Extract needed attributes immediately
     channel_type = db_channel.type
     channel_name = db_channel.channel_name
 
@@ -218,7 +285,19 @@ async def get_channel(
 
 
 class CreateChannelReq(BaseModel):
+    """Request model for creating a new channel.
+
+    Attributes:
+        message: Initial message for ANNOUNCE channels.
+        type: Channel type (ANNOUNCE or PM).
+        target_id: Target user ID for PM channels.
+        target_ids: Target user IDs for ANNOUNCE channels.
+        channel: Channel configuration for ANNOUNCE channels.
+    """
+
     class AnnounceChannel(BaseModel):
+        """Configuration for announcement channels."""
+
         name: str
         description: str
 
@@ -241,10 +320,10 @@ class CreateChannelReq(BaseModel):
 
 @router.post(
     "/chat/channels",
-    responses={200: api_doc("创建的频道", ChatChannelModel, ["recent_messages.sender"])},
-    name="创建频道",
-    description="创建一个新的私聊/通知频道。如果存在私聊频道则重新加入。",
-    tags=["聊天"],
+    responses={200: api_doc("Created channel", ChatChannelModel, ["recent_messages.sender"])},
+    name="Create Channel",
+    description="Create a new PM/announcement channel. Rejoins existing PM channel if one exists.",
+    tags=["Chat"],
 )
 async def create_channel(
     session: Database,
@@ -252,6 +331,20 @@ async def create_channel(
     current_user: Annotated[User, Security(get_current_user, scopes=["chat.write_manage"])],
     redis: Redis,
 ):
+    """Create a new chat channel.
+
+    Args:
+        session: Database session.
+        req: Channel creation request.
+        current_user: The authenticated user.
+        redis: Redis client.
+
+    Returns:
+        The created or existing channel.
+
+    Raises:
+        RequestError: If user is restricted or target not found.
+    """
     if await current_user.is_restricted(session):
         raise RequestError(ErrorType.MESSAGING_RESTRICTED)
 
@@ -276,7 +369,7 @@ async def create_channel(
 
     if channel is None:
         channel = ChatChannel(
-            name=channel_name,
+            channel_name=channel_name,
             description=req.channel.description if req.channel else "Private message channel",
             type=ChannelType.PM if req.type == "PM" else ChannelType.ANNOUNCE,
         )

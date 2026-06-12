@@ -1,3 +1,9 @@
+"""Beatmapset API endpoints.
+
+This module provides endpoints for searching, retrieving, downloading,
+and favouriting beatmapsets.
+"""
+
 import re
 from typing import Annotated, Literal
 from urllib.parse import parse_qs
@@ -16,11 +22,10 @@ from app.dependencies.database import Database, Redis
 from app.dependencies.fetcher import Fetcher
 from app.dependencies.geoip import IPAddress, get_geoip_helper
 from app.dependencies.user import ClientUser, get_current_user
-from app.helpers.asset_proxy_helper import asset_proxy_response
+from app.helpers import api_doc, asset_proxy_response
 from app.models.beatmap import SearchQueryModel
 from app.models.error import ErrorType, RequestError
 from app.service.beatmapset_cache_service import generate_hash
-from app.utils import api_doc
 
 from .router import router
 
@@ -40,8 +45,8 @@ from sqlmodel import select
 
 @router.get(
     "/beatmapsets/search",
-    name="搜索谱面集",
-    tags=["谱面集"],
+    name="Search beatmapsets",
+    tags=["Beatmapsets"],
     response_model=SearchBeatmapsetsResp,
 )
 @asset_proxy_response
@@ -54,31 +59,48 @@ async def search_beatmapset(
     redis: Redis,
     cache_service: BeatmapsetCacheService,
 ):
+    """Search for beatmapsets.
+
+    Args:
+        query: Search query parameters.
+        request: The FastAPI request object.
+        background_tasks: Background tasks handler.
+        current_user: The authenticated user.
+        fetcher: API fetcher dependency.
+        redis: Redis connection dependency.
+        cache_service: Beatmapset cache service.
+
+    Returns:
+        SearchBeatmapsetsResp: Search results containing matching beatmapsets.
+
+    Raises:
+        RequestError: If the search fails.
+    """
     params = parse_qs(qs=request.url.query, keep_blank_values=True)
     cursor = {}
 
-    # 解析 cursor[field] 格式的参数
+    # Parse cursor[field] format parameters
     for k, v in params.items():
         match = re.match(r"cursor\[(\w+)\]", k)
         if match:
             field_name = match.group(1)
             field_value = v[0] if v else None
             if field_value is not None:
-                # 转换为适当的类型
+                # Convert to appropriate type
                 try:
                     if field_name in ["approved_date", "id"]:
                         cursor[field_name] = int(field_value)
                     else:
-                        # 尝试转换为数字类型
+                        # Try to convert to numeric type
                         try:
-                            # 首先尝试转换为整数
+                            # First try to convert to integer
                             cursor[field_name] = int(field_value)
                         except ValueError:
                             try:
-                                # 然后尝试转换为浮点数
+                                # Then try to convert to float
                                 cursor[field_name] = float(field_value)
                             except ValueError:
-                                # 最后保持字符串
+                                # Finally keep as string
                                 cursor[field_name] = field_value
                 except ValueError:
                     cursor[field_name] = field_value
@@ -94,11 +116,11 @@ async def search_beatmapset(
         # TODO: search locally
         return SearchBeatmapsetsResp(total=0, beatmapsets=[])
 
-    # 生成查询和游标的哈希用于缓存
+    # Generate hash for query and cursor for caching
     query_hash = generate_hash(query.model_dump())
     cursor_hash = generate_hash(cursor)
 
-    # 尝试从缓存获取搜索结果
+    # Try to get search results from cache
     cached_result = await cache_service.get_search_from_cache(query_hash, cursor_hash)
     if cached_result:
         sets = SearchBeatmapsetsResp(**cached_result)
@@ -107,7 +129,7 @@ async def search_beatmapset(
     try:
         sets = await fetcher.search_beatmapset(query, cursor, redis)
 
-        # 缓存搜索结果
+        # Cache search results
         await cache_service.cache_search_result(query_hash, cursor_hash, sets.model_dump())
         return sets
     except HTTPError as e:
@@ -116,21 +138,37 @@ async def search_beatmapset(
 
 @router.get(
     "/beatmapsets/lookup",
-    tags=["谱面集"],
-    responses={200: api_doc("谱面集详细信息", BeatmapsetModel, BeatmapsetModel.BEATMAPSET_TRANSFORMER_INCLUDES)},
-    name="查询谱面集 (通过谱面 ID)",
-    description=("通过谱面 ID 查询所属谱面集。"),
+    tags=["Beatmapsets"],
+    responses={200: api_doc("Beatmapset details", BeatmapsetModel, BeatmapsetModel.BEATMAPSET_TRANSFORMER_INCLUDES)},
+    name="Lookup beatmapset (by beatmap ID)",
+    description="Look up a beatmapset by beatmap ID.",
 )
 @asset_proxy_response
 async def lookup_beatmapset(
     db: Database,
     request: Request,
-    beatmap_id: Annotated[int, Query(description="谱面 ID")],
+    beatmap_id: Annotated[int, Query(description="Beatmap ID")],
     current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
     fetcher: Fetcher,
     cache_service: BeatmapsetCacheService,
 ):
-    # 先尝试从缓存获取
+    """Look up a beatmapset by one of its beatmap IDs.
+
+    Args:
+        db: Database session dependency.
+        request: The FastAPI request object.
+        beatmap_id: The beatmap ID to look up.
+        current_user: The authenticated user.
+        fetcher: API fetcher dependency.
+        cache_service: Beatmapset cache service.
+
+    Returns:
+        BeatmapsetModel: The beatmapset details.
+
+    Raises:
+        RequestError: If beatmap not found.
+    """
+    # Try to get from cache first
     cached_resp = await cache_service.get_beatmap_lookup_from_cache(beatmap_id)
     if cached_resp:
         return cached_resp
@@ -142,7 +180,7 @@ async def lookup_beatmapset(
             beatmap.beatmapset, user=current_user, includes=BeatmapsetModel.API_INCLUDES
         )
 
-        # 缓存结果
+        # Cache result
         await cache_service.cache_beatmap_lookup(beatmap_id, resp)
         return resp
     except HTTPError as exc:
@@ -151,21 +189,37 @@ async def lookup_beatmapset(
 
 @router.get(
     "/beatmapsets/{beatmapset_id}",
-    tags=["谱面集"],
-    responses={200: api_doc("谱面集详细信息", BeatmapsetModel, BeatmapsetModel.BEATMAPSET_TRANSFORMER_INCLUDES)},
-    name="获取谱面集详情",
-    description="获取单个谱面集详情。",
+    tags=["Beatmapsets"],
+    responses={200: api_doc("Beatmapset details", BeatmapsetModel, BeatmapsetModel.BEATMAPSET_TRANSFORMER_INCLUDES)},
+    name="Get beatmapset details",
+    description="Get details for a single beatmapset.",
 )
 @asset_proxy_response
 async def get_beatmapset(
     db: Database,
     request: Request,
-    beatmapset_id: Annotated[int, Path(..., description="谱面集 ID")],
+    beatmapset_id: Annotated[int, Path(..., description="Beatmapset ID")],
     current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
     fetcher: Fetcher,
     cache_service: BeatmapsetCacheService,
 ):
-    # 先尝试从缓存获取
+    """Get details for a single beatmapset.
+
+    Args:
+        db: Database session dependency.
+        request: The FastAPI request object.
+        beatmapset_id: The beatmapset ID.
+        current_user: The authenticated user.
+        fetcher: API fetcher dependency.
+        cache_service: Beatmapset cache service.
+
+    Returns:
+        BeatmapsetModel: The beatmapset details.
+
+    Raises:
+        RequestError: If beatmapset not found.
+    """
+    # Try to get from cache first
     cached_resp = await cache_service.get_beatmapset_from_cache(beatmapset_id)
     if cached_resp:
         return cached_resp
@@ -175,7 +229,7 @@ async def get_beatmapset(
         await db.refresh(current_user)
         resp = await BeatmapsetModel.transform(beatmapset, includes=BeatmapsetModel.API_INCLUDES, user=current_user)
 
-        # 缓存结果
+        # Cache result
         await cache_service.cache_beatmapset(resp)
         return resp
     except HTTPError as exc:
@@ -184,32 +238,48 @@ async def get_beatmapset(
 
 @router.get(
     "/beatmapsets/{beatmapset_id}/download",
-    tags=["谱面集"],
-    name="下载谱面集",
-    description="\n下载谱面集文件。基于请求IP地理位置智能分流，支持负载均衡和自动故障转移。中国IP使用Sayobot镜像，其他地区使用Nerinyan和OsuDirect镜像。",
+    tags=["Beatmapsets"],
+    name="Download beatmapset",
+    description=(
+        "\nDownload a beatmapset file. Intelligently routes based on request IP geolocation, "
+        "with load balancing and automatic failover. Chinese IPs use Sayobot mirror, "
+        "other regions use Nerinyan and OsuDirect mirrors."
+    ),
 )
 async def download_beatmapset(
     client_ip: IPAddress,
-    beatmapset_id: Annotated[int, Path(..., description="谱面集 ID")],
+    beatmapset_id: Annotated[int, Path(..., description="Beatmapset ID")],
     current_user: ClientUser,
     download_service: DownloadService,
-    no_video: Annotated[bool, Query(alias="noVideo", description="是否下载无视频版本")] = True,
+    no_video: Annotated[bool, Query(alias="noVideo", description="Whether to download the no-video version")] = True,
 ):
+    """Download a beatmapset file.
+
+    Args:
+        client_ip: Client IP address for geolocation.
+        beatmapset_id: The beatmapset ID to download.
+        current_user: The authenticated user.
+        download_service: Download service for load balancing.
+        no_video: Whether to download the no-video version.
+
+    Returns:
+        RedirectResponse: Redirect to the download URL.
+    """
     geoip_helper = get_geoip_helper()
     geo_info = geoip_helper.lookup(client_ip)
     country_code = geo_info.get("country_iso", "")
 
-    # 优先使用IP地理位置判断，如果获取失败则回退到用户账户的国家代码
+    # Prefer IP geolocation, fall back to user account country code if unavailable
     is_china = country_code == "CN" or (not country_code and current_user.country_code == "CN")
 
     try:
-        # 使用负载均衡服务获取下载URL
+        # Use load balancing service to get download URL
         download_url = download_service.get_download_url(
             beatmapset_id=beatmapset_id, no_video=no_video, is_china=is_china
         )
         return RedirectResponse(download_url)
     except HTTPException:
-        # 如果负载均衡服务失败，回退到原有逻辑
+        # Fall back to original logic if load balancing service fails
         if is_china:
             return RedirectResponse(
                 f"https://dl.sayobot.cn/beatmaps/download/{'novideo' if no_video else 'full'}/{beatmapset_id}"
@@ -220,20 +290,29 @@ async def download_beatmapset(
 
 @router.post(
     "/beatmapsets/{beatmapset_id}/favourites",
-    tags=["谱面集"],
-    name="收藏或取消收藏谱面集",
-    description="\n收藏或取消收藏指定谱面集。",
+    tags=["Beatmapsets"],
+    name="Favourite or unfavourite beatmapset",
+    description="\nFavourite or unfavourite a specified beatmapset.",
 )
 async def favourite_beatmapset(
     db: Database,
     cache_service: UserCacheService,
-    beatmapset_id: Annotated[int, Path(..., description="谱面集 ID")],
+    beatmapset_id: Annotated[int, Path(..., description="Beatmapset ID")],
     action: Annotated[
         Literal["favourite", "unfavourite"],
-        Form(description="操作类型：favourite 收藏 / unfavourite 取消收藏"),
+        Form(description="Action type: favourite / unfavourite"),
     ],
     current_user: ClientUser,
-):
+) -> None:
+    """Favourite or unfavourite a beatmapset.
+
+    Args:
+        db: Database session dependency.
+        cache_service: User cache service.
+        beatmapset_id: The beatmapset ID.
+        action: Action to perform (favourite or unfavourite).
+        current_user: The authenticated user.
+    """
     existing_favourite = (
         await db.exec(
             select(FavouriteBeatmapset).where(

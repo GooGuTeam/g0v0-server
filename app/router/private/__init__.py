@@ -1,7 +1,14 @@
+"""Private API router module.
+
+This module exports the private router and conditionally imports sub-modules
+based on application settings (e.g., TOTP verification).
+"""
+
 from app.config import settings
 
 from . import (  # noqa: F401
     admin,
+    api_keys,
     audio_proxy,
     avatar,
     beatmapset,

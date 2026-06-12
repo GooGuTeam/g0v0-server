@@ -5,6 +5,11 @@ from app.service.client_verification_service import (
     get_client_verification_service,
 )
 
+from fast_depends import Depends as FastDepends
 from fastapi import Depends
 
-ClientVerificationService = Annotated[OriginalClientVerificationService, Depends(get_client_verification_service)]
+ClientVerificationService = Annotated[
+    OriginalClientVerificationService,
+    Depends(get_client_verification_service),
+    FastDepends(get_client_verification_service),
+]

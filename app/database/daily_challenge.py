@@ -1,9 +1,15 @@
+"""Daily challenge statistics database models.
+
+This module tracks user participation and streaks in daily challenges.
+"""
+
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
+from app.helpers import are_adjacent_weeks, utcnow
 from app.models.model import UTCBaseModel
-from app.utils import are_adjacent_weeks, utcnow
 
+from sqlalchemy.orm import Mapped
 from sqlmodel import (
     BigInteger,
     Column,
@@ -21,6 +27,8 @@ if TYPE_CHECKING:
 
 
 class DailyChallengeStatsBase(SQLModel, UTCBaseModel):
+    """Base fields for daily challenge statistics."""
+
     daily_streak_best: int = Field(default=0)
     daily_streak_current: int = Field(default=0)
     last_update: datetime | None = Field(default=None, sa_column=Column(DateTime))
@@ -34,6 +42,8 @@ class DailyChallengeStatsBase(SQLModel, UTCBaseModel):
 
 
 class DailyChallengeStats(DailyChallengeStatsBase, table=True):
+    """Database table for daily challenge statistics per user."""
+
     __tablename__: str = "daily_challenge_stats"
 
     user_id: int | None = Field(
@@ -46,10 +56,12 @@ class DailyChallengeStats(DailyChallengeStatsBase, table=True):
             primary_key=True,
         ),
     )
-    user: "User" = Relationship(back_populates="daily_challenge_stats")
+    user: Mapped["User"] = Relationship(back_populates="daily_challenge_stats")
 
 
 class DailyChallengeStatsResp(DailyChallengeStatsBase):
+    """Response model for daily challenge statistics."""
+
     user_id: int
 
     @classmethod
@@ -63,6 +75,13 @@ class DailyChallengeStatsResp(DailyChallengeStatsBase):
 
 
 async def process_daily_challenge_score(session: AsyncSession, user_id: int, room_id: int):
+    """Update daily challenge statistics for a user after a score submission.
+
+    Args:
+        session: Database session.
+        user_id: The ID of the user who submitted the score.
+        room_id: The ID of the room where the score was submitted.
+    """
     from .playlist_best_score import PlaylistBestScore
 
     score = (

@@ -1,9 +1,16 @@
+"""Notification system database models.
+
+This module handles user notifications including storage,
+delivery tracking, and read status.
+"""
+
 from datetime import datetime
 from typing import Any
 
+from app.helpers import utcnow
 from app.models.notification import NotificationDetail, NotificationName
-from app.utils import utcnow
 
+from sqlalchemy.orm import Mapped
 from sqlmodel import (
     JSON,
     BigInteger,
@@ -18,6 +25,8 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 
 class Notification(SQLModel, table=True):
+    """Database table for notifications."""
+
     __tablename__: str = "notifications"
 
     id: int = Field(primary_key=True, index=True, default=None)
@@ -31,6 +40,8 @@ class Notification(SQLModel, table=True):
 
 
 class UserNotification(SQLModel, table=True):
+    """Database table linking notifications to users with read status."""
+
     __tablename__: str = "user_notifications"
     id: int = Field(
         sa_column=Column(
@@ -44,10 +55,19 @@ class UserNotification(SQLModel, table=True):
     user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
     is_read: bool = Field(index=True)
 
-    notification: Notification = Relationship(sa_relationship_kwargs={"lazy": "joined"})
+    notification: Mapped[Notification] = Relationship(sa_relationship_kwargs={"lazy": "joined"})
 
 
 async def insert_notification(session: AsyncSession, detail: NotificationDetail):
+    """Insert a notification and create user notification records.
+
+    Args:
+        session: Database session.
+        detail: Notification detail containing content and receivers.
+
+    Returns:
+        The ID of the created notification.
+    """
     notification = Notification(
         name=detail.name,
         category=detail.name.category,

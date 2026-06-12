@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from app.calculator import get_calculator
+from app.calculating import get_calculator
 from app.database.beatmap import calculate_beatmap_attributes
 from app.database.score import Beatmap, Score
 from app.dependencies.database import get_redis

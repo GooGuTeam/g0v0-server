@@ -1,6 +1,8 @@
 #!/usr/bin/env sh
 set -eu
 
+uv run --no-sync python install-all-deps.py
+
 MYSQL_HOST="${MYSQL_HOST:-localhost}"
 MYSQL_PORT="${MYSQL_PORT:-3306}"
 

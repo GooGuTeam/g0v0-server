@@ -74,7 +74,7 @@ async def main():
         required_mods = mod_inp("required", [])
         allowed_mods = mod_inp("allowed", get_available_mods(ruleset_id, required_mods))
 
-        await redis.hset(  # pyright: ignore[reportGeneralTypeIssues]
+        await redis.hset(
             f"daily_challenge:{input_date}",
             mapping={
                 "beatmap": beatmap.id,
