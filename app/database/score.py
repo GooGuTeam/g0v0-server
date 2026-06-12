@@ -1201,7 +1201,7 @@ async def process_score(
     try:
         mod_multiplier_calculator = get_mod_multiplier_calculator(score, beatmap, score_token.client_version)
         mod_multiplier = mod_multiplier_calculator.calculate()
-    except ValueError:
+    except NotImplementedError:
         mod_multiplier = 1.0
     score.total_score = round(score.total_score_without_mods * mod_multiplier)
 

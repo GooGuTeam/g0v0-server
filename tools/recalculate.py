@@ -666,7 +666,7 @@ def recalculate_score_total(score: Score, beatmap: Beatmap) -> int:
     try:
         mod_multiplier_calculator = get_mod_multiplier_calculator(score, beatmap, score.client_version)
         mod_multiplier = mod_multiplier_calculator.calculate()
-    except ValueError:
+    except NotImplementedError:
         mod_multiplier = 1.0
     return round(score.total_score_without_mods * mod_multiplier)
 

@@ -43,4 +43,4 @@ def get_mod_multiplier_calculator(
         return CatchModMultiplierCalculator(context)
     elif mode == GameMode.MANIA:
         return ManiaModMultiplierCalculator(context)
-    raise ValueError(f"Unsupported game mode: {mode}")
+    raise NotImplementedError(f"Unsupported game mode: {mode}")
