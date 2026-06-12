@@ -32,7 +32,7 @@ def get_mod_multiplier_calculator(
         od=beatmap.accuracy,
         hp=beatmap.drain,
         client_version=client_version,
-        date=score.started_at.astimezone(UTC),
+        date=score.started_at.replace(tzinfo=UTC),
     )
     if mode == GameMode.OSU:
         return OsuModMultiplierCalculator(context)

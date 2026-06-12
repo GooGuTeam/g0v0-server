@@ -39,7 +39,9 @@ class _ModWrapper:
         return get_default_setting(self.mod, item)
 
     def is_uses_default(self) -> bool:
-        return all(setting == self.mod.get("DefaultValue") for setting in self.mod.get("settings", {}).values())
+        return all(
+            value == get_default_setting(self.mod, setting) for setting, value in self.mod.get("settings", {}).items()
+        )
 
 
 @dataclass
@@ -68,7 +70,7 @@ class ModMultiplierContext:
 
 
 class ModMultiplierCalculator:
-    combinations: ClassVar[list[tuple[tuple[str, str], Callable[[], float]]]]
+    combinations: ClassVar[list[tuple[tuple[str, str], Callable[["ModMultiplierCalculator"], float]]]]
 
     def __init_subclass__(cls):
         super().__init_subclass__()
@@ -89,7 +91,7 @@ class ModMultiplierCalculator:
         if len(self.context.mods) > 1:
             for combination, func in self.combinations:
                 if remaining_mods.issuperset(combination):
-                    multiplier *= func()
+                    multiplier *= func(self)
                     remaining_mods.difference_update(combination)
         for mod in remaining_mods:
             method_name = _mod_method_name(mod)
