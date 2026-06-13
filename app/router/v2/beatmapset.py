@@ -38,7 +38,7 @@ from fastapi import (
     Request,
     Security,
 )
-from fastapi.responses import RedirectResponse
+from fastapi.responses import PlainTextResponse, RedirectResponse
 from httpx import HTTPError
 from sqlmodel import select
 
@@ -252,6 +252,7 @@ async def download_beatmapset(
     current_user: ClientUser,
     download_service: DownloadService,
     no_video: Annotated[bool, Query(alias="noVideo", description="Whether to download the no-video version")] = True,
+    link_only: Annotated[bool, Query(description="Just return the download url without redirect")] = False,
 ):
     """Download a beatmapset file.
 
@@ -261,9 +262,10 @@ async def download_beatmapset(
         current_user: The authenticated user.
         download_service: Download service for load balancing.
         no_video: Whether to download the no-video version.
+        link_only: Just return the download url without redirect.
 
     Returns:
-        RedirectResponse: Redirect to the download URL.
+        RedirectResponse | str: Redirect to the download URL or the download url text.
     """
     geoip_helper = get_geoip_helper()
     geo_info = geoip_helper.lookup(client_ip)
@@ -277,15 +279,20 @@ async def download_beatmapset(
         download_url = download_service.get_download_url(
             beatmapset_id=beatmapset_id, no_video=no_video, is_china=is_china
         )
+        if link_only:
+            return PlainTextResponse(content=download_url, status_code=200)
         return RedirectResponse(download_url)
     except HTTPException:
         # Fall back to original logic if load balancing service fails
         if is_china:
-            return RedirectResponse(
+            download_url = (
                 f"https://dl.sayobot.cn/beatmaps/download/{'novideo' if no_video else 'full'}/{beatmapset_id}"
             )
         else:
-            return RedirectResponse(f"https://catboy.best/d/{beatmapset_id}{'n' if no_video else ''}")
+            download_url = f"https://catboy.best/d/{beatmapset_id}{'n' if no_video else ''}"
+        if link_only:
+            return PlainTextResponse(content=download_url, status_code=200)
+        return RedirectResponse(download_url)
 
 
 @router.post(
