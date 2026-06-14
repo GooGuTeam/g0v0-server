@@ -116,7 +116,7 @@ async def lifespan(app: FastAPI):
             room_id=data["room_id"], _countdown_id=data["countdown_id"], seconds=data["seconds"]
         ),
     )
-    await multiplayer_event_dispatcher.start_subscribe()
+    await multiplayer_event_dispatcher.start()
 
     # show the status of AssetProxy
     if settings.enable_asset_proxy:
@@ -134,7 +134,7 @@ async def lifespan(app: FastAPI):
     # 停止多人游戏事件订阅
     from app.service.multiplayer_event_dispatcher import multiplayer_event_dispatcher
 
-    await multiplayer_event_dispatcher.stop_subscribe()
+    await multiplayer_event_dispatcher.stop()
     await stop_email_processor()
 
     # close database & redis

@@ -6,14 +6,72 @@ This acts as a compatibility layer for osu-server-spectator using Redis instead 
 import asyncio
 from contextlib import suppress
 from datetime import datetime
+import json
 from typing import Any
+import uuid
 
 from app.database import ChatChannel, ChatMessage, Room, User
 from app.dependencies.database import get_redis, with_db
-from app.log import logger
+from app.log import log
 from app.utils import safe_json_dumps
 
 import redis.asyncio as redis
+
+logger = log("MultiplayerTask")
+
+
+class MultiplayerTaskAwaiter:
+    """管理带 ID 的异步任务，支持 await 等待结果和超时"""
+
+    def __init__(self, default_timeout: float = 10.0):
+        self._futures: dict[str, asyncio.Future] = {}
+        self._default_timeout = default_timeout
+        self._lock = asyncio.Lock()
+
+    async def create_task(self, task_id: str | None = None) -> str:
+        """创建新任务，返回任务 ID"""
+        tid = task_id or str(uuid.uuid4())
+        async with self._lock:
+            # 清理已存在的同名任务（防御性）
+            if tid in self._futures and not self._futures[tid].done():
+                self._futures[tid].cancel()
+
+            self._futures[tid] = asyncio.get_event_loop().create_future()
+        return tid
+
+    async def wait_for_result(
+        self,
+        task_id: str,
+        timeout: float | None = None,  # noqa: ASYNC109
+    ) -> Any:
+        """等待任务结果，超时返回 None"""
+        future = self._futures.get(task_id)
+        if not future:
+            raise ValueError(f"Task {task_id} not found")
+
+        try:
+            result = await asyncio.wait_for(future, timeout=timeout or self._default_timeout)
+            return result
+        except TimeoutError:
+            logger.warning(f"Task {task_id} timed out")
+            return None
+        finally:
+            # 清理
+            async with self._lock:
+                self._futures.pop(task_id, None)
+
+    def resolve_task(self, task_id: str, result: Any) -> bool:
+        """由外部回调触发，设置任务结果"""
+        future = self._futures.get(task_id)
+        if not future or future.done():
+            return False
+
+        future.set_result(result)
+        return True
+
+
+# 全局实例
+task_awaiter = MultiplayerTaskAwaiter(default_timeout=10.0)
 
 
 class MultiplayerEventDispatcher:
@@ -25,9 +83,8 @@ class MultiplayerEventDispatcher:
     def __init__(self, redis_client: redis.Redis | None = None):
         self.redis = redis_client or get_redis()
         self.channel_prefix = "osu-channel:"
-        self.event_channel = "multiplayer:events"
         self.pubsub = None
-        self.handlers: dict[str, ...] = {}
+        self.handlers: dict[str, Any] = {}
         self._running = False
         self._listen_task: asyncio.Task | None = None
 
@@ -36,7 +93,7 @@ class MultiplayerEventDispatcher:
         self.handlers[event_type] = handler
         logger.info(f"Registered handler for event type: {event_type}")
 
-    async def start_subscribe(self) -> None:
+    async def start(self) -> None:
         """启动 Redis 订阅"""
         if self._running:
             return
@@ -52,7 +109,7 @@ class MultiplayerEventDispatcher:
             logger.error(f"Error starting multiplayer redis subscriber: {e}")
             raise
 
-    async def stop_subscribe(self) -> None:
+    async def stop(self) -> None:
         """停止 Redis 订阅"""
         self._running = False
         if self.pubsub:
@@ -74,20 +131,54 @@ class MultiplayerEventDispatcher:
             if not self._running:
                 break
 
-            if message["type"] == "pmessage":
-                try:
-                    import json
+            if message["type"] != "pmessage":
+                continue
 
-                    data = json.loads(message["data"])
-                    event_type = data.get("type")
+            channel = message["channel"].decode()
+            try:
+                data = json.loads(message.get["data"])
 
-                    if event_type in self.handlers:
-                        handler = self.handlers[event_type]
-                        await handler(data)
-                    else:
-                        logger.debug(f"No handler for event type: {event_type}")
-                except Exception as e:
-                    logger.warning(f"Error processing Redis message: {e}")
+                # Handle callback events
+                if channel.startswith("osu-channel:callback:"):
+                    task_id = data.get("id")
+                    if task_id and data.get("type") == "TaskResult":
+                        # Record error in log
+                        if not data.get("success"):
+                            logger.warning(
+                                f"Multiplayer event task {task_id} returned with error: {data.get('message')}"
+                            )
+
+                        task_awaiter.resolve_task(task_id, data)
+                    continue
+
+                # Other events if possible
+                event_type = data["type"]
+                if event_type in self.handlers:
+                    await self.handlers[event_type](data)
+
+            except Exception as e:
+                logger.warning(f"Error processing Redis message: {e}")
+
+    async def _publish_with_callback(
+        self,
+        room_id: int,
+        message: dict,
+        timeout: float | None = None,  # noqa: ASYNC109
+    ) -> Any:
+        """发送带回调的请求，await 等待结果
+
+        Example:
+            result = await subscriber.publish_with_callback(
+                "osu-channel:room:12345",
+                {"type": "StartReminderTimer", "seconds": 30, ...}
+            )
+        """
+        task_id = await task_awaiter.create_task()
+
+        message["id"] = task_id
+
+        await self.redis.publish(f"{self.channel_prefix}room:{room_id}", json.dumps(message))
+        return await task_awaiter.wait_for_result(task_id, timeout)
 
     async def handle_countdown_tick(self, room_id: int, _countdown_id: int, seconds: float) -> None:
         """处理倒计时事件，在特定秒数发送 BanchoBot 消息"""
@@ -148,153 +239,160 @@ class MultiplayerEventDispatcher:
         except Exception as e:
             logger.warning(f"Failed to publish multiplayer event for room {room_id}: {e}")
 
-    async def post_host_changed(self, room_id: int, new_host_user_id: int) -> None:
+    async def post_transfer_host(self, room_id: int, new_host_user_id: int):
         """
-        通知客户端主机变更
-        对应 SignalR 的 IMultiplayerClient.HostChanged
+        通知客户端房主变更
         """
-        await self._publish(
+        return await self._publish_with_callback(
             room_id,
             {
-                "type": "HostChanged",
-                "userId": new_host_user_id,
+                "type": "TransferHost",
+                "target": new_host_user_id,
             },
         )
 
-    async def post_match_room_state_changed(self, room_id: int, locked: bool) -> None:
-        """
-        通知客户端房间全局状态变更（TeamVersus 锁状态）
-        对应 SignalR 的 IMultiplayerClient.MatchRoomStateChanged
-        """
-        await self._publish(
-            room_id,
-            {
-                "type": "MatchRoomStateChanged",
-                "state": {
-                    "locked": locked,
-                },
-            },
-        )
-
-    async def post_set_lock_state(self, room_id: int, locked: bool, by_user_id: int) -> None:
+    async def post_set_lock_state(self, room_id: int, locked: bool, by_user_id: int):
         """
         请求 spectator 按 RefereeHub 语义执行 SetLockState。
         对应 osu.Game.Online.Multiplayer.SetLockStateRequest。
         """
-        await self._publish(
+        return await self._publish_with_callback(
             room_id,
             {
                 "type": "SetLockState",
-                "locked": locked,
-                "byUserId": by_user_id,
+                "room_state": {
+                    "locked": locked,
+                },
+                "by": by_user_id,
             },
         )
 
-    async def post_match_user_state_changed(
+    async def post_change_team(
         self,
         room_id: int,
         user_id: int,
+        by_user_id: int,
         team_id: int,
-    ) -> None:
+    ):
         """
         通知客户端用户队伍状态变更
         对应 SignalR 的 IMultiplayerClient.MatchUserStateChanged
         team_id: 0 = 红队, 1 = 蓝队
         """
-        await self._publish(
+        return await self._publish_with_callback(
             room_id,
             {
-                "type": "MatchUserStateChanged",
-                "userId": user_id,
-                "matchState": {
-                    "teamID": team_id,
+                "type": "ChangeTeam",
+                "target": user_id,
+                "by": by_user_id,
+                "user_state": {
+                    "team_id": team_id,
                 },
             },
         )
 
-    async def post_kick_player(self, room_id: int, user_id: int, by_user_id: int) -> None:
+    async def post_kick_player(self, room_id: int, user_id: int, by_user_id: int):
         """请求 spectator 按 RefereeHub 语义执行 KickPlayer。"""
-        await self._publish(
+        return await self._publish_with_callback(
             room_id,
             {
                 "type": "KickPlayer",
-                "userId": user_id,
-                "byUserId": by_user_id,
+                "target": user_id,
+                "by": by_user_id,
             },
         )
 
-    async def post_ban_user(self, room_id: int, banned_user_id: int, by_user_id: int) -> None:
+    async def post_ban_user(self, room_id: int, banned_user_id: int, by_user_id: int):
         """请求 spectator 按 RefereeHub 语义执行 BanUser。"""
-        await self._publish(
+        return await self._publish_with_callback(
             room_id,
             {
                 "type": "BanUser",
-                "bannedUserId": banned_user_id,
-                "byUserId": by_user_id,
+                "target": banned_user_id,
+                "by": by_user_id,
             },
         )
 
-    async def post_add_referee(self, room_id: int, target_user_id: int, by_user_id: int) -> None:
+    async def post_add_referee(self, room_id: int, target_user_id: int, by_user_id: int):
         """请求 spectator 按 RefereeHub 语义执行 AddReferee。"""
-        await self._publish(
+        return await self._publish_with_callback(
             room_id,
             {
                 "type": "AddReferee",
-                "targetUserId": target_user_id,
-                "byUserId": by_user_id,
+                "target": target_user_id,
+                "by": by_user_id,
             },
         )
 
-    async def post_remove_referee(self, room_id: int, target_user_id: int, by_user_id: int) -> None:
+    async def post_remove_referee(self, room_id: int, target_user_id: int, by_user_id: int):
         """请求 spectator 按 RefereeHub 语义执行 RemoveReferee。"""
-        await self._publish(
+        return await self._publish_with_callback(
             room_id,
             {
                 "type": "RemoveReferee",
-                "targetUserId": target_user_id,
-                "byUserId": by_user_id,
+                "target": target_user_id,
+                "by": by_user_id,
             },
         )
 
-    async def post_start_match(self, room_id: int, countdown_seconds: int | None, by_user_id: int) -> None:
+    async def post_start_match(self, room_id: int, countdown_seconds: int | None, by_user_id: int):
         """请求 spectator 启动比赛倒计时（自动启动比赛，互斥于 reminder）。countdown_seconds=None 表示立即开始匹配。"""
-        payload = {
+        payload: dict[str, Any] = {
             "type": "StartMatch",
-            "byUserId": by_user_id,
+            "by": by_user_id,
         }
         if countdown_seconds is not None:
-            payload["countdownSeconds"] = int(countdown_seconds)
+            payload["countdown"] = {"seconds": int(countdown_seconds)}
 
-        await self._publish(room_id, payload)
+        return await self._publish_with_callback(room_id, payload)
 
-    async def post_start_reminder_timer(self, room_id: int, countdown_seconds: int, by_user_id: int) -> None:
+    async def post_start_reminder_timer(self, room_id: int, countdown_seconds: int, by_user_id: int):
         """请求 spectator 启动纯提醒计时（不启动比赛，仅提醒，互斥于比赛倒计时）。"""
-        await self._publish(
+        return await self._publish_with_callback(
             room_id,
             {
                 "type": "StartReminderTimer",
-                "countdownSeconds": int(countdown_seconds),
-                "byUserId": by_user_id,
+                "by": by_user_id,
+                "countdown": {"seconds": int(countdown_seconds)},
             },
         )
 
-    async def post_stop_all_countdowns(self, room_id: int, by_user_id: int) -> None:
+    async def post_stop_all_countdowns(self, room_id: int, by_user_id: int):
         """请求 spectator 停止所有倒计时（包括 MatchStart 和 ReminderCountdown）。"""
-        await self._publish(
+        return await self._publish_with_callback(
             room_id,
             {
                 "type": "StopAllCountdowns",
-                "byUserId": by_user_id,
+                "by": by_user_id,
             },
         )
 
-    async def post_abort_match(self, room_id: int, by_user_id: int) -> None:
+    async def post_abort_match(self, room_id: int, by_user_id: int):
         """请求 spectator 中止正在进行的比赛。"""
-        await self._publish(
+        return await self._publish_with_callback(
             room_id,
             {
                 "type": "AbortMatch",
-                "byUserId": by_user_id,
+                "by": by_user_id,
+            },
+        )
+
+    async def post_close_room(self, room_id: int, by_user_id: int):
+        return await self._publish_with_callback(
+            room_id,
+            {
+                "type": "CloseRoom",
+                "by": by_user_id,
+            },
+        )
+
+    async def post_invite_user(self, room_id: int, target_user_id: int, by_user_id: int):
+        return await self._publish_with_callback(
+            room_id,
+            {
+                "type": "InviteUser",
+                "target": target_user_id,
+                "by": by_user_id,
             },
         )
 
