@@ -131,9 +131,9 @@ g0v0-migrations = { workspace = true }
 
 [dependency-groups]
 dev = [
-    "datamodel-code-generator>=0.60.0",
+    "datamodel-code-generator>=0.63.0",
     "pre-commit>=4.6.0",
     "pyright>=1.1.410",
-    "ruff>=0.15.16",
+    "ruff>=0.15.17",
     "types-aioboto3[aioboto3,essential]>=15.5.0",
 ]
