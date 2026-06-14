@@ -13,6 +13,7 @@ import uuid
 from app.database import ChatChannel, ChatMessage, Room, User
 from app.dependencies.database import get_redis, with_db
 from app.log import log
+from app.models.mp_messages import MultiplayerCallbackDetails, MultiplayerCallbackMessage
 from app.utils import safe_json_dumps
 
 import redis.asyncio as redis
@@ -24,7 +25,7 @@ class MultiplayerTaskAwaiter:
     """管理带 ID 的异步任务，支持 await 等待结果和超时"""
 
     def __init__(self, default_timeout: float = 10.0):
-        self._futures: dict[str, asyncio.Future] = {}
+        self._futures: dict[str, asyncio.Future[MultiplayerCallbackMessage]] = {}
         self._default_timeout = default_timeout
         self._lock = asyncio.Lock()
 
@@ -43,7 +44,7 @@ class MultiplayerTaskAwaiter:
         self,
         task_id: str,
         timeout: float | None = None,  # noqa: ASYNC109
-    ) -> Any:
+    ) -> MultiplayerCallbackMessage:
         """等待任务结果，超时返回 None"""
         future = self._futures.get(task_id)
         if not future:
@@ -54,13 +55,19 @@ class MultiplayerTaskAwaiter:
             return result
         except TimeoutError:
             logger.warning(f"Task {task_id} timed out")
-            return None
+            return MultiplayerCallbackMessage(
+                id="0",
+                type="TaskResult",
+                success=False,
+                message="Server-side request timeout. Please try again later.",
+                details=MultiplayerCallbackDetails(),
+            )
         finally:
             # 清理
             async with self._lock:
                 self._futures.pop(task_id, None)
 
-    def resolve_task(self, task_id: str, result: Any) -> bool:
+    def resolve_task(self, task_id: str, result: MultiplayerCallbackMessage) -> bool:
         """由外部回调触发，设置任务结果"""
         future = self._futures.get(task_id)
         if not future or future.done():
@@ -164,7 +171,7 @@ class MultiplayerEventDispatcher:
         room_id: int,
         message: dict,
         timeout: float | None = None,  # noqa: ASYNC109
-    ) -> Any:
+    ) -> MultiplayerCallbackMessage:
         """发送带回调的请求，await 等待结果
 
         Example:
@@ -238,6 +245,15 @@ class MultiplayerEventDispatcher:
             logger.debug(f"Published multiplayer event to {channel}: {event_data.get('type')}")
         except Exception as e:
             logger.warning(f"Failed to publish multiplayer event for room {room_id}: {e}")
+
+    async def post_get_referees(self, room_id: int):
+        """从 spec 端请求裁判 ID 列表"""
+        return await self._publish_with_callback(
+            room_id,
+            {
+                "type": "ListReferees",
+            },
+        )
 
     async def post_transfer_host(self, room_id: int, new_host_user_id: int):
         """
