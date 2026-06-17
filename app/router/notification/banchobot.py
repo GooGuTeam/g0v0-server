@@ -384,27 +384,6 @@ async def _mp(user: User, args: list[str], session: AsyncSession, channel: ChatC
     """
 
     unsupported_subs = {"makeprivate", "clearhost"}
-    host_only_subs = {
-        "lock",
-        "unlock",
-        "name",
-        "close",
-        "host",
-        "password",
-        "map",
-        "mods",
-        "set",
-        "move",
-        "team",
-        "start",
-        "abort",
-        "timer",
-        "aborttimer",
-        "kick",
-        "ban",
-        "addref",
-        "removeref",
-    }
 
     if await user.is_restricted(session):
         return "You are restricted from using messaging commands."
@@ -509,10 +488,9 @@ async def _mp(user: User, args: list[str], session: AsyncSession, channel: ChatC
             await session.exec(select(User).where(User.username == raw or User.username == _normalize_username(raw)))
         ).first()
 
-    # Check host requirement early for all host-only commands
-    if sub in host_only_subs and room.host_id != user.id:
-        return "Only the room host can use this command."
+    # Permissions are checked spectator-side
 
+    # TODO: Refactor, and move to spec-side if possible
     if sub == "settings":
         host = await room.awaitable_attrs.host
         playlist = await room.awaitable_attrs.playlist
