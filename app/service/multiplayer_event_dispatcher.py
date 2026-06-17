@@ -284,6 +284,53 @@ class MultiplayerEventDispatcher:
             },
         )
 
+    async def post_change_room_settings(
+        self,
+        room_id: int,
+        by_user_id: int,
+        *,
+        name: str | None = None,
+        password: str | None = None,
+        match_type: int | None = None,
+        max_participants: int | None = None,
+    ):
+        """请求 spectator 按 RefereeHub 语义执行 ChangeRoomSettings（!mp name / !mp password / !mp set）。"""
+
+        payload: dict[str, Any] = {
+            "type": "ChangeRoomSettings",
+            "by": by_user_id,
+            "room_settings": {},
+        }
+
+        room_settings = payload["room_settings"]
+
+        if name is not None:
+            room_settings["name"] = name
+
+        if password is not None:
+            room_settings["password"] = password
+
+        if match_type is not None:
+            room_settings["type"] = match_type
+
+        if max_participants is not None:
+            room_settings["max_participants"] = max_participants
+
+        return await self._publish_with_callback(room_id, payload)
+
+    async def post_set_slot(self, room_id: int, user_id: int, by_user_id: int, slot_id: int):
+        return await self._publish_with_callback(
+            room_id,
+            {
+                "type": "SetUserSlot",
+                "target": user_id,
+                "by": by_user_id,
+                "user_state": {
+                    "slot_id": slot_id,
+                },
+            },
+        )
+
     async def post_change_team(
         self,
         room_id: int,
