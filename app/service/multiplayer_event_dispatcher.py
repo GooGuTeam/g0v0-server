@@ -22,7 +22,7 @@ logger = log("MultiplayerTask")
 
 
 class MultiplayerTaskAwaiter:
-    """管理带 ID 的异步任务，支持 await 等待结果和超时"""
+    """Manages the communication process with the spectator server using tasks."""
 
     def __init__(self, default_timeout: float = 10.0):
         self._futures: dict[str, asyncio.Future[MultiplayerCallbackMessage]] = {}
@@ -30,7 +30,14 @@ class MultiplayerTaskAwaiter:
         self._lock = asyncio.Lock()
 
     async def create_task(self, task_id: str | None = None) -> str:
-        """创建新任务，返回任务 ID"""
+        """Creates a new async task.
+
+        Args:
+            task_id (str | None): Optional task ID to use. Defaults to UUID4 if not given.
+
+        Returns:
+            str: The ID of the new task.
+        """
         tid = task_id or str(uuid.uuid4())
         async with self._lock:
             # 清理已存在的同名任务（防御性）
@@ -45,7 +52,12 @@ class MultiplayerTaskAwaiter:
         task_id: str,
         timeout: float | None = None,  # noqa: ASYNC109
     ) -> MultiplayerCallbackMessage:
-        """等待任务结果，超时返回 None"""
+        """Wait for the result of a specific task.
+
+        Returns:
+            MultiplayerCallbackMessage: The callback event message from the spectator server.
+            If the task runs out of time, return a placeholder message with the timeout prompt.
+        """
         future = self._futures.get(task_id)
         if not future:
             raise ValueError(f"Task {task_id} not found")
@@ -68,7 +80,15 @@ class MultiplayerTaskAwaiter:
                 self._futures.pop(task_id, None)
 
     def resolve_task(self, task_id: str, result: MultiplayerCallbackMessage) -> bool:
-        """由外部回调触发，设置任务结果"""
+        """Sets a specified task as resolved with given callback message.
+
+        Args:
+            task_id (str): The task ID.
+            result (MultiplayerCallbackMessage): The callback message as a result.
+
+        Returns:
+            bool: `True` if the task was resolved, `False` otherwise.
+        """
         future = self._futures.get(task_id)
         if not future or future.done():
             return False
@@ -82,10 +102,7 @@ task_awaiter = MultiplayerTaskAwaiter(default_timeout=10.0)
 
 
 class MultiplayerEventDispatcher:
-    """
-    通过 osu-channel 向 osu-server-spectator 广播实时事件
-    兼容官方 SignalR Hub 的事件协议
-    """
+    """Send multiplayer events to the spectator server and wait for callbacks."""
 
     def __init__(self, redis_client: redis.Redis | None = None):
         self.redis = redis_client or get_redis()
@@ -96,7 +113,7 @@ class MultiplayerEventDispatcher:
         self._listen_task: asyncio.Task | None = None
 
     def register_handler(self, event_type: str, handler) -> None:
-        """注册事件处理器"""
+        """Set to handle a message of specific event type with the given handler."""
         self.handlers[event_type] = handler
         logger.info(f"Registered handler for event type: {event_type}")
 
@@ -131,7 +148,7 @@ class MultiplayerEventDispatcher:
         logger.info("Stopped multiplayer redis subscription")
 
     async def _listen(self) -> None:
-        """监听 Redis 消息"""
+        """The main event listening and handling routine."""
         if not self.pubsub:
             return
 
@@ -181,13 +198,15 @@ class MultiplayerEventDispatcher:
         message: dict,
         timeout: float | None = None,  # noqa: ASYNC109
     ) -> MultiplayerCallbackMessage:
-        """发送带回调的请求，await 等待结果
+        """Publish an event message and except a callback from the spectator side.
 
-        Example:
-            result = await subscriber.publish_with_callback(
-                "osu-channel:room:12345",
-                {"type": "StartReminderTimer", "seconds": 30, ...}
-            )
+        Examples:
+            ```
+                result = await subscriber.publish_with_callback(
+                    "osu-channel:room:12345",
+                    {"type": "StartReminderTimer", "seconds": 30, ...}
+                )
+            ```
         """
         task_id = await task_awaiter.create_task()
 
@@ -346,11 +365,7 @@ class MultiplayerEventDispatcher:
         by_user_id: int,
         team_id: int,
     ):
-        """
-        通知客户端用户队伍状态变更
-        对应 SignalR 的 IMultiplayerClient.MatchUserStateChanged
-        team_id: 0 = 红队, 1 = 蓝队
-        """
+        """通知客户端用户队伍状态变更"""
         return await self._publish_with_callback(
             room_id,
             {
