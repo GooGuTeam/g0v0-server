@@ -108,6 +108,7 @@ class MultiplayerEventDispatcher:
         try:
             self.pubsub = self.redis.pubsub()
             await self.pubsub.psubscribe("osu-channel:room:*")
+            await self.pubsub.psubscribe("osu-channel:callback:*")
             self._running = True
             logger.info("Started subscribing to multiplayer Redis events from spectator")
 
