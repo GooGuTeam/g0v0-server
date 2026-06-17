@@ -537,7 +537,7 @@ async def _mp(user: User, args: list[str], session: AsyncSession, channel: ChatC
         if not target:
             return "Target user not found."
 
-        res = await multiplayer_event_dispatcher.post_transfer_host(room_id, target.id)
+        res = await multiplayer_event_dispatcher.post_transfer_host(room_id, target.id, user.id)
         return res.message or f"Host transferred to {target.username}."
 
     if sub == "team":
@@ -631,7 +631,7 @@ async def _mp(user: User, args: list[str], session: AsyncSession, channel: ChatC
         return res.message or prompt
 
     if sub == "listrefs":
-        res = await multiplayer_event_dispatcher.post_get_referees(room_id)
+        res = await multiplayer_event_dispatcher.post_get_referees(room_id, user.id)
 
         if not res.details.referee_ids:
             return "Unable to get referees."

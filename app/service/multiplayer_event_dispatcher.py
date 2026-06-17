@@ -255,24 +255,24 @@ class MultiplayerEventDispatcher:
         except Exception as e:
             logger.warning(f"Failed to publish multiplayer event for room {room_id}: {e}")
 
-    async def post_get_referees(self, room_id: int):
+    async def post_get_referees(self, room_id: int, by_user_id: int):
         """从 spec 端请求裁判 ID 列表"""
         return await self._publish_with_callback(
             room_id,
             {
                 "type": "ListReferees",
+                "by": by_user_id,
             },
         )
 
-    async def post_transfer_host(self, room_id: int, new_host_user_id: int):
-        """
-        通知客户端房主变更
-        """
+    async def post_transfer_host(self, room_id: int, new_host_user_id: int, by_user_id: int):
+        """通知客户端房主变更"""
         return await self._publish_with_callback(
             room_id,
             {
                 "type": "TransferHost",
                 "target": new_host_user_id,
+                "by": by_user_id,
             },
         )
 
