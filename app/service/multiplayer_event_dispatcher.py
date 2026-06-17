@@ -144,19 +144,27 @@ class MultiplayerEventDispatcher:
 
             channel = message["channel"].decode()
             try:
-                data = json.loads(message.get["data"])
+                raw_data = message.get("data")
+                if isinstance(raw_data, bytes):
+                    raw_data = raw_data.decode()
+
+                if not isinstance(raw_data, str):
+                    continue
+
+                data = json.loads(raw_data)
 
                 # Handle callback events
                 if channel.startswith("osu-channel:callback:"):
-                    task_id = data.get("id")
-                    if task_id and data.get("type") == "TaskResult":
+                    callback = MultiplayerCallbackMessage.model_validate(data)
+
+                    if callback.id and callback.type == "TaskResult":
                         # Record error in log
-                        if not data.get("success"):
+                        if not callback.success:
                             logger.warning(
-                                f"Multiplayer event task {task_id} returned with error: {data.get('message')}"
+                                f"Multiplayer event task {callback.id} returned with error: {callback.message}"
                             )
 
-                        task_awaiter.resolve_task(task_id, data)
+                        task_awaiter.resolve_task(callback.id, callback)
                     continue
 
                 # Other events if possible
