@@ -13,6 +13,14 @@ class MultiplayerRoomStateEnvelope(BaseModel):
 
 class MultiplayerUserStateEnvelope(BaseModel):
     team_id: int | None = None
+    slot_id: int | None = None
+
+
+class MultiplayerRoomSettingsEnvelope(BaseModel):
+    name: str | None = None
+    password: str | None = None
+    type: int | None = None
+    max_participants: int | None = None
 
 
 class MultiplayerEventMessage(BaseModel):
@@ -23,6 +31,7 @@ class MultiplayerEventMessage(BaseModel):
     countdown: MultiplayerCountdownEnvelope | None = None
     room_state: MultiplayerRoomStateEnvelope | None = None
     user_state: MultiplayerUserStateEnvelope | None = None
+    room_settings: MultiplayerRoomSettingsEnvelope | None = None
 
 
 class MultiplayerCallbackDetails(BaseModel):
