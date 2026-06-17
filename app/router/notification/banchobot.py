@@ -467,6 +467,7 @@ async def _mp(user: User, args: list[str], session: AsyncSession, channel: ChatC
             "!mp invite <username>\n"
             "!mp settings\n"
             "!mp team <username> <red|blue>\n"
+            "!mp size <size>\n"
             "!mp move <username> <slot>\n"
             "!mp start [time=10], !mp abort\n"
             "!mp timer [time=30], !mp aborttimer\n"
@@ -522,9 +523,31 @@ async def _mp(user: User, args: list[str], session: AsyncSession, channel: ChatC
             f"Playlist: {len(playlist)} | {'Password protected' if has_pw else 'No password'}"
         )
 
+    if sub == "name":
+        if len(args) < 2:
+            return "Usage: !mp name <title>"
+        new_name = " ".join(args[1:]).strip()
+
+        res = await multiplayer_event_dispatcher.post_change_room_settings(
+            room_id,
+            user.id,
+            name=new_name,
+        )
+        return res.message or f'Room name updated to "{new_name}".'
+
     if sub == "close":
         res = await multiplayer_event_dispatcher.post_close_room(room.id, user.id)
         return res.message or "This room is going to be closed."
+
+    if sub == "invite":
+        if len(args) < 2:
+            return "Usage: !mp invite <username|#<userid>>"
+        target = await _resolve_user(args[1])
+        if not target:
+            return "Target user not found."
+
+        res = await multiplayer_event_dispatcher.post_invite_user(room_id, target.id, user.id)
+        return res.message or f"Invitation sent to {target.username}."
 
     if sub in ("lock", "unlock"):
         res = await multiplayer_event_dispatcher.post_set_lock_state(room_id, sub == "lock", user.id)
@@ -539,6 +562,56 @@ async def _mp(user: User, args: list[str], session: AsyncSession, channel: ChatC
 
         res = await multiplayer_event_dispatcher.post_transfer_host(room_id, target.id, user.id)
         return res.message or f"Host transferred to {target.username}."
+
+    if sub == "password":
+        # Bancho behavior: no argument clears password.
+        password = args[1] if len(args) >= 2 else ""
+
+        res = await multiplayer_event_dispatcher.post_change_room_settings(
+            room_id,
+            user.id,
+            password=password,
+        )
+        return res.message or ("Room password removed." if password == "" else "Room password updated.")
+
+    if sub == "size":
+        if len(args) < 2 or not args[1].isdigit():
+            return "Usage: !mp size <size>"
+
+        new_size = int(args[1])
+        if new_size <= 2:
+            return "Invalid room size."
+
+        res = await multiplayer_event_dispatcher.post_change_room_settings(room_id, user.id, max_participants=new_size)
+        return res.message or f"Changed room size to {new_size}."
+
+    if sub == "set":
+        if len(args) != 2:
+            return "Only single-argument teammode is supported: !mp set <0|2>"
+        teammode_raw = args[1]
+        if teammode_raw not in ("0", "2"):
+            return "Unsupported teammode. Currently supported: 0 (Head to Head), 2 (Team VS)."
+
+        res = await multiplayer_event_dispatcher.post_change_room_settings(
+            room_id,
+            user.id,
+            match_type=int(teammode_raw),
+        )
+        return res.message or f"Team mode updated to {teammode_raw}."
+
+    if sub == "move":
+        if len(args) != 3 or not args[2].isdigit():
+            return "!mp move <username> <slot>"
+        target = await _resolve_user(args[1])
+        if not target:
+            return "Target user not found."
+
+        new_slot = int(args[2])
+        if new_slot < 0:
+            return "Invalid slot number."
+
+        res = await multiplayer_event_dispatcher.post_set_slot(room_id, target.id, user.id, new_slot)
+        return res.message or f"Moved user {target.username} to slot #{new_slot}."
 
     if sub == "team":
         if len(args) != 3:
