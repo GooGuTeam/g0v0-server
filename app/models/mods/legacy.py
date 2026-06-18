@@ -52,10 +52,10 @@ def int_to_mods(mods: int) -> list[APIMod]:
     for mod in range(31):
         if mods & (1 << mod):
             mod_list.append(LEGACY_MOD_TO_API_MOD[(1 << mod)])
-    if mods & (1 << 14):
-        mod_list.remove(LEGACY_MOD_TO_API_MOD[(1 << 5)])
-    if mods & (1 << 9):
-        mod_list.remove(LEGACY_MOD_TO_API_MOD[(1 << 6)])
+    if mods & (1 << 14):  # PF
+        mod_list.remove(LEGACY_MOD_TO_API_MOD[(1 << 5)])  # SD
+    if mods & (1 << 9):  # NC
+        mod_list.remove(LEGACY_MOD_TO_API_MOD[(1 << 6)])  # DT
     return mod_list
 
 
@@ -65,4 +65,8 @@ def mods_to_int(mods: list[APIMod]) -> int:
     sum_ = 0
     for mod in mods:
         sum_ |= API_MOD_TO_LEGACY.get(mod["acronym"], 0)
+        if mod["acronym"] == "PF":
+            sum_ |= API_MOD_TO_LEGACY["SD"]
+        elif mod["acronym"] == "NC":
+            sum_ |= API_MOD_TO_LEGACY["DT"]
     return sum_
