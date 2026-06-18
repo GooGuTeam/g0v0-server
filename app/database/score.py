@@ -20,6 +20,7 @@ from app.calculating import (
     get_display_score,
     pre_fetch_and_calculate_pp,
 )
+from app.calculating.osu import calculate_accuracy, calculate_rank
 from app.config import settings
 from app.const import NEW_SCORE_FORMAT_VER
 from app.dependencies.database import get_redis
@@ -444,6 +445,7 @@ class Score(ScoreModel, table=True):
     nlarge_tick_hit: int | None = Field(default=None, exclude=True)
     nslider_tail_hit: int | None = Field(default=None, exclude=True)
     nsmall_tick_hit: int | None = Field(default=None, exclude=True)
+    nsmall_tick_miss: int | None = Field(default=None, exclude=True)
     gamemode: GameMode = Field(index=True)
     pinned_order: int = Field(default=0, exclude=True)
     map_md5: str = Field(max_length=32, index=True, exclude=True)
@@ -1190,6 +1192,7 @@ async def process_score(
         nsmall_tick_hit=info.statistics.get(HitResult.SMALL_TICK_HIT, 0),
         nlarge_tick_hit=info.statistics.get(HitResult.LARGE_TICK_HIT, 0),
         nslider_tail_hit=info.statistics.get(HitResult.SLIDER_TAIL_HIT, 0),
+        nsmall_tick_miss=info.statistics.get(HitResult.SMALL_TICK_MISS, 0),
         playlist_item_id=score_token.playlist_item_id,
         room_id=score_token.room_id,
         maximum_statistics=info.maximum_statistics,
@@ -1204,6 +1207,12 @@ async def process_score(
     except NotImplementedError:
         mod_multiplier = 1.0
     score.total_score = round(score.total_score_without_mods * mod_multiplier)
+
+    try:
+        score.accuracy = calculate_accuracy(score)
+        score.rank = calculate_rank(score)
+    except NotImplementedError:
+        pass
 
     logger.info(
         "Creating score for user {user_id} | beatmap={beatmap_id} ruleset={ruleset} passed={passed} total={total}",

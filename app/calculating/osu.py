@@ -5,7 +5,7 @@ from app.config import settings
 from app.const import MAX_SCORE
 from app.log import log
 from app.models.events.calculating import AfterCalculatingPPEvent, BeforeCalculatingPPEvent
-from app.models.score import HitResult, ScoreData, ScoreStatistics
+from app.models.score import GameMode, HitResult, Rank, ScoreData, ScoreStatistics
 from app.models.scoring_mode import ScoringMode
 from app.plugins import hub
 
@@ -20,6 +20,118 @@ if TYPE_CHECKING:
     from app.fetcher import Fetcher
 
 logger = log("Calculator")
+
+_SUPPORTED_ACCURACY_MODES = frozenset({GameMode.OSU, GameMode.TAIKO, GameMode.FRUITS, GameMode.MANIA})
+
+_NON_ACCURACY_HIT_RESULTS = frozenset(
+    {
+        HitResult.NONE,
+        HitResult.IGNORE_HIT,
+        HitResult.IGNORE_MISS,
+        HitResult.SMALL_BONUS,
+        HitResult.LARGE_BONUS,
+        HitResult.COMBO_BREAK,
+        HitResult.LEGACY_COMBO_INCREASE,
+    }
+)
+
+_DEFAULT_ACCURACY_BASE_SCORES: dict[HitResult, int] = {
+    HitResult.MISS: 0,
+    HitResult.MEH: 50,
+    HitResult.OK: 100,
+    HitResult.GOOD: 200,
+    HitResult.GREAT: 300,
+    HitResult.PERFECT: 300,
+    HitResult.SMALL_TICK_MISS: 0,
+    HitResult.SMALL_TICK_HIT: 10,
+    HitResult.LARGE_TICK_MISS: 0,
+    HitResult.LARGE_TICK_HIT: 30,
+    HitResult.SLIDER_TAIL_HIT: 150,
+    HitResult.SMALL_BONUS: 10,
+    HitResult.LARGE_BONUS: 100,
+}
+
+_ACCURACY_BASE_SCORE_OVERRIDES: dict[GameMode, dict[HitResult, int]] = {
+    GameMode.TAIKO: {
+        HitResult.OK: 150,
+    },
+    GameMode.FRUITS: {
+        HitResult.GREAT: 300,
+        HitResult.LARGE_TICK_HIT: 300,
+        HitResult.SMALL_TICK_HIT: 300,
+        HitResult.LARGE_BONUS: 200,
+    },
+    GameMode.MANIA: {
+        HitResult.PERFECT: 305,
+    },
+}
+
+
+def _get_score_stat(score: "ScoreData | Score", attr: str) -> int:
+    value = getattr(score, attr, 0)
+    return int(value or 0)
+
+
+def _normalise_hit_result(hit_result: HitResult | str) -> HitResult | None:
+    if isinstance(hit_result, HitResult):
+        return hit_result
+    try:
+        return HitResult(hit_result)
+    except ValueError:
+        return None
+
+
+def _normalise_score_statistics(statistics: ScoreStatistics) -> ScoreStatistics:
+    normalised: ScoreStatistics = {}
+    for hit_result, count in statistics.items():
+        normalised_hit_result = _normalise_hit_result(hit_result)
+        if normalised_hit_result is None:
+            continue
+        normalised[normalised_hit_result] = normalised.get(normalised_hit_result, 0) + int(count or 0)
+    return normalised
+
+
+def _get_score_statistics(score: "ScoreData | Score") -> ScoreStatistics:
+    return {
+        HitResult.MISS: _get_score_stat(score, "nmiss"),
+        HitResult.MEH: _get_score_stat(score, "n50"),
+        HitResult.OK: _get_score_stat(score, "n100"),
+        HitResult.GOOD: _get_score_stat(score, "nkatu"),
+        HitResult.GREAT: _get_score_stat(score, "n300"),
+        HitResult.PERFECT: _get_score_stat(score, "ngeki"),
+        HitResult.LARGE_TICK_MISS: _get_score_stat(score, "nlarge_tick_miss"),
+        HitResult.LARGE_TICK_HIT: _get_score_stat(score, "nlarge_tick_hit"),
+        HitResult.SLIDER_TAIL_HIT: _get_score_stat(score, "nslider_tail_hit"),
+        HitResult.SMALL_TICK_MISS: _get_score_stat(score, "nsmall_tick_miss"),
+        HitResult.SMALL_TICK_HIT: _get_score_stat(score, "nsmall_tick_hit"),
+    }
+
+
+def _hit_result_affects_accuracy(hit_result: HitResult) -> bool:
+    return hit_result not in _NON_ACCURACY_HIT_RESULTS
+
+
+def _get_accuracy_base_score(mode: GameMode, hit_result: HitResult) -> int:
+    return _ACCURACY_BASE_SCORE_OVERRIDES.get(mode, {}).get(
+        hit_result,
+        _DEFAULT_ACCURACY_BASE_SCORES.get(hit_result, 0),
+    )
+
+
+def _calculate_accuracy_base_score(mode: GameMode, statistics: ScoreStatistics) -> int:
+    return sum(
+        count * _get_accuracy_base_score(mode, hit_result)
+        for hit_result, count in statistics.items()
+        if _hit_result_affects_accuracy(hit_result)
+    )
+
+
+def _score_has_any_mod(score: "ScoreData | Score", acronyms: set[str]) -> bool:
+    for mod in score.mods or []:
+        acronym = mod.get("acronym") if isinstance(mod, dict) else str(mod)
+        if acronym in acronyms:
+            return True
+    return False
 
 
 def get_display_score(ruleset_id: int, total_score: int, mode: ScoringMode, maximum_statistics: ScoreStatistics) -> int:
@@ -382,3 +494,86 @@ async def pre_fetch_and_calculate_pp(
         return 0, False
 
     return await calculate_pp(score, beatmap_raw, session), True
+
+
+def calculate_accuracy(score: "ScoreData | Score") -> float:
+    """Calculate accuracy for a score.
+
+    Args:
+        score: The score object.
+
+    Returns:
+        The calculated accuracy value.
+    """
+    mode = score.gamemode.to_base_ruleset()
+    if mode not in _SUPPORTED_ACCURACY_MODES:
+        raise NotImplementedError(f"Accuracy calculation not implemented for gamemode {score.gamemode}")
+
+    statistics = _get_score_statistics(score)
+    maximum_statistics = _normalise_score_statistics(score.maximum_statistics or {})
+
+    base_score = _calculate_accuracy_base_score(mode, statistics)
+    maximum_base_score = _calculate_accuracy_base_score(mode, maximum_statistics)
+
+    return 1.0 if maximum_base_score == 0 else base_score / maximum_base_score
+
+
+def calculate_rank(score: "ScoreData | Score") -> Rank:
+    """Calculate rank for a score.
+
+    Args:
+        score: The score object.
+
+    Returns:
+        The calculated rank.
+    """
+
+    if not score.passed:
+        return Rank.F
+
+    mode = score.gamemode.to_base_ruleset()
+    has_vision_restricted_mod = _score_has_any_mod(score, {"FL", "HD"})
+    acc = score.accuracy
+
+    match mode:
+        case GameMode.OSU | GameMode.TAIKO:
+            if acc == 1.0:
+                return Rank.XH if has_vision_restricted_mod else Rank.X
+            elif acc >= 0.95 and not score.nmiss:
+                return Rank.SH if has_vision_restricted_mod else Rank.S
+            elif acc >= 0.90:
+                return Rank.A
+            elif acc >= 0.80:
+                return Rank.B
+            elif acc >= 0.70:
+                return Rank.C
+            else:
+                return Rank.D
+        case GameMode.FRUITS:
+            if acc == 1.0:
+                return Rank.XH if has_vision_restricted_mod else Rank.X
+            elif acc >= 0.98:
+                return Rank.SH if has_vision_restricted_mod else Rank.S
+            elif acc >= 0.94:
+                return Rank.A
+            elif acc >= 0.90:
+                return Rank.B
+            elif acc >= 0.85:
+                return Rank.C
+            else:
+                return Rank.D
+        case GameMode.MANIA:
+            if not (score.nkatu or score.n100 or score.n50 or score.nmiss):
+                return Rank.XH if has_vision_restricted_mod else Rank.X
+            elif acc >= 0.95:
+                return Rank.SH if has_vision_restricted_mod else Rank.S
+            elif acc >= 0.90:
+                return Rank.A
+            elif acc >= 0.80:
+                return Rank.B
+            elif acc >= 0.70:
+                return Rank.C
+            else:
+                return Rank.D
+        case _:
+            raise NotImplementedError(f"Rank calculation not implemented for gamemode {score.gamemode}")

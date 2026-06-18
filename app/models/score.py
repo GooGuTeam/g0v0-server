@@ -382,6 +382,7 @@ class ScoreData(BaseModel):
     nlarge_tick_hit: int | None = Field(default=None)
     nslider_tail_hit: int | None = Field(default=None)
     nsmall_tick_hit: int | None = Field(default=None)
+    nsmall_tick_miss: int | None = Field(default=None)
     maximum_statistics: ScoreStatistics = Field(default_factory=dict)
     total_score: int
     total_score_without_mods: int
@@ -417,6 +418,7 @@ class ScoreData(BaseModel):
             nlarge_tick_hit=score.nlarge_tick_hit,
             nslider_tail_hit=score.nslider_tail_hit,
             nsmall_tick_hit=score.nsmall_tick_hit,
+            nsmall_tick_miss=score.nsmall_tick_miss,
             maximum_statistics=score.maximum_statistics,
             total_score=score.total_score,
             total_score_without_mods=score.total_score_without_mods,

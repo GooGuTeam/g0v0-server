@@ -16,6 +16,7 @@ import warnings
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from app.calculating import CalculateError, calculate_pp, calculate_score_to_level, init_calculator
+from app.calculating.osu import calculate_accuracy, calculate_rank
 from app.config import settings
 from app.const import BANCHOBOT_ID
 from app.database import TotalScoreBestScore, UserStatistics
@@ -289,6 +290,39 @@ def parse_cli_args(
         help="Recalculate all scores (ignores filter requirement)",
     )
 
+    # accuracy-rank subcommand
+    accuracy_rank_parser = subparsers.add_parser(
+        "accuracy-rank",
+        help="Recalculate score accuracy and rank, then rebuild best score and leaderboard data",
+    )
+    accuracy_rank_parser.add_argument("--user-id", dest="user_ids", action="append", type=int, help="Filter by user id")
+    accuracy_rank_parser.add_argument(
+        "--mode",
+        dest="modes",
+        action="append",
+        help="Filter by game mode (accepts names like osu, taiko or numeric ids)",
+    )
+    accuracy_rank_parser.add_argument(
+        "--beatmap-id",
+        dest="beatmap_ids",
+        action="append",
+        type=int,
+        help="Filter by beatmap id",
+    )
+    accuracy_rank_parser.add_argument(
+        "--beatmapset-id",
+        dest="beatmapset_ids",
+        action="append",
+        type=int,
+        help="Filter by beatmapset id",
+    )
+    accuracy_rank_parser.add_argument(
+        "--all",
+        dest="recalculate_all",
+        action="store_true",
+        help="Recalculate accuracy and rank for all scores (ignores filter requirement)",
+    )
+
     # rating subcommand
     rating_parser = subparsers.add_parser("rating", help="Recalculate beatmap difficulty ratings")
     rating_parser.add_argument(
@@ -334,7 +368,7 @@ def parse_cli_args(
     if args.command == "all":
         return args.command, global_config, None
 
-    if args.command in ("performance", "leaderboard", "score"):
+    if args.command in ("performance", "leaderboard", "score", "accuracy-rank"):
         if not args.recalculate_all and not any(
             (
                 args.user_ids,
@@ -390,7 +424,7 @@ def parse_cli_args(
                     recalculate_all=args.recalculate_all,
                 ),
             )
-        else:  # score
+        else:  # score or accuracy-rank
             return (
                 args.command,
                 global_config,
@@ -567,6 +601,29 @@ class CSVWriter:
             self.writer.writerow(["score", user_id, mode, recalculated, changed])
             self.file.flush()
 
+    async def write_accuracy_rank(
+        self,
+        user_id: int,
+        mode: str,
+        recalculated: int,
+        failed: int,
+        accuracy_changed: int,
+        rank_changed: int,
+    ):
+        """Write score accuracy/rank recalculation result."""
+        if not self.file:
+            return
+
+        async with self.lock:
+            if not self.writer:
+                self.writer = csv.writer(self.file)
+                self.writer.writerow(
+                    ["type", "user_id", "mode", "recalculated", "failed", "accuracy_changed", "rank_changed"]
+                )
+
+            self.writer.writerow(["accuracy_rank", user_id, mode, recalculated, failed, accuracy_changed, rank_changed])
+            self.file.flush()
+
     async def write_rating(self, beatmap_id: int, old_rating: float, new_rating: float):
         """Write beatmap rating recalculation result."""
         if not self.file:
@@ -669,6 +726,16 @@ def recalculate_score_total(score: Score, beatmap: Beatmap) -> int:
     except NotImplementedError:
         mod_multiplier = 1.0
     return round(score.total_score_without_mods * mod_multiplier)
+
+
+def recalculate_score_accuracy_and_rank(score: Score) -> tuple[bool, bool]:
+    old_accuracy = score.accuracy
+    old_rank = score.rank
+
+    score.accuracy = calculate_accuracy(score)
+    score.rank = calculate_rank(score)
+
+    return abs(score.accuracy - old_accuracy) > 1e-12, score.rank != old_rank
 
 
 async def _populate_targets_from_scores(
@@ -1246,6 +1313,133 @@ async def recalculate_user_mode_score(
             logger.exception(f"Failed to process score totals for user {user_id} mode {gamemode}")
 
 
+async def recalculate_user_mode_accuracy_rank(
+    user_id: int,
+    gamemode: GameMode,
+    score_filter: set[int],
+    global_config: GlobalConfig,
+    semaphore: asyncio.Semaphore,
+    csv_writer: CSVWriter | None = None,
+) -> None:
+    async with semaphore, AsyncSession(engine, expire_on_commit=False, autoflush=False) as session:
+        try:
+            statistics = (
+                await session.exec(
+                    select(UserStatistics).where(
+                        UserStatistics.user_id == user_id,
+                        UserStatistics.mode == gamemode,
+                    )
+                )
+            ).first()
+            if statistics is None:
+                logger.warning(f"No statistics found for user {user_id} mode {gamemode}")
+                return
+
+            score_stmt = (
+                select(Score)
+                .where(Score.user_id == user_id, Score.gamemode == gamemode)
+                .options(joinedload(Score.beatmap))
+            )
+            result = await session.exec(score_stmt)
+            scores: list[Score] = list(result)
+
+            target_scores = [score for score in scores if score.id in score_filter]
+            if not target_scores:
+                logger.info(f"User {user_id} mode {gamemode}: no scores matched filters")
+                return
+
+            recalculated = 0
+            failed = 0
+            accuracy_changed = 0
+            rank_changed = 0
+            for score in target_scores:
+                try:
+                    changed_accuracy, changed_rank = recalculate_score_accuracy_and_rank(score)
+                except NotImplementedError as exc:
+                    failed += 1
+                    logger.warning(
+                        f"Score {score.id} mode {score.gamemode}: {exc}; skipping accuracy/rank recalculation"
+                    )
+                    continue
+
+                recalculated += 1
+                if changed_accuracy:
+                    accuracy_changed += 1
+                if changed_rank:
+                    rank_changed += 1
+
+            passed_scores = [score for score in scores if score.passed]
+            best_scores = build_best_scores(user_id, gamemode, passed_scores)
+            total_best_scores = build_total_score_best_scores(passed_scores)
+
+            await session.execute(
+                delete(BestScore).where(
+                    col(BestScore.user_id) == user_id,
+                    col(BestScore.gamemode) == gamemode,
+                )
+            )
+            session.add_all(best_scores)
+            await session.execute(
+                delete(TotalScoreBestScore).where(
+                    col(TotalScoreBestScore.user_id) == user_id,
+                    col(TotalScoreBestScore.gamemode) == gamemode,
+                )
+            )
+            session.add_all(total_best_scores)
+            await session.flush()
+
+            await _recalculate_statistics(statistics, session, scores)
+            await session.flush()
+
+            message = (
+                "Dry-run | user {user_id} mode {mode} | recalculated {recalculated} scores (failed {failed}) | "
+                "accuracy changed {accuracy_changed} | rank changed {rank_changed}"
+            )
+            success_message = (
+                "Recalculated accuracy/rank | user {user_id} mode {mode} | updated {recalculated} scores "
+                "(failed {failed}) | accuracy changed {accuracy_changed} | rank changed {rank_changed}"
+            )
+
+            if global_config.dry_run:
+                await session.rollback()
+                logger.info(
+                    message.format(
+                        user_id=user_id,
+                        mode=gamemode,
+                        recalculated=recalculated,
+                        failed=failed,
+                        accuracy_changed=accuracy_changed,
+                        rank_changed=rank_changed,
+                    )
+                )
+            else:
+                await session.commit()
+                logger.success(
+                    success_message.format(
+                        user_id=user_id,
+                        mode=gamemode,
+                        recalculated=recalculated,
+                        failed=failed,
+                        accuracy_changed=accuracy_changed,
+                        rank_changed=rank_changed,
+                    )
+                )
+
+            if csv_writer:
+                await csv_writer.write_accuracy_rank(
+                    user_id,
+                    str(gamemode),
+                    recalculated,
+                    failed,
+                    accuracy_changed,
+                    rank_changed,
+                )
+        except Exception:
+            if session.in_transaction():
+                await session.rollback()
+            logger.exception(f"Failed to process score accuracy/rank for user {user_id} mode {gamemode}")
+
+
 async def recalculate_beatmap_rating(
     beatmap_id: int,
     global_config: GlobalConfig,
@@ -1469,6 +1663,39 @@ async def recalculate_score(
     await _recalculate_leaderboard_targets(leaderboard_targets, config.recalculate_all, global_config)
 
 
+async def recalculate_accuracy_rank(
+    config: ScoreConfig,
+    global_config: GlobalConfig,
+) -> None:
+    """Execute score accuracy and rank recalculation followed by best-score/statistics rebuild."""
+    init_mods()
+    init_ranked_mods()
+
+    targets = await determine_score_targets(config)
+    if not targets:
+        logger.info("No scores matched the provided filters; nothing to recalculate")
+        return
+
+    scope = "full" if config.recalculate_all else "filtered"
+    total_scores = sum(len(score_ids) for score_ids in targets.values())
+    logger.info(
+        "Recalculating accuracy/rank for {} scores across {} user/mode pairs ({}) | dry-run={} | concurrency={}",
+        total_scores,
+        len(targets),
+        scope,
+        global_config.dry_run,
+        global_config.concurrency,
+    )
+
+    semaphore = asyncio.Semaphore(global_config.concurrency)
+    async with CSVWriter(global_config.output_csv) as csv_writer:
+        coroutines = [
+            recalculate_user_mode_accuracy_rank(user_id, mode, score_ids, global_config, semaphore, csv_writer)
+            for (user_id, mode), score_ids in targets.items()
+        ]
+        await run_in_batches(coroutines, global_config.concurrency)
+
+
 async def recalculate_rating(
     config: RatingConfig,
     global_config: GlobalConfig,
@@ -1612,6 +1839,9 @@ async def main() -> None:
     elif command == "score":
         assert isinstance(sub_config, ScoreConfig)
         await recalculate_score(sub_config, global_config)
+    elif command == "accuracy-rank":
+        assert isinstance(sub_config, ScoreConfig)
+        await recalculate_accuracy_rank(sub_config, global_config)
     elif command == "rating":
         assert isinstance(sub_config, RatingConfig)
         await recalculate_rating(sub_config, global_config)

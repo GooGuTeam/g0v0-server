@@ -104,6 +104,7 @@ class PerformanceServerPerformanceCalculator(BasePerformanceCalculator):
             "nlarge_tick_miss": "large_tick_miss",
             "nsmall_tick_hit": "small_tick_hit",
             "nslider_tail_hit": "slider_tail_hit",
+            "nsmall_tick_miss": "small_tick_miss",
         }
 
         async with AsyncClient(timeout=15) as client:
