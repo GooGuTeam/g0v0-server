@@ -15,11 +15,13 @@ from typing import TYPE_CHECKING, cast
 
 from app.calculating import calculate_weighted_pp
 from app.const import BANCHOBOT_ID
+from app.database.beatmap import Beatmap
 from app.database.chat import ChannelType, ChatChannel, ChatMessage, ChatMessageModel, MessageType
 from app.database.room import Room
 from app.database.score import Score, get_best_id
 from app.database.statistics import UserStatistics, get_rank
 from app.database.user import User
+from app.dependencies.fetcher import get_fetcher
 from app.log import log
 from app.models.mods import mod_to_save
 from app.models.room import MatchType, RoomCategory
@@ -562,6 +564,27 @@ async def _mp(user: User, args: list[str], session: AsyncSession, channel: ChatC
 
         res = await multiplayer_event_dispatcher.post_change_room_settings(room_id, user.id, max_participants=new_size)
         return res.message or f"Changed room size to {new_size}."
+
+    if sub == "map":
+        if len(args) < 2 or not args[1].isdigit():
+            return "Usage: !mp map <beatmap_id> [<ruleset_id>]"
+        beatmap_id = int(args[1])
+        ruleset_id = int(args[2]) if len(args) >= 3 and args[2].isdigit() else 0
+
+        fetcher = await get_fetcher()
+        try:
+            beatmap = await Beatmap.get_or_fetch(session, fetcher, bid=beatmap_id)
+        except Exception:
+            return "Failed to fetch beatmap."
+
+        res = await multiplayer_event_dispatcher.post_change_beatmap(room_id, user.id, beatmap_id, ruleset_id)
+
+        if res.message:
+            return res.message
+
+        mode_name = str(GameMode.from_int(ruleset_id))
+        beatmap_info = f"{beatmap.beatmapset.artist} - {beatmap.beatmapset.title} [{beatmap.version}]"
+        return f"Beatmap changed to: {beatmap_info} (#{beatmap_id}, {mode_name})"
 
     if sub == "set":
         if len(args) != 2:

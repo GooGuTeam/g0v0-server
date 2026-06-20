@@ -483,5 +483,27 @@ class MultiplayerEventDispatcher:
             },
         )
 
+    async def post_change_beatmap(
+        self,
+        room_id: int,
+        by_user_id: int,
+        beatmap_id: int,
+        ruleset_id: int = 0,
+        mod_acronyms: list[str] | None = None,
+    ):
+        """请求 spectator 修改房间当前 playlist item"""
+        payload: dict[str, Any] = {
+            "type": "ChangeBeatmap",
+            "by": by_user_id,
+            "map_settings": {
+                "beatmap_id": beatmap_id,
+                "ruleset_id": ruleset_id,
+            },
+        }
+        if mod_acronyms:
+            payload["map_settings"]["mods"] = mod_acronyms
+
+        return await self._publish_with_callback(room_id, payload)
+
 
 multiplayer_event_dispatcher = MultiplayerEventDispatcher()
