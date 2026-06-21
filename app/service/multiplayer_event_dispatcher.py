@@ -5,13 +5,12 @@ This acts as a compatibility layer for osu-server-spectator using Redis instead 
 
 import asyncio
 from contextlib import suppress
-from datetime import datetime
 import json
 from typing import Any
 import uuid
 
-from app.database import ChatChannel, ChatMessage, Room, User
-from app.dependencies.database import get_redis, with_db
+from app.database import ChatChannel, Room, User
+from app.dependencies.database import get_blocking_redis, with_db
 from app.log import log
 from app.models.mp_messages import MultiplayerCallbackDetails, MultiplayerCallbackMessage
 from app.utils import safe_json_dumps
@@ -44,7 +43,7 @@ class MultiplayerTaskAwaiter:
             if tid in self._futures and not self._futures[tid].done():
                 self._futures[tid].cancel()
 
-            self._futures[tid] = asyncio.get_event_loop().create_future()
+            self._futures[tid] = asyncio.get_running_loop().create_future()
         return tid
 
     async def wait_for_result(
@@ -105,7 +104,11 @@ class MultiplayerEventDispatcher:
     """Send multiplayer events to the spectator server and wait for callbacks."""
 
     def __init__(self, redis_client: redis.Redis | None = None):
-        self.redis = redis_client or get_redis()
+        # Must use the blocking Redis client (socket_timeout=None).
+        # redis-py 8 applies a default socket timeout that silently kills
+        # pubsub connections after a period of inactivity, causing the
+        # _listen task to die without any error — callbacks are never received.
+        self.redis = redis_client or get_blocking_redis()
         self.channel_prefix = "osu-channel:"
         self.pubsub = None
         self.handlers: dict[str, Any] = {}
@@ -122,17 +125,9 @@ class MultiplayerEventDispatcher:
         if self._running:
             return
 
-        try:
-            self.pubsub = self.redis.pubsub()
-            await self.pubsub.psubscribe("osu-channel:room:*")
-            await self.pubsub.psubscribe("osu-channel:callback:*")
-            self._running = True
-            logger.info("Started subscribing to multiplayer Redis events from spectator")
-
-            self._listen_task = asyncio.create_task(self._listen())
-        except Exception as e:
-            logger.error(f"Error starting multiplayer redis subscriber: {e}")
-            raise
+        self._running = True
+        self._listen_task = asyncio.create_task(self._listen())
+        logger.info("Started multiplayer redis event listener")
 
     async def stop(self) -> None:
         """停止 Redis 订阅"""
@@ -148,49 +143,74 @@ class MultiplayerEventDispatcher:
         logger.info("Stopped multiplayer redis subscription")
 
     async def _listen(self) -> None:
-        """The main event listening and handling routine."""
-        if not self.pubsub:
-            return
+        """The main event listening and handling routine.
 
-        async for message in self.pubsub.listen():
-            if not self._running:
-                break
-
-            if message["type"] != "pmessage":
-                continue
-
-            channel = message["channel"].decode()
+        Wraps the pubsub listen loop with automatic reconnection. If the
+        pubsub connection drops (network error, Redis restart, etc.), the
+        loop re-subscribes after a short delay instead of dying silently.
+        """
+        while self._running:
             try:
-                raw_data = message.get("data")
-                if isinstance(raw_data, bytes):
-                    raw_data = raw_data.decode()
+                if not self.pubsub:
+                    self.pubsub = self.redis.pubsub()
+                    await self.pubsub.psubscribe("osu-channel:room:*")
+                    await self.pubsub.psubscribe("osu-channel:callback:*")
+                    logger.info("Redis pubsub (re)subscribed to multiplayer channels")
 
-                if not isinstance(raw_data, str):
-                    continue
+                async for message in self.pubsub.listen():
+                    if not self._running:
+                        break
 
-                data = json.loads(raw_data)
+                    if message["type"] != "pmessage":
+                        continue
 
-                # Handle callback events
-                if channel.startswith("osu-channel:callback:"):
-                    callback = MultiplayerCallbackMessage.model_validate(data)
+                    try:
+                        channel = message["channel"]
+                        if isinstance(channel, bytes):
+                            channel = channel.decode()
 
-                    if callback.id and callback.type == "TaskResult":
-                        # Record error in log
-                        if not callback.success:
-                            logger.warning(
-                                f"Multiplayer event task {callback.id} returned with error: {callback.message}"
-                            )
+                        raw_data = message.get("data")
+                        if isinstance(raw_data, bytes):
+                            raw_data = raw_data.decode()
 
-                        task_awaiter.resolve_task(callback.id, callback)
-                    continue
+                        if not isinstance(raw_data, str):
+                            continue
 
-                # Other events if possible
-                event_type = data["type"]
-                if event_type in self.handlers:
-                    await self.handlers[event_type](data)
+                        data = json.loads(raw_data)
+
+                        # Handle callback events
+                        if channel.startswith("osu-channel:callback:"):
+                            callback = MultiplayerCallbackMessage.model_validate(data)
+
+                            if callback.id and callback.type == "TaskResult":
+                                # Record error in log
+                                if not callback.success:
+                                    logger.warning(
+                                        f"Multiplayer event task {callback.id} returned with error: {callback.message}"
+                                    )
+
+                                task_awaiter.resolve_task(callback.id, callback)
+                            continue
+
+                        # Other events if possible
+                        event_type = data["type"]
+                        if event_type in self.handlers:
+                            await self.handlers[event_type](data)
+
+                    except Exception as e:
+                        logger.warning(f"Error processing Redis message: {e}")
 
             except Exception as e:
-                logger.warning(f"Error processing Redis message: {e}")
+                logger.error(f"Redis pubsub listener crashed: {e}. Reconnecting in 3s...")
+
+            # Clean up the dead pubsub before retrying
+            if self.pubsub:
+                with suppress(Exception):
+                    await self.pubsub.close()
+                self.pubsub = None
+
+            if self._running:
+                await asyncio.sleep(3)
 
     async def _publish_with_callback(
         self,
@@ -238,31 +258,29 @@ class MultiplayerEventDispatcher:
                     logger.debug(f"Chat channel {room.channel_id} not found for room {room_id}")
                     return
 
-                bancho_bot = await session.get(User, 1)
+                from app.const import BANCHOBOT_ID
+                from app.router.notification.server import server
+                from app.service.redis_message_system import redis_message_system
+
+                bancho_bot = await session.get(User, BANCHOBOT_ID)
                 if not bancho_bot:
-                    logger.warning("BanchoBot (user_id=1) not found in database")
+                    logger.warning("BanchoBot not found in database. Not sending countdown message.")
                     return
 
                 message = "Match is starting!" if seconds == 0 else f"{int(seconds)} seconds remaining."
 
-                new_chat = ChatMessage(
+                message_data = await redis_message_system.send_message(
                     channel_id=room.channel_id,
-                    sender_id=1,
+                    user=bancho_bot,
                     content=message,
-                    timestamp=datetime.utcnow(),
                 )
 
-                session.add(new_chat)
-                await session.commit()
+                await server.send_message_to_channel(message_data)
 
                 logger.info(f"Sent countdown message to room {room_id}: {message}")
 
-                from app.service.redis_message_system import redis_message_system
-
-                await redis_message_system._initialize_message_counter()
-
         except Exception as e:
-            logger.error(f"Error handling countdown tick for room {room_id}: {e}")
+            logger.exception(f"Error handling countdown tick for room {room_id}: {e}")
 
     async def _publish(self, room_id: int, event_data: dict[str, Any]) -> None:
         """发布通用事件"""
