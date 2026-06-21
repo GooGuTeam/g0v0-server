@@ -61,8 +61,11 @@ class MultiplayerTaskAwaiter:
         if not future:
             raise ValueError(f"Task {task_id} not found")
 
+        logger.info(f"Waiting for result of task #{task_id}")
+
         try:
             result = await asyncio.wait_for(future, timeout=timeout or self._default_timeout)
+            logger.info(f"Got result for #{task_id}: {result}")
             return result
         except TimeoutError:
             logger.warning(f"Task {task_id} timed out")
@@ -231,6 +234,8 @@ class MultiplayerEventDispatcher:
         task_id = await task_awaiter.create_task()
 
         message["id"] = task_id
+
+        logger.info(f"Creating task {id}: {json.dumps(message)}")
 
         await self.redis.publish(f"{self.channel_prefix}room:{room_id}", json.dumps(message))
         return await task_awaiter.wait_for_result(task_id, timeout)
