@@ -22,6 +22,7 @@ from app.database.score import Score, get_best_id
 from app.database.statistics import UserStatistics, get_rank
 from app.database.user import User
 from app.dependencies.fetcher import get_fetcher
+from app.helpers.time import format_time
 from app.log import log
 from app.models.mods import mod_to_save
 from app.models.room import MatchType, RoomCategory
@@ -403,7 +404,7 @@ async def _mp(user: User, args: list[str], session: AsyncSession, channel: ChatC
         return content
 
     if sub in unsupported_subs:
-        return await _reply_via_pm(f"!mp {sub} is currently not supported.")
+        return f"!mp {sub} is currently not supported."
 
     # Outside multiplayer channels, support only !mp help / make
     if channel.type != ChannelType.MULTIPLAYER and sub not in ("help", "make"):
@@ -589,16 +590,18 @@ async def _mp(user: User, args: list[str], session: AsyncSession, channel: ChatC
     if sub == "set":
         if len(args) != 2:
             return "Only single-argument teammode is supported: !mp set <0|2>"
-        teammode_raw = args[1]
-        if teammode_raw not in ("0", "2"):
+        mode_raw = args[1]
+        supported_modes = {"0": "Head to Head", "2": "Team VS"}
+
+        if mode_raw not in ("0", "2"):
             return "Unsupported teammode. Currently supported: 0 (Head to Head), 2 (Team VS)."
 
         res = await multiplayer_event_dispatcher.post_change_room_settings(
             room_id,
             user.id,
-            match_type=int(teammode_raw),
+            match_type=int(mode_raw),
         )
-        return res.message or f"Team mode updated to {teammode_raw}."
+        return res.message or f"Team mode updated to {supported_modes[mode_raw]}."
 
     if sub == "move":
         if len(args) != 3 or not args[2].isdigit():
@@ -612,7 +615,7 @@ async def _mp(user: User, args: list[str], session: AsyncSession, channel: ChatC
             return "Invalid slot number."
 
         res = await multiplayer_event_dispatcher.post_set_slot(room_id, target.id, user.id, new_slot)
-        return res.message or f"Moved user {target.username} to slot #{new_slot}."
+        return res.message or f"Moved {target.username} into slot #{new_slot}."
 
     if sub == "team":
         if len(args) != 3:
@@ -633,7 +636,7 @@ async def _mp(user: User, args: list[str], session: AsyncSession, channel: ChatC
         team_id = 0 if colour == "red" else 1
 
         res = await multiplayer_event_dispatcher.post_change_team(room_id, target.id, user.id, team_id)
-        return res.message or f"Moved user {target.username} to team {colour}."
+        return res.message or f"Moved {target.username} to team {colour}."
 
     if sub in ("start", "abort"):
         # start [time] -> request spectator to start match (with optional countdown)
@@ -645,7 +648,7 @@ async def _mp(user: User, args: list[str], session: AsyncSession, channel: ChatC
                 delay = int(args[1])
 
             res = await multiplayer_event_dispatcher.post_start_match(room_id, delay, user.id)
-            msg = "Match is starting. Good luck!" if delay is None else f"Match would start in {delay} seconds."
+            msg = "Started the match." if delay is None else f"Match starts in {delay} seconds."
             return res.message or msg
 
         res = await multiplayer_event_dispatcher.post_abort_match(room_id, user.id)
@@ -654,7 +657,7 @@ async def _mp(user: User, args: list[str], session: AsyncSession, channel: ChatC
     if sub in ("timer", "aborttimer"):
         if sub == "aborttimer":
             res = await multiplayer_event_dispatcher.post_stop_all_countdowns(room_id, user.id)
-            return res.message or "All timers stopped."
+            return res.message or "All timers aborted."
 
         # Start a reminder-only countdown (no match start). Default 30s, mutually exclusive with match start countdown.
         seconds = 30
@@ -664,7 +667,7 @@ async def _mp(user: User, args: list[str], session: AsyncSession, channel: ChatC
             seconds = int(args[1])
 
         res = await multiplayer_event_dispatcher.post_start_reminder_timer(room_id, seconds, user.id)
-        return res.message or f"Started a countdown of {seconds} {'second' if seconds == 1 else 'seconds'}."
+        return res.message or f"Countdown ends in {format_time(seconds)}."
 
     if sub in ("kick", "ban"):
         if len(args) < 2:
@@ -681,7 +684,9 @@ async def _mp(user: User, args: list[str], session: AsyncSession, channel: ChatC
                 return "You cannot ban yourself."
             res = await multiplayer_event_dispatcher.post_ban_user(room_id, tgt_user.id, user.id)
 
-        return res.message or f"{sub.title()} request sent for {tgt_user.username}."
+        verb = "Kicked" if sub == "kick" else "Banned"
+
+        return res.message or f"{verb} {tgt_user.username} from the room."
 
     if sub in ("addref", "removeref"):
         if len(args) < 2:
@@ -708,7 +713,7 @@ async def _mp(user: User, args: list[str], session: AsyncSession, channel: ChatC
         res = await multiplayer_event_dispatcher.post_get_referees(room_id, user.id)
 
         if not res.details.referee_ids:
-            return "Unable to get referees."
+            return "No referees found for this room."
 
         if not res.success:
             return res.message
@@ -723,7 +728,7 @@ async def _mp(user: User, args: list[str], session: AsyncSession, channel: ChatC
         if not ref_users:
             return "No referees found for this room."
 
-        names = ", ".join(sorted(u.username for u in ref_users))
-        return f"Referees ({len(ref_users)}): {names}"
+        names = "\n".join(sorted(u.username for u in ref_users))
+        return f"Referees ({len(ref_users)}):\n{names}"
 
     return "Unknown mp subcommand. Send !mp help for usage."

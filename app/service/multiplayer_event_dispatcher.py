@@ -11,6 +11,7 @@ import uuid
 
 from app.database import ChatChannel, Room, User
 from app.dependencies.database import get_blocking_redis, with_db
+from app.helpers.time import format_time
 from app.log import log
 from app.models.mp_messages import MultiplayerCallbackDetails, MultiplayerCallbackMessage
 from app.utils import safe_json_dumps
@@ -244,7 +245,7 @@ class MultiplayerEventDispatcher:
         """处理倒计时事件，在特定秒数发送 BanchoBot 消息"""
         chat_threshold_seconds = [60, 30, 10, 5, 4, 3, 2, 1, 0]
 
-        if int(seconds) not in chat_threshold_seconds:
+        if int(seconds) not in chat_threshold_seconds or int(seconds) % 60 != 0:
             return
 
         try:
@@ -272,7 +273,8 @@ class MultiplayerEventDispatcher:
                     logger.warning("BanchoBot not found in database. Not sending countdown message.")
                     return
 
-                message = "Match is starting!" if seconds == 0 else f"{int(seconds)} seconds remaining."
+                # TODO: Handle reminder countdown separately
+                message = "Good luck, have fun!" if seconds == 0 else f"Match starts in {format_time(int(seconds))}"
 
                 message_data = await redis_message_system.send_message(
                     channel_id=room.channel_id,
