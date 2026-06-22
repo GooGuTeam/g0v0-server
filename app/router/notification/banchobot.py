@@ -485,11 +485,30 @@ async def _mp(user: User, args: list[str], session: AsyncSession, channel: ChatC
         return raw.replace("_", " ")
 
     async def _resolve_user(raw: str) -> User | None:
+        logger.info(f"Trying to resolve user '{raw}'.")
         if raw.startswith("#") and raw[1:].isdigit():
-            return await session.get(User, int(raw[1:]))
-        return (
+            result = await session.get(User, int(raw[1:]))
+
+            return result
+
+        result = (await session.exec(select(User).where(User.username == raw or User.username == raw))).first()
+
+        if result:
+            logger.success(f"Found user {result.username}.")
+            return result
+
+        logger.info("Trying normalized username...")
+
+        result = (
             await session.exec(select(User).where(User.username == raw or User.username == _normalize_username(raw)))
         ).first()
+
+        if result:
+            logger.success(f"Found user {result.username}.")
+        else:
+            logger.warning("Cannot find any user.")
+
+        return result
 
     # Permissions are checked spectator-side
 
