@@ -606,6 +606,16 @@ async def _mp(user: User, args: list[str], session: AsyncSession, channel: ChatC
         beatmap_info = f"{beatmap.beatmapset.artist} - {beatmap.beatmapset.title} [{beatmap.version}]"
         return f"Beatmap changed to: {beatmap_info} (#{beatmap_id}, {mode_name})"
 
+    if sub == "mods":
+        if len(args) == 1:
+            return "Usage: !mp mods [<acronym> <acronym> ...]"
+
+        acronyms = [acronym.upper() for acronym in args[1:]]
+
+        res = await multiplayer_event_dispatcher.post_change_mods(room_id, user.id, acronyms)
+
+        return res.message or "Beatmap mods updated."
+
     if sub == "set":
         if len(args) != 2:
             return "Only single-argument teammode is supported: !mp set <0|2>"

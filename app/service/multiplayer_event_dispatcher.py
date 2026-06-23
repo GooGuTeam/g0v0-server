@@ -530,5 +530,22 @@ class MultiplayerEventDispatcher:
 
         return await self._publish_with_callback(room_id, payload)
 
+    async def post_change_mods(
+        self,
+        room_id: int,
+        by_user_id: int,
+        mod_acronyms: list[str],
+    ):
+        """请求 spectator 修改房间当前 playlist mods"""
+        payload: dict[str, Any] = {
+            "type": "ChangeMods",
+            "by": by_user_id,
+            "map_settings": {
+                "mods": mod_acronyms,
+            },
+        }
+
+        return await self._publish_with_callback(room_id, payload)
+
 
 multiplayer_event_dispatcher = MultiplayerEventDispatcher()
