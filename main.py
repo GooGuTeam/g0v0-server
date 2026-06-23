@@ -113,7 +113,10 @@ async def lifespan(app: FastAPI):
     multiplayer_event_dispatcher.register_handler(
         "CountdownTick",
         lambda data: multiplayer_event_dispatcher.handle_countdown_tick(
-            room_id=data["room_id"], _countdown_id=data["countdown_id"], seconds=data["seconds"]
+            room_id=data["room_id"],
+            _countdown_id=data["countdown_id"],
+            seconds=data["seconds"],
+            countdown_type=data.get("countdown_type", "other"),
         ),
     )
     await multiplayer_event_dispatcher.start()

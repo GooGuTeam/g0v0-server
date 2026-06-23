@@ -241,7 +241,13 @@ class MultiplayerEventDispatcher:
         await self.redis.publish(f"{self.channel_prefix}room:{room_id}", json.dumps(message))
         return await task_awaiter.wait_for_result(task_id, timeout)
 
-    async def handle_countdown_tick(self, room_id: int, _countdown_id: int, seconds: float) -> None:
+    async def handle_countdown_tick(
+        self,
+        room_id: int,
+        _countdown_id: int,
+        seconds: float,
+        countdown_type: str = "other",
+    ) -> None:
         """处理倒计时事件，在特定秒数发送 BanchoBot 消息"""
         chat_threshold_seconds = [60, 30, 10, 5, 4, 3, 2, 1, 0]
 
@@ -273,8 +279,11 @@ class MultiplayerEventDispatcher:
                     logger.warning("BanchoBot not found in database. Not sending countdown message.")
                     return
 
-                # TODO: Handle reminder countdown separately
-                message = "Good luck, have fun!" if seconds == 0 else f"Match starts in {format_time(int(seconds))}"
+                # Handle reminder countdown separately
+                if countdown_type == "match_start":
+                    message = "Good luck, have fun!" if seconds == 0 else f"Match starts in {format_time(int(seconds))}"
+                else:
+                    message = "Countdown ended." if seconds == 0 else f"Countdown ends in {format_time(int(seconds))}"
 
                 message_data = await redis_message_system.send_message(
                     channel_id=room.channel_id,
