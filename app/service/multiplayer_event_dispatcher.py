@@ -308,6 +308,16 @@ class MultiplayerEventDispatcher:
         except Exception as e:
             logger.warning(f"Failed to publish multiplayer event for room {room_id}: {e}")
 
+    async def post_get_settings(self, room_id: int, by_user_id: int):
+        """从 spec 请求房间配置"""
+        return await self._publish_with_callback(
+            room_id,
+            {
+                "type": "GetSettings",
+                "by": by_user_id,
+            },
+        )
+
     async def post_get_referees(self, room_id: int, by_user_id: int):
         """从 spec 端请求裁判 ID 列表"""
         return await self._publish_with_callback(

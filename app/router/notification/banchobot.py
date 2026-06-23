@@ -512,16 +512,12 @@ async def _mp(user: User, args: list[str], session: AsyncSession, channel: ChatC
 
     # Permissions are checked spectator-side
 
-    # TODO: Refactor, and move to spec-side if possible
     if sub == "settings":
-        host = await room.awaitable_attrs.host
-        playlist = await room.awaitable_attrs.playlist
-        has_pw = bool(room.password) if hasattr(room, "password") else False
-        return (
-            f"Room {room.id}: {room.name} | Host: {getattr(host, 'username', room.host_id)} | "
-            f"Status: {room.status} | Participants: {room.participant_count} | "
-            f"Playlist: {len(playlist)} | {'Password protected' if has_pw else 'No password'}"
+        res = await multiplayer_event_dispatcher.post_get_settings(
+            room_id,
+            user.id,
         )
+        return res.message or "Unable to get room settings."
 
     if sub == "name":
         if len(args) < 2:
