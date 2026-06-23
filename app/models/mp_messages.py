@@ -23,7 +23,7 @@ class MultiplayerRoomSettingsEnvelope(BaseModel):
     max_participants: int | None = None
 
 
-class MultiplayerEventMessage(BaseModel):
+class MultiplayerRoomEventEnvelope(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     type: str
     target: int | None = None
