@@ -8,31 +8,45 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from math import ceil
 import random
+import re
+import secrets
 import shlex
 from typing import TYPE_CHECKING, cast
 
 from app.calculating import calculate_weighted_pp
 from app.const import BANCHOBOT_ID
-
-from sqlalchemy.ext.asyncio import async_object_session
-
-if TYPE_CHECKING:
-    pass
+from app.database.beatmap import Beatmap
 from app.database.chat import ChannelType, ChatChannel, ChatMessage, ChatMessageModel, MessageType
+from app.database.room import Room
 from app.database.score import Score, get_best_id
 from app.database.statistics import UserStatistics, get_rank
 from app.database.user import User
+from app.dependencies.fetcher import get_fetcher
+from app.helpers.time import format_time
+from app.log import log
 from app.models.mods import mod_to_save
+from app.models.room import MatchType, RoomCategory
 from app.models.score import GameMode
+from app.service.multiplayer_event_dispatcher import multiplayer_event_dispatcher
+from app.service.room import create_playlist_room
 
 from .server import server
 
+from sqlalchemy.ext.asyncio import async_object_session
 from sqlalchemy.orm import joinedload
 from sqlmodel import col, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+if TYPE_CHECKING:
+    pass
+
 HandlerResult = str | None | Awaitable[str | None]
 Handler = Callable[[User, list[str], AsyncSession, ChatChannel], HandlerResult]
+
+# According to osu!wiki
+MAXIMUM_ACTIVE_ROOMS: int = 4
+
+logger = log("Bot")
 
 
 class Bot:
@@ -362,3 +376,384 @@ async def _pr(user: User, args: list[str], session: AsyncSession, channel: ChatC
     if len(args) >= 1:
         gamemode = GameMode.parse(args[0])
     return await _score(user.id, session, include_fail=False, gamemode=gamemode)
+
+
+@bot.command("mp")
+async def _mp(user: User, args: list[str], session: AsyncSession, channel: ChatChannel) -> str | None:
+    """Multiplayer command support.
+
+    Reference:
+        https://osu.ppy.sh/wiki/osu%21_tournament_client/osu%21tourney/Tournament_management_commands
+    """
+
+    unsupported_subs = {"makeprivate", "clearhost"}
+
+    if await user.is_restricted(session):
+        return "You are restricted from using messaging commands."
+
+    if not args:
+        return "Usage: !mp <subcommand> [args]. Try !mp help"
+
+    sub = args[0].lower()
+
+    async def _reply_via_pm(content: str) -> str | None:
+        pm = await bot._ensure_pm_channel(user, session)
+        if pm is not None:
+            await bot.send_message(pm, content, session)
+            return None
+        return content
+
+    if sub in unsupported_subs:
+        return f"!mp {sub} is currently not supported."
+
+    # Outside multiplayer channels, support only !mp help / make
+    if channel.type != ChannelType.MULTIPLAYER and sub not in ("help", "make"):
+        return await _reply_via_pm(
+            f"!mp {sub} can only be used in multiplayer rooms. "
+            "Outside multiplayer rooms, only !mp help and !mp make are available."
+        )
+
+    # TODO: Support makeprivate
+    if sub == "make":
+        if len(args) < 2:
+            return "Usage: !mp make <name>"
+
+        active_rooms_count = (
+            await session.exec(
+                select(func.count())
+                .select_from(Room)
+                .where(Room.host_id == user.id, Room.category == RoomCategory.REALTIME, col(Room.ends_at).is_(None))
+            )
+        ).one()
+
+        if active_rooms_count >= MAXIMUM_ACTIVE_ROOMS:
+            return await _reply_via_pm("You've reached the maximum active tournament rooms limit.")
+
+        name = " ".join(args[1:])
+        category = RoomCategory.REALTIME
+        db_room = await create_playlist_room(session, name=name, host_id=user.id, category=category)
+        db_room.ends_at = None
+        db_room.password = secrets.token_hex(4)
+        session.add(db_room)
+        await session.commit()
+        return f"Created room {db_room.id} (channel: room_{db_room.id})"
+
+    if sub == "help":
+        help_text = (
+            "Available !mp commands:\n"
+            "!mp make <name>\n"
+            "!mp lock, !mp unlock\n"
+            "!mp set <team-mode>\n"
+            "!mp name <room-name>\n"
+            "For team-mode: 0: Head to Head, 2: Team VS\n"
+            "!mp invite <username>\n"
+            "!mp settings\n"
+            "!mp team <username> <red|blue>\n"
+            "!mp size <size>\n"
+            "!mp move <username> <slot>\n"
+            "!mp start [time=10], !mp abort\n"
+            "!mp timer [time=30], !mp aborttimer\n"
+            "!mp kick <username>\n"
+            "!mp host <username>\n"
+            "!mp listrefs\n"
+            "!mp addref <username>, !mp removeref <username>\n"
+            "!mp map <map-id> <ruleset-id>\n"
+            "!mp mods [acronym,...]\n"
+            "!mp password [password]\n"
+            "!mp close\n"
+            "View the server documentation for details."
+        )
+
+        if channel.type == ChannelType.MULTIPLAYER:
+            return help_text
+        else:
+            return await _reply_via_pm(help_text)
+
+    # Extract room id from channel name (room_123 or mp_123)
+    chan_name = channel.channel_name or ""
+    m = re.search(r"(?:room|mp)_(\d+)", chan_name)
+    if not m:
+        return "Could not determine room id from channel."
+    room_id = int(m.group(1))
+
+    room = await session.get(Room, room_id)
+    if not room:
+        return "Room not found."
+
+    def _normalize_username(raw: str) -> str:
+        """Returns a username with all underscores replaced by spaces."""
+        return raw.replace("_", " ")
+
+    async def _resolve_user(raw: str) -> User | None:
+        logger.info(f"Trying to resolve user '{raw}'.")
+        if raw.startswith("#") and raw[1:].isdigit():
+            result = await session.get(User, int(raw[1:]))
+
+            return result
+
+        result = (await session.exec(select(User).where(User.username == raw or User.username == raw))).first()
+
+        if result:
+            logger.success(f"Found user {result.username}.")
+            return result
+
+        logger.info("Trying normalized username...")
+
+        result = (
+            await session.exec(select(User).where(User.username == raw or User.username == _normalize_username(raw)))
+        ).first()
+
+        if result:
+            logger.success(f"Found user {result.username}.")
+        else:
+            logger.warning("Cannot find any user.")
+
+        return result
+
+    # Permissions are checked spectator-side
+
+    if sub == "settings":
+        res = await multiplayer_event_dispatcher.post_get_settings(
+            room_id,
+            user.id,
+        )
+        return res.message or "Unable to get room settings."
+
+    if sub == "name":
+        if len(args) < 2:
+            return "Usage: !mp name <title>"
+        new_name = " ".join(args[1:]).strip()
+
+        res = await multiplayer_event_dispatcher.post_change_room_settings(
+            room_id,
+            user.id,
+            name=new_name,
+        )
+        return res.message or f'Room name updated to "{new_name}".'
+
+    if sub == "close":
+        res = await multiplayer_event_dispatcher.post_close_room(room.id, user.id)
+        return res.message or "This room is going to be closed."
+
+    if sub == "invite":
+        if len(args) < 2:
+            return "Usage: !mp invite <username|#<userid>>"
+        target = await _resolve_user(args[1])
+        if not target:
+            return "Target user not found."
+
+        res = await multiplayer_event_dispatcher.post_invite_user(room_id, target.id, user.id)
+        return res.message or f"Invitation sent to {target.username}."
+
+    if sub in ("lock", "unlock"):
+        res = await multiplayer_event_dispatcher.post_set_lock_state(room_id, sub == "lock", user.id)
+        return res.message or f"Room is now {'locked' if sub == 'lock' else 'unlocked'}."
+
+    if sub == "host":
+        if len(args) < 2:
+            return "Usage: !mp host <username|#<userid>>"
+        target = await _resolve_user(args[1])
+        if not target:
+            return "Target user not found."
+
+        res = await multiplayer_event_dispatcher.post_transfer_host(room_id, target.id, user.id)
+        return res.message or f"Host transferred to {target.username}."
+
+    if sub == "password":
+        # Bancho behavior: no argument clears password.
+        password = args[1] if len(args) >= 2 else ""
+
+        res = await multiplayer_event_dispatcher.post_change_room_settings(
+            room_id,
+            user.id,
+            password=password,
+        )
+        return res.message or ("Room password removed." if password == "" else "Room password updated.")
+
+    if sub == "size":
+        if len(args) < 2 or not args[1].isdigit():
+            return "Usage: !mp size <size>"
+
+        new_size = int(args[1])
+        if new_size <= 2:
+            return "Invalid room size."
+
+        res = await multiplayer_event_dispatcher.post_change_room_settings(room_id, user.id, max_participants=new_size)
+        return res.message or f"Changed room size to {new_size}."
+
+    if sub == "map":
+        if len(args) < 2 or not args[1].isdigit():
+            return "Usage: !mp map <beatmap_id> [<ruleset_id>]"
+        beatmap_id = int(args[1])
+        ruleset_id = int(args[2]) if len(args) >= 3 and args[2].isdigit() else 0
+
+        fetcher = await get_fetcher()
+        try:
+            beatmap = await Beatmap.get_or_fetch(session, fetcher, bid=beatmap_id)
+        except Exception:
+            return "Failed to fetch beatmap."
+
+        res = await multiplayer_event_dispatcher.post_change_beatmap(room_id, user.id, beatmap_id, ruleset_id)
+
+        if res.message:
+            return res.message
+
+        mode_name = str(GameMode.from_int(ruleset_id))
+        beatmap_info = f"{beatmap.beatmapset.artist} - {beatmap.beatmapset.title} [{beatmap.version}]"
+        return f"Beatmap changed to: {beatmap_info} (#{beatmap_id}, {mode_name})"
+
+    if sub == "mods":
+        if len(args) == 1:
+            return "Usage: !mp mods [<acronym> <acronym> ...]"
+
+        acronyms = [acronym.upper() for acronym in args[1:]]
+
+        res = await multiplayer_event_dispatcher.post_change_mods(room_id, user.id, acronyms)
+
+        return res.message or "Beatmap mods updated."
+
+    if sub == "set":
+        if len(args) != 2:
+            return "Only single-argument teammode is supported: !mp set <0|2>"
+        mode_raw = args[1]
+        supported_modes = {"0": "Head to Head", "2": "Team VS"}
+
+        if mode_raw not in ("0", "2"):
+            return "Unsupported teammode. Currently supported: 0 (Head to Head), 2 (Team VS)."
+
+        res = await multiplayer_event_dispatcher.post_change_room_settings(
+            room_id,
+            user.id,
+            match_type=int(mode_raw),
+        )
+        return res.message or f"Team mode updated to {supported_modes[mode_raw]}."
+
+    if sub == "move":
+        if len(args) != 3 or not args[2].isdigit():
+            return "!mp move <username> <slot>"
+        target = await _resolve_user(args[1])
+        if not target:
+            return "Target user not found."
+
+        new_slot = int(args[2])
+        if new_slot < 0:
+            return "Invalid slot number."
+
+        res = await multiplayer_event_dispatcher.post_set_slot(room_id, target.id, user.id, new_slot)
+        return res.message or f"Moved {target.username} into slot #{new_slot}."
+
+    if sub == "team":
+        if len(args) != 3:
+            return "Usage: !mp team <username|#<userid>> <red|blue>"
+        if room.type == MatchType.HEAD_TO_HEAD:
+            return "!mp team is not supported in Head to Head mode."
+        if room.type != MatchType.TEAM_VERSUS:
+            return "!mp team is only supported in Team VS mode."
+
+        target = await _resolve_user(args[1])
+        if not target:
+            return f"User {args[1]} not found."
+
+        colour = args[2].lower()
+        if colour not in ("red", "blue"):
+            return "Unsupported team colour. Use 'red' or 'blue'."
+
+        team_id = 0 if colour == "red" else 1
+
+        res = await multiplayer_event_dispatcher.post_change_team(room_id, target.id, user.id, team_id)
+        return res.message or f"Moved {target.username} to team {colour}."
+
+    if sub in ("start", "abort"):
+        # start [time] -> request spectator to start match (with optional countdown)
+        if sub == "start":
+            delay = None
+            if len(args) >= 2:
+                if not args[1].isdigit():
+                    return "Usage: !mp start [<time_in_seconds>]"
+                delay = int(args[1])
+
+            res = await multiplayer_event_dispatcher.post_start_match(room_id, delay, user.id)
+            msg = "Started the match." if delay is None else f"Match starts in {delay} seconds."
+            return res.message or msg
+
+        res = await multiplayer_event_dispatcher.post_abort_match(room_id, user.id)
+        return res.message or "Aborted the match."
+
+    if sub in ("timer", "aborttimer"):
+        if sub == "aborttimer":
+            res = await multiplayer_event_dispatcher.post_stop_all_countdowns(room_id, user.id)
+            return res.message or "All timers aborted."
+
+        # Start a reminder-only countdown (no match start). Default 30s, mutually exclusive with match start countdown.
+        seconds = 30
+        if len(args) >= 2:
+            if not args[1].isdigit():
+                return "Usage: !mp timer [<time_in_seconds>]"
+            seconds = int(args[1])
+
+        res = await multiplayer_event_dispatcher.post_start_reminder_timer(room_id, seconds, user.id)
+        return res.message or f"Countdown ends in {format_time(seconds)}."
+
+    if sub in ("kick", "ban"):
+        if len(args) < 2:
+            return f"Usage: !mp {sub} <username|#<userid>>"
+        target = args[1]
+        tgt_user = await _resolve_user(target)
+        if not tgt_user:
+            return f"User {target} not found."
+
+        if sub == "kick":
+            res = await multiplayer_event_dispatcher.post_kick_player(room_id, tgt_user.id, user.id)
+        else:
+            if tgt_user.id == user.id:
+                return "You cannot ban yourself."
+            res = await multiplayer_event_dispatcher.post_ban_user(room_id, tgt_user.id, user.id)
+
+        verb = "Kicked" if sub == "kick" else "Banned"
+
+        return res.message or f"{verb} {tgt_user.username} from the room."
+
+    if sub in ("addref", "removeref"):
+        if len(args) < 2:
+            return f"Usage: !mp {sub} <username|#<userid>>"
+
+        target = await _resolve_user(args[1])
+        if not target:
+            return f"User {args[1]} not found."
+
+        if target.id == user.id:
+            return f"You cannot {sub.removesuffix('ref')} yourself as a referee."
+
+        is_add = sub == "addref"
+
+        if is_add:
+            res = await multiplayer_event_dispatcher.post_add_referee(room_id, target.id, user.id)
+        else:
+            res = await multiplayer_event_dispatcher.post_remove_referee(room_id, target.id, user.id)
+
+        prompt = f"Added {target.username} to referees." if is_add else f"Removed {target.username} from referees."
+        return res.message or prompt
+
+    if sub == "listrefs":
+        res = await multiplayer_event_dispatcher.post_get_referees(room_id, user.id)
+
+        if not res.details.referee_ids:
+            return "No referees found for this room."
+
+        if not res.success:
+            return res.message
+
+        ref_ids: set[int] = res.details.referee_ids
+
+        if not ref_ids:
+            return "No referees found for this room."
+
+        # We want usernames as output.
+        ref_users = (await session.exec(select(User).where(col(User.id).in_(sorted(ref_ids))))).all()
+        if not ref_users:
+            return "No referees found for this room."
+
+        names = "\n".join(sorted(u.username for u in ref_users))
+        return f"Referees ({len(ref_users)}):\n{names}"
+
+    return "Unknown mp subcommand. Send !mp help for usage."

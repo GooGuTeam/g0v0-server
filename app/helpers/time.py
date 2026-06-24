@@ -62,3 +62,31 @@ def utcnow() -> datetime:
         The current datetime with UTC timezone.
     """
     return datetime.now(tz=UTC)
+
+
+def format_time(seconds: int) -> str:
+    """Format a time in seconds to human-readable string.
+
+    Args:
+        seconds (int): The time in seconds.
+    """
+
+    if seconds < 0:
+        return "invalid input"
+    if seconds == 0:
+        return "0 seconds"
+
+    minutes = seconds // 60
+    remaining_seconds = seconds % 60
+
+    parts = []
+
+    if minutes > 0:
+        label = "minute" if minutes == 1 else "minutes"
+        parts.append(f"{minutes} {label}")
+
+    if remaining_seconds > 0:
+        label = "second" if remaining_seconds == 1 else "seconds"
+        parts.append(f"{remaining_seconds} {label}")
+
+    return " and ".join(parts)
