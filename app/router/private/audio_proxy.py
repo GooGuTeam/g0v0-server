@@ -6,14 +6,14 @@ Provides proxy service for fetching beatmapset audio previews from osu! official
 from typing import Annotated
 
 from app.dependencies.database import get_redis, get_redis_binary
+from app.dependencies.rate_limit import create_rate_limiter
 from app.log import log
 from app.models.error import ErrorType, RequestError
 from app.service.audio_proxy_service import AudioProxyService, get_audio_proxy_service
 
 from fastapi import APIRouter, Depends, Path
 from fastapi.responses import Response
-from fastapi_limiter.depends import RateLimiter
-from pyrate_limiter import Duration, Limiter, Rate
+from pyrate_limiter import Duration, Rate
 import redis.asyncio as redis
 
 router = APIRouter(prefix="/audio", tags=["Audio Proxy"])
@@ -39,8 +39,8 @@ async def get_audio_proxy_dependency(
 @router.get(
     "/beatmapset/{beatmapset_id}",
     dependencies=[
-        Depends(RateLimiter(limiter=Limiter(Rate(30, Duration.MINUTE)))),  # Max 30 requests per minute
-        Depends(RateLimiter(limiter=Limiter(Rate(5, Duration.SECOND * 10)))),  # Max 5 requests per 10 seconds
+        Depends(create_rate_limiter(Rate(30, Duration.MINUTE), bucket_key="rate-limit:private:audio:minute")),
+        Depends(create_rate_limiter(Rate(5, Duration.SECOND * 10), bucket_key="rate-limit:private:audio:burst")),
     ],
     description="Get audio preview for a beatmapset.",
 )

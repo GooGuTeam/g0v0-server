@@ -16,6 +16,7 @@ from app.const import BACKUP_CODE_LENGTH
 from app.database.auth import OAuthToken, TotpKeys
 from app.database.verification import LoginSession, TrustedDevice
 from app.dependencies.database import Database, Redis
+from app.dependencies.rate_limit import create_rate_limiter
 from app.dependencies.user import ClientUser
 from app.log import log
 from app.models.error import ErrorType, FieldMissingError, RequestError
@@ -23,8 +24,7 @@ from app.models.error import ErrorType, FieldMissingError, RequestError
 from .router import router
 
 from fastapi import Depends, Form
-from fastapi_limiter.depends import RateLimiter
-from pyrate_limiter import Duration, Limiter, Rate
+from pyrate_limiter import Duration, Rate
 from sqlmodel import col, delete
 
 logger = log("Auth")
@@ -35,7 +35,9 @@ logger = log("Auth")
     name="Change password",
     tags=["Authentication", "g0v0 API"],
     status_code=204,
-    dependencies=[Depends(RateLimiter(limiter=Limiter(Rate(3, Duration.MINUTE * 5))))],
+    dependencies=[
+        Depends(create_rate_limiter(Rate(3, Duration.MINUTE * 5), bucket_key="rate-limit:private:password-change")),
+    ],
     description="Change user password.",
 )
 async def change_password(

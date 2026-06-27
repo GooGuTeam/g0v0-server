@@ -53,6 +53,16 @@ redis_message_client = redis.from_url(settings.redis_url, decode_responses=True,
 # Redis binary data connection (no automatic response decoding, used for storing audio and other binary data, db2)
 redis_binary_client = redis.from_url(settings.redis_url, decode_responses=False, db=2)
 
+# Redis limit bucket connection (no automatic response decoding, used for storing rate limit data, db3)
+redis_limit_client = redis.from_url(settings.redis_url, decode_responses=False, db=3)
+
+redis_clients = {
+    "default": redis_client,
+    "blocking": redis_blocking_client,
+    "message": redis_message_client,
+    "binary": redis_binary_client,
+    "limit": redis_limit_client,
+}
 
 # Database dependency
 db_session_context: ContextVar[AsyncSession | None] = ContextVar("db_session_context", default=None)

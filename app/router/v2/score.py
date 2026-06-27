@@ -45,6 +45,7 @@ from app.dependencies.cache import UserCacheService
 from app.dependencies.client_verification import ClientVerificationService
 from app.dependencies.database import Database, Redis, get_redis, with_db
 from app.dependencies.fetcher import Fetcher, get_fetcher
+from app.dependencies.rate_limit import create_rate_limiter
 from app.dependencies.storage import StorageService
 from app.dependencies.user import ClientUser, get_current_user
 from app.helpers import api_doc, utcnow
@@ -84,10 +85,9 @@ from fastapi import (
     Response,
     Security,
 )
-from fastapi_limiter.depends import RateLimiter
 from httpx import HTTPError
 from pydantic import BaseModel
-from pyrate_limiter import Duration, Limiter, Rate
+from pyrate_limiter import Duration, Rate
 from sqlalchemy.orm import joinedload
 from sqlmodel import col, exists, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -1386,7 +1386,7 @@ async def reorder_score_pin(
     name="Download score replay",
     description="Download the replay file for a specific score.",
     tags=["Scores"],
-    dependencies=[Depends(RateLimiter(limiter=Limiter(Rate(10, Duration.MINUTE))))],
+    dependencies=[Depends(create_rate_limiter(Rate(10, Duration.MINUTE), bucket_key="rate-limit:v2:score-download"))],
 )
 async def download_score_replay(
     score_id: int,

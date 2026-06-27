@@ -9,9 +9,8 @@ from app.database import Screenshot, User
 from app.dependencies.database import (
     Database,
     engine,
-    redis_binary_client,
     redis_client,
-    redis_message_client,
+    redis_clients,
 )
 from app.dependencies.fetcher import get_fetcher
 from app.dependencies.scheduler import start_scheduler, stop_scheduler
@@ -148,9 +147,8 @@ async def lifespan(app: FastAPI):
     # close database & redis
     shutdown_logger.info("Closing database and Redis connections")
     await engine.dispose()
-    await redis_client.aclose()
-    await redis_binary_client.aclose()
-    await redis_message_client.aclose()
+    for client in redis_clients.values():
+        await client.close()
     shutdown_logger.info("g0v0-server shutdown completed")
 
 

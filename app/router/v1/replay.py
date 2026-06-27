@@ -11,6 +11,7 @@ from typing import Annotated, Literal
 from app.database.counts import ReplayWatchedCount
 from app.database.score import Score
 from app.dependencies.database import Database
+from app.dependencies.rate_limit import create_rate_limiter
 from app.dependencies.storage import StorageService
 from app.models.error import ErrorType, RequestError
 from app.models.events.score import ReplayDownloadedEvent
@@ -21,9 +22,8 @@ from app.plugins import hub
 from .router import router
 
 from fastapi import Depends, Query
-from fastapi_limiter.depends import RateLimiter
 from pydantic import BaseModel
-from pyrate_limiter import Duration, Limiter, Rate
+from pyrate_limiter import Duration, Rate
 from sqlmodel import col, select
 
 
@@ -44,7 +44,7 @@ class ReplayModel(BaseModel):
     response_model=ReplayModel,
     name="Get Replay",
     description="Get the replay data for a specific score.",
-    dependencies=[Depends(RateLimiter(limiter=Limiter(Rate(10, Duration.MINUTE))))],
+    dependencies=[Depends(create_rate_limiter(Rate(10, Duration.MINUTE), bucket_key="rate-limit:v1:replay"))],
 )
 async def download_replay(
     session: Database,
