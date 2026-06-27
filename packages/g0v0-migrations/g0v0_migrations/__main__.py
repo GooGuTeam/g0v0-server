@@ -398,7 +398,7 @@ def upgrade_all(ctx: click.Context):
             click.echo("No plugins directory found, skipping plugin upgrades.")
             return
         for plugin_dir in plugins_path.iterdir():
-            if not plugin_dir.is_dir():
+            if not plugin_dir.is_dir() or plugin_dir.name.startswith("."):
                 continue
             try:
                 plugin_id = get_plugin_id(plugin_dir)

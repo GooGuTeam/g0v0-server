@@ -84,7 +84,7 @@ class PluginManager:
                 logger.warning(f"Plugin directory '{plugin_dir}' does not exist or is not a directory, skipping.")
                 continue
             for plugin in plugin_path.iterdir():
-                if not plugin.is_dir():
+                if not plugin.is_dir() or plugin.name.startswith("."):
                     continue
                 meta_files = plugin / META_FILENAME
                 if not meta_files.exists():
