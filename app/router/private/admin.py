@@ -11,6 +11,7 @@ from app.database.verification import LoginSession, LoginSessionResp, TrustedDev
 from app.dependencies.database import Database
 from app.dependencies.geoip import GeoIPService
 from app.dependencies.user import UserAndToken, get_client_user_and_token
+from app.log import log
 from app.models.error import ErrorType, RequestError
 
 from .router import router
@@ -18,6 +19,8 @@ from .router import router
 from fastapi import Security
 from pydantic import BaseModel
 from sqlmodel import col, select
+
+logger = log("Admin")
 
 
 class SessionsResp(BaseModel):
@@ -98,6 +101,7 @@ async def delete_session(
         await session.delete(token)
 
     await session.commit()
+    logger.info(f"User {current_user.id} revoked login session {session_id}")
     return
 
 
@@ -188,4 +192,5 @@ async def delete_trusted_device(
 
     await session.delete(device)
     await session.commit()
+    logger.info(f"User {current_user.id} removed trusted device {device_id}")
     return

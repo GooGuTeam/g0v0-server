@@ -7,6 +7,7 @@ from app.config import (
     StorageServiceType,
     settings,
 )
+from app.log import system_logger
 from app.storage import StorageService as OriginStorageService
 from app.storage.cloudflare_r2 import AWSS3StorageService, CloudflareR2StorageService
 from app.storage.local import LocalStorageService
@@ -15,15 +16,18 @@ from fast_depends import Depends as FastDepends
 from fastapi import Depends
 
 storage: OriginStorageService | None = None
+logger = system_logger("Storage")
 
 
 def init_storage_service():
     global storage
+    logger.info(f"Initializing storage service: {settings.storage_service}")
     if settings.storage_service == StorageServiceType.LOCAL:
         storage_settings = cast(LocalStorageSettings, settings.storage_settings)
         storage = LocalStorageService(
             storage_path=storage_settings.local_storage_path,
         )
+        logger.info(f"Local storage initialized at {storage_settings.local_storage_path}")
     elif settings.storage_service == StorageServiceType.CLOUDFLARE_R2:
         storage_settings = cast(CloudflareR2Settings, settings.storage_settings)
         storage = CloudflareR2StorageService(
@@ -32,6 +36,10 @@ def init_storage_service():
             secret_access_key=storage_settings.r2_secret_access_key,
             bucket_name=storage_settings.r2_bucket_name,
             public_url_base=storage_settings.r2_public_url_base,
+        )
+        logger.info(
+            f"Cloudflare R2 storage initialized for bucket {storage_settings.r2_bucket_name}; "
+            f"public_url_configured={storage_settings.r2_public_url_base is not None}"
         )
     elif settings.storage_service == StorageServiceType.AWS_S3:
         storage_settings = cast(AWSS3StorageSettings, settings.storage_settings)
@@ -42,7 +50,13 @@ def init_storage_service():
             public_url_base=storage_settings.s3_public_url_base,
             region_name=storage_settings.s3_region_name,
         )
+        logger.info(
+            f"AWS S3 storage initialized for bucket {storage_settings.s3_bucket_name} "
+            f"in region {storage_settings.s3_region_name}; "
+            f"public_url_configured={storage_settings.s3_public_url_base is not None}"
+        )
     else:
+        logger.error(f"Unsupported storage service configured: {settings.storage_service}")
         raise ValueError(f"Unsupported storage service: {settings.storage_service}")
     return storage
 

@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, cast
 
 from app.calculating import calculate_weighted_pp
 from app.const import BANCHOBOT_ID
+from app.log import log
 
 from sqlalchemy.ext.asyncio import async_object_session
 
@@ -30,6 +31,8 @@ from .server import server
 from sqlalchemy.orm import joinedload
 from sqlmodel import col, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
+
+logger = log("BanchoBot")
 
 HandlerResult = str | None | Awaitable[str | None]
 Handler = Callable[[User, list[str], AsyncSession, ChatChannel], HandlerResult]
@@ -138,6 +141,7 @@ class Bot:
                     res = await res
                 reply = res  # type: ignore[assignment]
             except Exception:
+                logger.exception(f"BanchoBot command !{cmd} failed for user {user.id} in channel {channel.channel_id}")
                 reply = "Unknown error occured."
         if reply:
             await self.send_reply(user, reply, session, src_channel=channel)
@@ -166,6 +170,7 @@ class Bot:
         session.add(msg)
         await session.commit()
         await session.refresh(msg)
+        logger.debug(f"BanchoBot sent message to channel {channel_id}")
         resp = await ChatMessageModel.transform(msg, includes=["sender"])
         await server.send_message_to_channel(resp)
 

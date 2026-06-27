@@ -9,6 +9,7 @@ from typing import Annotated, cast
 from app.database.auth import V1APIKeys
 from app.dependencies.database import Database
 from app.dependencies.user import ClientUser
+from app.log import log
 from app.models.error import ErrorType, RequestError
 
 from .router import router
@@ -16,6 +17,8 @@ from .router import router
 from fastapi import Body
 from pydantic import BaseModel
 from sqlmodel import select
+
+logger = log("APIKeys")
 
 
 class APIKeyResponse(BaseModel):
@@ -52,6 +55,7 @@ async def create_api_key(
     session.add(api_key)
     await session.commit()
     await session.refresh(api_key)
+    logger.info(f"User {current_user.id} created v1 API key {api_key.id} ({api_key.name})")
     return APIKeyResponse(id=api_key.id, name=api_key.name, key=api_key.key)
 
 
@@ -112,6 +116,7 @@ async def update_api_key(
     api_key.name = name
     await session.commit()
     await session.refresh(api_key)
+    logger.info(f"User {current_user.id} renamed v1 API key {api_key.id} to {api_key.name}")
     return APIKeyListResponse(id=api_key.id, name=api_key.name)
 
 
@@ -135,6 +140,7 @@ async def delete_api_key(
 
     await session.delete(api_key)
     await session.commit()
+    logger.info(f"User {current_user.id} deleted v1 API key {key_id}")
 
 
 @router.post(
@@ -158,4 +164,5 @@ async def regenerate_api_key(
     api_key.key = secrets.token_hex()
     await session.commit()
     await session.refresh(api_key)
+    logger.info(f"User {current_user.id} regenerated v1 API key {api_key.id}")
     return APIKeyResponse(id=api_key.id, name=api_key.name, key=api_key.key)

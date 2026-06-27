@@ -14,6 +14,7 @@ from app.dependencies.database import Database, Redis
 from app.dependencies.storage import StorageService
 from app.dependencies.user import ClientUser
 from app.helpers import api_doc
+from app.log import log
 from app.models.error import ErrorType, RequestError
 from app.models.score import GameMode
 from app.service.ranking_cache_service import get_ranking_cache_service
@@ -23,6 +24,8 @@ from .router import router
 
 from fastapi import BackgroundTasks, Path, Query
 from sqlmodel import col, select
+
+logger = log("Score")
 
 if settings.allow_delete_scores:
 
@@ -54,6 +57,7 @@ if settings.allow_delete_scores:
         await score.delete(session, storage_service)
         await session.commit()
         background_task.add_task(refresh_user_cache_background, redis, user_id, gamemode)
+        logger.info(f"User {user_id} deleted score {score_id} in mode {gamemode}")
 
 
 @router.get(

@@ -17,6 +17,8 @@ from app.dependencies.geoip import IPAddress
 from app.dependencies.user import UserAndToken, get_client_user_and_token
 from app.dependencies.user_agent import UserAgentInfo
 from app.log import log
+
+logger = log("Verification")
 from app.models.error import ErrorType, RequestError
 from app.service.login_log_service import LoginLogService
 from app.service.verification_service import (
@@ -121,6 +123,7 @@ async def verify_session(
     user_id = current_user.id
 
     if not await LoginSessionService.check_is_need_verification(db, user_id, token_id):
+        logger.debug(f"Session verification skipped for user {user_id}, token {token_id}: already verified")
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     verify_method: str | None = (
@@ -138,6 +141,7 @@ async def verify_session(
             # Force email verification for older API versions or users without TOTP
             verify_method = "mail" if api_version < SUPPORT_TOTP_VERIFICATION_VER or totp_key is None else "totp"
             await LoginSessionService.set_login_method(user_id, token_id, verify_method, redis)
+            logger.info(f"Selected {verify_method} verification for user {user_id}, token {token_id}")
         login_method = verify_method
 
         if verify_method == "totp":
@@ -192,9 +196,11 @@ async def verify_session(
         )
         await LoginSessionService.mark_session_verified(db, redis, user_id, token_id, ip_address, user_agent, web_uuid)
         await db.commit()
+        logger.info(f"Session verified for user {user_id}, token {token_id}, method {verify_method}")
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     except VerifyFailedError as e:
+        logger.warning(f"Session verification failed for user {user_id}, token {token_id}, method {verify_method}: {e}")
         await LoginLogService.record_failed_login(
             db=db,
             request=request,
@@ -228,9 +234,7 @@ async def verify_session(
                 )
                 error_response["reissued"] = True
             except Exception:
-                log("Verification").exception(
-                    f"Failed to resend verification email to user {current_user.id} (token: {token_id})"
-                )
+                logger.exception(f"Failed to resend verification email to user {current_user.id} (token: {token_id})")
 
         return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content=error_response)
 
@@ -268,6 +272,7 @@ async def reissue_verification_code(
     user_id = current_user.id
 
     if not await LoginSessionService.check_is_need_verification(db, user_id, token_id):
+        logger.debug(f"Verification code reissue skipped for user {user_id}, token {token_id}: already verified")
         return SessionReissueResponse(success=False, message="Current session does not require verification")
 
     verify_method: str | None = (
@@ -276,6 +281,7 @@ async def reissue_verification_code(
         else await LoginSessionService.get_login_method(user_id, token_id, redis)
     )
     if verify_method != "mail":
+        logger.debug(f"Verification code reissue skipped for user {user_id}, token {token_id}: method={verify_method}")
         return SessionReissueResponse(success=False, message="Current session does not support code reissue")
 
     try:
@@ -291,11 +297,17 @@ async def reissue_verification_code(
             current_user.country_code,
         )
 
+        if success:
+            logger.info(f"Verification code reissued for user {user_id}, token {token_id}")
+        else:
+            logger.warning(f"Verification code reissue failed for user {user_id}, token {token_id}: {message}")
         return SessionReissueResponse(success=success, message=message)
 
     except ValueError:
+        logger.warning(f"Verification code reissue failed for user {user_id}, token {token_id}: invalid session")
         return SessionReissueResponse(success=False, message="Invalid user session")
     except Exception:
+        logger.exception(f"Unexpected error during verification code reissue for user {user_id}, token {token_id}")
         return SessionReissueResponse(success=False, message="Error occurred during reissue process")
 
 
@@ -334,6 +346,7 @@ async def fallback_email(
         raise RequestError(ErrorType.SESSION_FALLBACK_UNNEEDED)
 
     await LoginSessionService.set_login_method(current_user.id, token_id, "mail", redis)
+    logger.info(f"Session verification fallback switched to mail for user {current_user.id}, token {token_id}")
     success, message, _ = await EmailVerificationService.resend_verification_code(
         db,
         redis,
@@ -345,7 +358,5 @@ async def fallback_email(
         current_user.country_code,
     )
     if not success:
-        log("Verification").error(
-            f"Failed to send fallback email to user {current_user.id} (token: {token_id}): {message}"
-        )
+        logger.error(f"Failed to send fallback email to user {current_user.id} (token: {token_id}): {message}")
     return VerifyMethod()

@@ -66,11 +66,18 @@ add_file_logger()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    startup_logger = system_logger("Startup")
+    shutdown_logger = system_logger("Shutdown")
+
     # === on startup ===
+    startup_logger.info("Starting g0v0-server")
+
     # init mods, achievements and performance calculator
+    startup_logger.info("Loading plugins")
     manager.load_all_plugins()
     app.include_router(plugin_router)
 
+    startup_logger.info("Initializing mods, achievements and calculator")
     init_mods()
     init_ranked_mods()
     init_ruleset_version_hash()
@@ -78,17 +85,25 @@ async def lifespan(app: FastAPI):
     await init_calculator()
 
     if settings.check_client_version:
+        startup_logger.info("Initializing client version verification service")
         await init_client_verification_service()
 
     # init fetcher
+    startup_logger.info("Initializing osu! API fetcher")
     fetcher = await get_fetcher()
     # init GeoIP
+    startup_logger.info("Initializing GeoIP databases")
     await init_geoip()
     # init IPC
     if settings.enable_v2_ipc:
+        startup_logger.info("Initializing v2 IPC channel")
+        startup_logger.warning(
+            "v2 realtime server is enabled. It is under development and should not be used in production."
+        )
         await init_ipc(redis_client)
 
     # init game server
+    startup_logger.info("Preparing game server data")
     await create_rx_statistics()
     await create_custom_ruleset_statistics()
     await calculate_user_rank(True)
@@ -97,6 +112,7 @@ async def lifespan(app: FastAPI):
     await create_banchobot()
 
     # services
+    startup_logger.info("Starting background services")
     await start_email_processor()
     await download_service.start_health_check()
     await start_cache_tasks()
@@ -105,16 +121,24 @@ async def lifespan(app: FastAPI):
     start_scheduler()
 
     if not settings.enable_v2_ipc:
+        startup_logger.info("Starting user online subscriber")
         await user_online_subscriber.start_subscribe()
 
     # show the status of AssetProxy
     if settings.enable_asset_proxy:
         system_logger("AssetProxy").info(f"Asset Proxy enabled - Domain: {settings.custom_asset_domain}")
+    else:
+        system_logger("AssetProxy").info("Asset Proxy disabled")
+
+    startup_logger.info("g0v0-server startup completed")
 
     yield
 
     # === on shutdown ===
+    shutdown_logger.info("Stopping g0v0-server")
+
     # stop services
+    shutdown_logger.info("Stopping background services")
     bg_tasks.stop()
     await stop_cache_tasks()
     stop_scheduler()
@@ -122,10 +146,12 @@ async def lifespan(app: FastAPI):
     await stop_email_processor()
 
     # close database & redis
+    shutdown_logger.info("Closing database and Redis connections")
     await engine.dispose()
     await redis_client.aclose()
     await redis_binary_client.aclose()
     await redis_message_client.aclose()
+    shutdown_logger.info("g0v0-server shutdown completed")
 
 
 desc = f"""g0v0-server is an osu!(lazer) server written in Python, supporting the latest osu!(lazer) client and providing additional features (e.g., Relax/Autopilot Mod statistics, custom ruleset support).

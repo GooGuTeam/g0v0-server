@@ -23,6 +23,7 @@ from app.dependencies.cache import UserCacheService
 from app.dependencies.database import Database
 from app.dependencies.user import ClientUser
 from app.helpers import hex_to_hue, utcnow
+from app.log import log
 from app.models.error import ErrorType, RequestError
 from app.models.score import GameMode
 from app.models.user import Page
@@ -40,6 +41,8 @@ from .router import router
 from fastapi import Body
 from pydantic import BaseModel, Field
 from sqlmodel import exists, select
+
+logger = log("User")
 
 
 @router.post("/rename", name="Rename user", tags=["User", "g0v0 API"], description="Rename a user.")
@@ -78,6 +81,9 @@ async def user_rename(
     session.add(rename_event)
     await cache_service.invalidate_user_cache(current_user.id)
     await session.commit()
+    logger.info(
+        f"User {current_user.id} renamed from {rename_event.event_payload['user']['previous_username']} to {new_name}"
+    )
 
     return None
 
@@ -114,6 +120,7 @@ async def update_userpage(
         await session.refresh(current_user)
 
         await cache_service.invalidate_user_cache(current_user.id)
+        logger.info(f"Updated user page for user {current_user.id}; raw_length={len(request.body)}")
 
         # 返回官方格式的响应：只包含html
         return UpdateUserpageResponse(html=processed_page["html"])
@@ -122,6 +129,7 @@ async def update_userpage(
         # 使用官方格式的错误响应：{'error': message}
         raise RequestError(ErrorType.INVALID_REQUEST, {"error": e.message})
     except Exception:
+        logger.exception(f"Failed to update user page for user {current_user.id}")
         raise RequestError(ErrorType.INTERNAL, {"error": "Failed to update user page"})
 
 
@@ -150,6 +158,7 @@ async def validate_bbcode(
     except UserpageError as e:
         return ValidateBBCodeResponse(valid=False, errors=[e.message], preview={"raw": request.content, "html": ""})
     except Exception:
+        logger.exception("Failed to validate BBCode content")
         raise RequestError(ErrorType.INTERNAL, {"error": "Failed to validate BBCode"})
 
 
@@ -356,6 +365,8 @@ async def change_user_preference(
 
     await cache_service.invalidate_user_cache(current_user.id)
     await session.commit()
+    updated_fields = sorted(request.model_dump(exclude_none=True).keys())
+    logger.info(f"Updated preferences for user {current_user.id}; fields={updated_fields}")
 
 
 @router.put(
@@ -379,6 +390,7 @@ async def overwrite_user_preference(
 
     await cache_service.invalidate_user_cache(current_user.id)
     await session.commit()
+    logger.info(f"Overwrote preferences for user {current_user.id}")
 
 
 @router.delete(
@@ -403,3 +415,4 @@ async def delete_user_preference(
 
     await cache_service.invalidate_user_cache(current_user.id)
     await session.commit()
+    logger.info(f"Cleared preferences for user {current_user.id}; fields={fields or ['all']}")

@@ -222,6 +222,7 @@ async def submit_score(
         try:
             db_beatmap = await Beatmap.get_or_fetch(db, fetcher, bid=beatmap)
         except HTTPError:
+            logger.warning(f"Score submission failed: beatmap {beatmap} not found for user {user_id}, token {token}")
             raise RequestError(ErrorType.BEATMAP_NOT_FOUND)
         score = await process_score(
             user=current_user,
@@ -240,6 +241,10 @@ async def submit_score(
         score,
     )
     await db.commit()
+    logger.info(
+        f"Score {resp['id']} submitted by user {user_id}; beatmap={score.beatmap_id}, "
+        f"mode={score.gamemode}, passed={score.passed}, pp={score.pp}"
+    )
     background_task.add_task(_process_user_achievement, resp["id"])
     background_task.add_task(_process_user, resp["id"], user_id, redis, fetcher)
     return resp

@@ -11,10 +11,14 @@ from __future__ import annotations
 
 from urllib.parse import urlparse
 
+from app.log import service_logger
+
 from .base import StorageService
 
 import aioboto3
 from botocore.exceptions import ClientError
+
+logger = service_logger("ObjectStorage")
 
 
 class AWSS3StorageService(StorageService):
@@ -56,6 +60,14 @@ class AWSS3StorageService(StorageService):
         self.access_key_id = access_key_id
         self.secret_access_key = secret_access_key
         self.region_name = region_name
+        try:
+            endpoint_url = self.endpoint_url
+        except AttributeError:
+            endpoint_url = None
+        logger.info(
+            f"Object storage client configured for bucket {self.bucket_name} "
+            f"in region {self.region_name}; endpoint={endpoint_url or 'aws-default'}"
+        )
 
     @property
     def endpoint_url(self) -> str | None:
@@ -84,13 +96,18 @@ class AWSS3StorageService(StorageService):
         cache_control: str = "public, max-age=31536000",
     ) -> None:
         async with self._get_client() as client:
-            await client.put_object(
-                Bucket=self.bucket_name,
-                Key=file_path,
-                Body=content,
-                ContentType=content_type,
-                CacheControl=cache_control,
-            )
+            try:
+                await client.put_object(
+                    Bucket=self.bucket_name,
+                    Key=file_path,
+                    Body=content,
+                    ContentType=content_type,
+                    CacheControl=cache_control,
+                )
+                logger.debug(f"Uploaded object {file_path} to bucket {self.bucket_name} ({len(content)} bytes)")
+            except ClientError as e:
+                logger.error(f"Failed to upload object {file_path} to bucket {self.bucket_name}: {e}")
+                raise RuntimeError(f"Failed to write file to object storage: {e}") from e
 
     async def read_file(self, file_path: str) -> bytes:
         async with self._get_client() as client:
@@ -103,8 +120,10 @@ class AWSS3StorageService(StorageService):
                     return await stream.read()
             except ClientError as e:
                 if e.response.get("Error", {}).get("Code") == "404":
+                    logger.debug(f"Object {file_path} not found in bucket {self.bucket_name}")
                     raise FileNotFoundError(f"File not found: {file_path}")
-                raise RuntimeError(f"Failed to read file from R2: {e}")
+                logger.error(f"Failed to read object {file_path} from bucket {self.bucket_name}: {e}")
+                raise RuntimeError(f"Failed to read file from object storage: {e}")
 
     async def delete_file(self, file_path: str) -> None:
         async with self._get_client() as client:
@@ -114,7 +133,8 @@ class AWSS3StorageService(StorageService):
                     Key=file_path,
                 )
             except ClientError as e:
-                raise RuntimeError(f"Failed to delete file from R2: {e}")
+                logger.error(f"Failed to delete object {file_path} from bucket {self.bucket_name}: {e}")
+                raise RuntimeError(f"Failed to delete file from object storage: {e}")
 
     async def is_exists(self, file_path: str) -> bool:
         async with self._get_client() as client:
@@ -127,7 +147,8 @@ class AWSS3StorageService(StorageService):
             except ClientError as e:
                 if e.response.get("Error", {}).get("Code") == "404":
                     return False
-                raise RuntimeError(f"Failed to check file existence in R2: {e}")
+                logger.error(f"Failed to check object {file_path} in bucket {self.bucket_name}: {e}")
+                raise RuntimeError(f"Failed to check file existence in object storage: {e}")
 
     async def get_file_url(self, file_path: str) -> str:
         if self.public_url_base:
@@ -141,6 +162,7 @@ class AWSS3StorageService(StorageService):
                 )
                 return url
             except ClientError as e:
+                logger.error(f"Failed to generate URL for object {file_path} in bucket {self.bucket_name}: {e}")
                 raise RuntimeError(f"Failed to generate file URL: {e}")
 
     def get_file_name_by_url(self, url: str) -> str | None:

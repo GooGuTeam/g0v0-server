@@ -11,11 +11,14 @@ from app.dependencies.database import Database
 from app.dependencies.storage import StorageService
 from app.dependencies.user import ClientUser
 from app.helpers import check_image
+from app.log import log
 from app.models.error import ErrorType, RequestError
 
 from .router import router
 
 from fastapi import File
+
+logger = log("User")
 
 
 @router.post("/avatar/upload", name="Upload avatar", tags=["User", "g0v0 API"], description="Upload user avatar.")
@@ -45,6 +48,7 @@ async def upload_avatar(
     current_user.avatar_url = url
     await cache_service.invalidate_user_cache(current_user.id)
     await session.commit()
+    logger.info(f"User {current_user.id} uploaded avatar {storage_path}; size={len(content)} bytes")
 
     return {
         "url": url,

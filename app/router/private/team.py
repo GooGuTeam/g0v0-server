@@ -12,6 +12,7 @@ from app.dependencies.database import Database, Redis
 from app.dependencies.storage import StorageService
 from app.dependencies.user import ClientUser
 from app.helpers import api_doc, check_image, utcnow
+from app.log import log
 from app.models.error import ErrorType, RequestError
 from app.models.notification import (
     TeamApplicationAccept,
@@ -26,6 +27,8 @@ from .router import router
 
 from fastapi import File, Form, Path, Query, Request
 from sqlmodel import col, exists, select
+
+logger = log("Team")
 
 
 @router.post(
@@ -102,6 +105,7 @@ async def create_team(
 
     cache_service = get_ranking_cache_service(redis)
     await cache_service.invalidate_team_cache()
+    logger.info(f"User {current_user.id} created team {team.id} ({team.name})")
     return team
 
 
@@ -190,6 +194,7 @@ async def update_team(
 
     await session.commit()
     await session.refresh(team)
+    logger.info(f"User {current_user.id} updated team {team.id} ({team.name})")
     return team
 
 
@@ -225,6 +230,7 @@ async def delete_team(
 
     cache_service = get_ranking_cache_service(redis)
     await cache_service.invalidate_team_cache()
+    logger.info(f"User {current_user.id} deleted team {team_id}")
 
 
 @router.get(
@@ -297,6 +303,7 @@ async def request_join_team(
     await session.commit()
     await session.refresh(team_request)
     await server.new_private_notification(TeamApplicationStore.init(team_request))
+    logger.info(f"User {current_user.id} requested to join team {team_id}")
 
 
 @router.post(
@@ -355,6 +362,8 @@ async def handle_request(
         await server.new_private_notification(TeamApplicationReject.init(team_request))
     await session.delete(team_request)
     await session.commit()
+    action = "accepted" if req.method == "POST" else "rejected"
+    logger.info(f"Team {team_id} join request from user {user_id} {action} by leader {current_user.id}")
 
 
 @router.delete(
@@ -395,3 +404,4 @@ async def kick_member(
 
     cache_service = get_ranking_cache_service(redis)
     await cache_service.invalidate_team_cache()
+    logger.info(f"User {user_id} removed from team {team_id} by user {current_user.id}")

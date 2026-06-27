@@ -12,10 +12,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.config import settings
+from app.log import service_logger
 
 from .base import StorageService
 
 import aiofiles
+
+logger = service_logger("LocalStorage")
 
 
 class LocalStorageService(StorageService):
@@ -39,6 +42,7 @@ class LocalStorageService(StorageService):
         """
         self.storage_path = Path(storage_path).resolve()
         self.storage_path.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Local storage root ready: {self.storage_path}")
 
     def _get_file_path(self, file_path: str) -> Path:
         """Get the full filesystem path for a file.
@@ -75,7 +79,9 @@ class LocalStorageService(StorageService):
         try:
             async with aiofiles.open(full_path, "wb") as f:
                 await f.write(content)
+            logger.debug(f"Wrote local file {file_path} ({len(content)} bytes)")
         except OSError as e:
+            logger.error(f"Failed to write local file {file_path}: {e}")
             raise RuntimeError(f"Failed to write file: {e}")
 
     async def read_file(self, file_path: str) -> bytes:
@@ -86,8 +92,11 @@ class LocalStorageService(StorageService):
 
         try:
             async with aiofiles.open(full_path, "rb") as f:
-                return await f.read()
+                content = await f.read()
+            logger.debug(f"Read local file {file_path} ({len(content)} bytes)")
+            return content
         except OSError as e:
+            logger.error(f"Failed to read local file {file_path}: {e}")
             raise RuntimeError(f"Failed to read file: {e}")
 
     async def delete_file(self, file_path: str) -> None:
@@ -103,7 +112,9 @@ class LocalStorageService(StorageService):
             while parent != self.storage_path and not any(parent.iterdir()):
                 parent.rmdir()
                 parent = parent.parent
+            logger.debug(f"Deleted local file {file_path}")
         except OSError as e:
+            logger.error(f"Failed to delete local file {file_path}: {e}")
             raise RuntimeError(f"Failed to delete file: {e}")
 
     async def is_exists(self, file_path: str) -> bool:

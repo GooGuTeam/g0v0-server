@@ -12,11 +12,14 @@ from app.dependencies.database import Database
 from app.dependencies.storage import StorageService
 from app.dependencies.user import ClientUser
 from app.helpers import check_image
+from app.log import log
 from app.models.error import ErrorType, RequestError
 
 from .router import router
 
 from fastapi import File
+
+logger = log("User")
 
 
 @router.post(
@@ -51,6 +54,7 @@ async def upload_cover(
     current_user.cover = UserProfileCover(url=url)
     await cache_service.invalidate_user_cache(current_user.id)
     await session.commit()
+    logger.info(f"User {current_user.id} uploaded profile cover {storage_path}; size={len(content)} bytes")
 
     return {
         "url": url,

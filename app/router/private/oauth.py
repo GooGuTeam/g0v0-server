@@ -9,12 +9,15 @@ from typing import Annotated
 from app.database.auth import OAuthClient, OAuthToken
 from app.dependencies.database import Database, Redis
 from app.dependencies.user import ClientUser
+from app.log import log
 from app.models.error import ErrorType, RequestError
 
 from .router import router
 
 from fastapi import Body
 from sqlmodel import select, text
+
+logger = log("OAuthApp")
 
 
 @router.post(
@@ -51,6 +54,7 @@ async def create_oauth_app(
     session.add(oauth_client)
     await session.commit()
     await session.refresh(oauth_client)
+    logger.info(f"User {current_user.id} created OAuth app {oauth_client.client_id} ({oauth_client.name})")
     return {
         "client_secret": oauth_client.client_secret,
         **oauth_client.model_dump(exclude={"client_secret"}),
@@ -114,6 +118,7 @@ async def delete_oauth_app(
 
     await session.delete(oauth_client)
     await session.commit()
+    logger.info(f"User {current_user.id} deleted OAuth app {client_id}")
 
 
 @router.patch(
@@ -142,6 +147,7 @@ async def update_oauth_app(
 
     await session.commit()
     await session.refresh(oauth_client)
+    logger.info(f"User {current_user.id} updated OAuth app {oauth_client.client_id} ({oauth_client.name})")
 
     return {
         "client_secret": oauth_client.client_secret,
@@ -173,6 +179,7 @@ async def refresh_secret(
 
     await session.commit()
     await session.refresh(oauth_client)
+    logger.info(f"User {current_user.id} refreshed OAuth secret for app {oauth_client.client_id}")
 
     return {
         "client_secret": oauth_client.client_secret,
@@ -207,6 +214,7 @@ async def generate_oauth_code(
         mapping={"user_id": current_user.id, "scopes": ",".join(scopes)},
     )
     await redis.expire(f"oauth:code:{client_id}:{code}", 300)
+    logger.info(f"Generated OAuth authorization code for app {client_id}, user {current_user.id}, scopes={scopes}")
 
     return {
         "code": code,
