@@ -13,6 +13,8 @@ from app.dependencies.database import Database
 from app.dependencies.rate_limit import create_rate_limiter
 from app.dependencies.user import ClientUser
 from app.models.error import ErrorType, RequestError
+from app.models.events.beatmapset import BeatmapsetRatedEvent, BeatmapsetSyncRequestedEvent
+from app.plugins import hub
 from app.service.beatmapset_update_service import get_beatmapset_update_service
 
 from .router import router
@@ -75,6 +77,7 @@ async def rate_beatmaps(
     new_rating: BeatmapRating = BeatmapRating(beatmapset_id=beatmapset_id, user_id=user_id, rating=rating)
     session.add(new_rating)
     await session.commit()
+    hub.emit(BeatmapsetRatedEvent(user_id=user_id, beatmapset_id=beatmapset_id, rating=rating))
 
 
 @router.post(
@@ -96,4 +99,6 @@ async def sync_beatmapset(
     current_beatmapset = (await session.exec(select(exists()).where(Beatmapset.id == beatmapset_id))).first()
     if not current_beatmapset:
         raise RequestError(ErrorType.BEATMAPSET_NOT_FOUND)
+    user_id = current_user.id
     await get_beatmapset_update_service().add_missing_beatmapset(beatmapset_id, immediate)
+    hub.emit(BeatmapsetSyncRequestedEvent(user_id=user_id, beatmapset_id=beatmapset_id, immediate=immediate))

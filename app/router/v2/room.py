@@ -23,7 +23,9 @@ from app.dependencies.database import Database, Redis
 from app.dependencies.user import ClientUser, get_current_user
 from app.helpers import api_doc, utcnow
 from app.models.error import ErrorType, RequestError
+from app.models.events.room import RoomCreatedEvent, RoomEndedEvent, RoomUserJoinedEvent, RoomUserLeftEvent
 from app.models.room import MatchType, RoomCategory, RoomStatus
+from app.plugins import hub
 from app.service.room import create_playlist_room_from_api
 
 from .router import router
@@ -218,6 +220,7 @@ async def create_room(
     await db.commit()
     await db.refresh(db_room)
     created_room = await RoomModel.transform(db_room, includes=Room.SHOW_RESPONSE_INCLUDES)
+    hub.emit(RoomCreatedEvent(room_id=db_room.id, host_user_id=user_id, name=db_room.name, category=db_room.category))
     return created_room
 
 
@@ -297,8 +300,10 @@ async def delete_room(
     if db_room is None:
         raise RequestError(ErrorType.ROOM_NOT_FOUND)
     else:
+        current_user_id = current_user.id
         db_room.ends_at = utcnow()
         await db.commit()
+        hub.emit(RoomEndedEvent(room_id=room_id, actor_user_id=current_user_id))
         return None
 
 
@@ -339,6 +344,7 @@ async def add_user_to_room(
         await db.commit()
         await db.refresh(db_room)
         resp = await RoomModel.transform(db_room, includes=Room.SHOW_RESPONSE_INCLUDES)
+        hub.emit(RoomUserJoinedEvent(room_id=room_id, user_id=user_id))
         return resp
     else:
         raise RequestError(ErrorType.ROOM_NOT_FOUND)
@@ -391,6 +397,7 @@ async def remove_user_from_room(
             db_room.participant_count -= 1
         await redis.publish("chat:room:left", f"{db_room.channel_id}:{user_id}")
         await db.commit()
+        hub.emit(RoomUserLeftEvent(room_id=room_id, user_id=user_id))
         return None
     else:
         raise RequestError(ErrorType.ROOM_NOT_FOUND)

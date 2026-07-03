@@ -14,6 +14,8 @@ from app.dependencies.database import Database
 from app.dependencies.user import ClientUser, get_current_user
 from app.helpers import api_doc
 from app.models.error import ErrorType, RequestError
+from app.models.events.relationship import UserRelationshipChangedEvent
+from app.plugins import hub
 
 from .router import router
 
@@ -144,10 +146,12 @@ async def add_relationship(
         )
     ).first()
     if relationship:
+        relationship_action = "update"
         relationship.type = relationship_type
         # Original behavior: if it was block, it would also change to follow
         # Keeping consistent with ppy/osu-web behavior
     else:
+        relationship_action = "add"
         relationship = Relationship(
             user_id=current_user.id,
             target_id=target,
@@ -168,7 +172,16 @@ async def add_relationship(
             await db.delete(target_relationship)
     current_user_id = current_user.id
     current_gamemode = current_user.playmode
+    relationship_type_value = relationship_type.value
     await db.commit()
+    hub.emit(
+        UserRelationshipChangedEvent(
+            user_id=current_user_id,
+            target_user_id=target,
+            relationship_type=relationship_type_value,
+            action=relationship_action,
+        )
+    )
     if origin_type == RelationshipType.FOLLOW:
         relationship = (
             await db.exec(
@@ -237,5 +250,15 @@ async def delete_relationship(
         raise RequestError(ErrorType.RELATIONSHIP_NOT_FOUND)
     if relationship.type != relationship_type:
         raise RequestError(ErrorType.RELATIONSHIP_TYPE_MISMATCH)
+    current_user_id = current_user.id
+    relationship_type_value = relationship_type.value
     await db.delete(relationship)
     await db.commit()
+    hub.emit(
+        UserRelationshipChangedEvent(
+            user_id=current_user_id,
+            target_user_id=target,
+            relationship_type=relationship_type_value,
+            action="delete",
+        )
+    )

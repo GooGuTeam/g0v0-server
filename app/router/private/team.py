@@ -14,12 +14,21 @@ from app.dependencies.user import ClientUser
 from app.helpers import api_doc, check_image, utcnow
 from app.log import log
 from app.models.error import ErrorType, RequestError
+from app.models.events.team import (
+    TeamCreatedEvent,
+    TeamDeletedEvent,
+    TeamJoinRequestedEvent,
+    TeamJoinRequestHandledEvent,
+    TeamMemberRemovedEvent,
+    TeamUpdatedEvent,
+)
 from app.models.notification import (
     TeamApplicationAccept,
     TeamApplicationReject,
     TeamApplicationStore,
 )
 from app.models.score import GameMode
+from app.plugins import hub
 from app.router.notification import server
 from app.service.ranking_cache_service import get_ranking_cache_service
 
@@ -105,7 +114,16 @@ async def create_team(
 
     cache_service = get_ranking_cache_service(redis)
     await cache_service.invalidate_team_cache()
-    logger.info(f"User {current_user.id} created team {team.id} ({team.name})")
+    hub.emit(
+        TeamCreatedEvent(
+            team_id=team.id,
+            leader_id=user_id,
+            name=team.name,
+            short_name=team.short_name,
+            playmode=team.playmode,
+        )
+    )
+    logger.info(f"User {user_id} created team {team.id} ({team.name})")
     return team
 
 
@@ -140,23 +158,32 @@ async def update_team(
     if team.leader_id != user_id:
         raise RequestError(ErrorType.NOT_TEAM_LEADER)
 
+    updated_fields = []
     if name is not None:
         if (await session.exec(select(exists()).where(Team.name == name))).first():
             raise RequestError(ErrorType.NAME_ALREADY_EXISTS)
         else:
             team.name = name
+            updated_fields.append("name")
     if short_name is not None:
         if (await session.exec(select(exists()).where(Team.short_name == short_name))).first():
             raise RequestError(ErrorType.SHORT_NAME_ALREADY_EXISTS)
         else:
             team.short_name = short_name
+            updated_fields.append("short_name")
 
-    team.playmode = playmode or team.playmode
-    team.description = description
+    if playmode and team.playmode != playmode:
+        team.playmode = playmode
+        updated_fields.append("playmode")
+    if team.description != description:
+        team.description = description
+        updated_fields.append("description")
     if website is not None:
         if website and not (website.startswith("http://") or website.startswith("https://")):
             website = "https://" + website
-        team.website = website
+        if team.website != website:
+            team.website = website
+            updated_fields.append("website")
 
     if flag:
         format_ = check_image(flag, 2 * 1024 * 1024, 240, 120)
@@ -170,6 +197,7 @@ async def update_team(
         if not await storage.is_exists(storage_path):
             await storage.write_file(storage_path, flag, f"image/{format_}")
         team.flag_url = await storage.get_file_url(storage_path)
+        updated_fields.append("flag_url")
     if cover:
         format_ = check_image(cover, 10 * 1024 * 1024, 3000, 2000)
 
@@ -182,6 +210,7 @@ async def update_team(
         if not await storage.is_exists(storage_path):
             await storage.write_file(storage_path, cover, f"image/{format_}")
         team.cover_url = await storage.get_file_url(storage_path)
+        updated_fields.append("cover_url")
 
     if leader_id is not None:
         if not (await session.exec(select(exists()).where(User.id == leader_id))).first():
@@ -191,10 +220,13 @@ async def update_team(
         ).first():
             raise RequestError(ErrorType.LEADER_NOT_TEAM_MEMBER)
         team.leader_id = leader_id
+        updated_fields.append("leader_id")
 
+    current_user_id = current_user.id
     await session.commit()
     await session.refresh(team)
-    logger.info(f"User {current_user.id} updated team {team.id} ({team.name})")
+    hub.emit(TeamUpdatedEvent(team_id=team.id, actor_user_id=current_user_id, updated_fields=updated_fields))
+    logger.info(f"User {current_user_id} updated team {team.id} ({team.name})")
     return team
 
 
@@ -221,6 +253,9 @@ async def delete_team(
     if team.leader_id != current_user.id:
         raise RequestError(ErrorType.NOT_TEAM_LEADER)
 
+    team_name = team.name
+    team_short_name = team.short_name
+    current_user_id = current_user.id
     team_members = await session.exec(select(TeamMember).where(TeamMember.team_id == team_id))
     for member in team_members:
         await session.delete(member)
@@ -230,7 +265,10 @@ async def delete_team(
 
     cache_service = get_ranking_cache_service(redis)
     await cache_service.invalidate_team_cache()
-    logger.info(f"User {current_user.id} deleted team {team_id}")
+    hub.emit(
+        TeamDeletedEvent(team_id=team_id, actor_user_id=current_user_id, name=team_name, short_name=team_short_name)
+    )
+    logger.info(f"User {current_user_id} deleted team {team_id}")
 
 
 @router.get(
@@ -298,12 +336,14 @@ async def request_join_team(
         )
     ).first():
         raise RequestError(ErrorType.JOIN_REQUEST_ALREADY_EXISTS)
-    team_request = TeamRequest(user_id=current_user.id, team_id=team_id, requested_at=utcnow())
+    current_user_id = current_user.id
+    team_request = TeamRequest(user_id=current_user_id, team_id=team_id, requested_at=utcnow())
     session.add(team_request)
     await session.commit()
     await session.refresh(team_request)
     await server.new_private_notification(TeamApplicationStore.init(team_request))
-    logger.info(f"User {current_user.id} requested to join team {team_id}")
+    hub.emit(TeamJoinRequestedEvent(team_id=team_id, user_id=current_user_id))
+    logger.info(f"User {current_user_id} requested to join team {team_id}")
 
 
 @router.post(
@@ -361,9 +401,13 @@ async def handle_request(
     else:
         await server.new_private_notification(TeamApplicationReject.init(team_request))
     await session.delete(team_request)
-    await session.commit()
+    current_user_id = current_user.id
     action = "accepted" if req.method == "POST" else "rejected"
-    logger.info(f"Team {team_id} join request from user {user_id} {action} by leader {current_user.id}")
+    await session.commit()
+    hub.emit(
+        TeamJoinRequestHandledEvent(team_id=team_id, user_id=user_id, actor_user_id=current_user_id, action=action)
+    )
+    logger.info(f"Team {team_id} join request from user {user_id} {action} by leader {current_user_id}")
 
 
 @router.delete(
@@ -399,9 +443,11 @@ async def kick_member(
     if team.leader_id == current_user.id:
         raise RequestError(ErrorType.CANNOT_LEAVE_AS_TEAM_LEADER)
 
+    current_user_id = current_user.id
     await session.delete(team_member)
     await session.commit()
 
     cache_service = get_ranking_cache_service(redis)
     await cache_service.invalidate_team_cache()
-    logger.info(f"User {user_id} removed from team {team_id} by user {current_user.id}")
+    hub.emit(TeamMemberRemovedEvent(team_id=team_id, user_id=user_id, actor_user_id=current_user_id))
+    logger.info(f"User {user_id} removed from team {team_id} by user {current_user_id}")

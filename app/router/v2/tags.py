@@ -13,8 +13,10 @@ from app.database.user import User
 from app.dependencies.database import Database
 from app.dependencies.user import get_client_user
 from app.models.error import ErrorType, RequestError
+from app.models.events.beatmapset import BeatmapTagVoteChangedEvent
 from app.models.score import Rank
 from app.models.tags import BeatmapTags, get_all_tags, get_tag_by_id
+from app.plugins import hub
 
 from .router import router
 
@@ -116,10 +118,14 @@ async def vote_beatmap_tags(
                 .where(BeatmapTagVote.user_id == current_user.id)
             )
         ).first()
-        if previous_votes is None and check_user_can_vote(current_user, beatmap_id, session):
-            new_vote = BeatmapTagVote(tag_id=tag_id, beatmap_id=beatmap_id, user_id=current_user.id)
+        vote_created = previous_votes is None and await check_user_can_vote(current_user, beatmap_id, session)
+        user_id = current_user.id
+        if vote_created:
+            new_vote = BeatmapTagVote(tag_id=tag_id, beatmap_id=beatmap_id, user_id=user_id)
             session.add(new_vote)
         await session.commit()
+        if vote_created:
+            hub.emit(BeatmapTagVoteChangedEvent(user_id=user_id, beatmap_id=beatmap_id, tag_id=tag_id, action="vote"))
     except ValueError:
         raise RequestError(ErrorType.TAG_NOT_FOUND)
 
@@ -165,8 +171,12 @@ async def devote_beatmap_tags(
                 .where(BeatmapTagVote.user_id == current_user.id)
             )
         ).first()
-        if previous_votes is not None:
+        vote_deleted = previous_votes is not None
+        user_id = current_user.id
+        if vote_deleted:
             await session.delete(previous_votes)
         await session.commit()
+        if vote_deleted:
+            hub.emit(BeatmapTagVoteChangedEvent(user_id=user_id, beatmap_id=beatmap_id, tag_id=tag_id, action="unvote"))
     except ValueError:
         raise RequestError(ErrorType.TAG_NOT_FOUND)

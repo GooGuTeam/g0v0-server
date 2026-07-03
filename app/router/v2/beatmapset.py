@@ -25,6 +25,8 @@ from app.dependencies.user import ClientUser, get_current_user
 from app.helpers import api_doc, asset_proxy_response
 from app.models.beatmap import SearchQueryModel
 from app.models.error import ErrorType, RequestError
+from app.models.events.beatmapset import BeatmapsetFavouriteChangedEvent
+from app.plugins import hub
 from app.service.beatmapset_cache_service import generate_hash
 
 from .router import router
@@ -332,10 +334,12 @@ async def favourite_beatmapset(
     if (action == "favourite" and existing_favourite) or (action == "unfavourite" and not existing_favourite):
         return
 
+    user_id = current_user.id
     if action == "favourite":
-        favourite = FavouriteBeatmapset(user_id=current_user.id, beatmapset_id=beatmapset_id)
+        favourite = FavouriteBeatmapset(user_id=user_id, beatmapset_id=beatmapset_id)
         db.add(favourite)
     else:
         await db.delete(existing_favourite)
-    await cache_service.invalidate_user_beatmapsets_cache(current_user.id)
+    await cache_service.invalidate_user_beatmapsets_cache(user_id)
     await db.commit()
+    hub.emit(BeatmapsetFavouriteChangedEvent(user_id=user_id, beatmapset_id=beatmapset_id, action=action))

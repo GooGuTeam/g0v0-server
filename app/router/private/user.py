@@ -25,6 +25,7 @@ from app.dependencies.user import ClientUser
 from app.helpers import hex_to_hue, utcnow
 from app.log import log
 from app.models.error import ErrorType, RequestError
+from app.models.events.user import UserPageUpdatedEvent, UserPreferencesUpdatedEvent, UserRenamedEvent
 from app.models.score import GameMode
 from app.models.user import Page
 from app.models.userpage import (
@@ -34,6 +35,7 @@ from app.models.userpage import (
     ValidateBBCodeRequest,
     ValidateBBCodeResponse,
 )
+from app.plugins import hub
 from app.service.bbcode_service import bbcode_service
 
 from .router import router
@@ -62,9 +64,10 @@ async def user_rename(
     errors = validate_username(new_name)
     if errors:
         raise RequestError(ErrorType.INVALID_USERNAME, {"errors": errors})
+    old_username = current_user.username
     previous_username = []
     previous_username.extend(current_user.previous_usernames)
-    previous_username.append(current_user.username)
+    previous_username.append(old_username)
     current_user.username = new_name
     current_user.previous_usernames = previous_username
     rename_event = Event(
@@ -79,11 +82,11 @@ async def user_rename(
         "previous_username": current_user.previous_usernames[-1],
     }
     session.add(rename_event)
-    await cache_service.invalidate_user_cache(current_user.id)
+    current_user_id = current_user.id
+    await cache_service.invalidate_user_cache(current_user_id)
     await session.commit()
-    logger.info(
-        f"User {current_user.id} renamed from {rename_event.event_payload['user']['previous_username']} to {new_name}"
-    )
+    hub.emit(UserRenamedEvent(user_id=current_user_id, old_username=old_username, new_username=new_name))
+    logger.info(f"User {current_user_id} renamed from {old_username} to {new_name}")
 
     return None
 
@@ -116,11 +119,15 @@ async def update_userpage(
         # 更新数据库 - 直接更新用户对象
         current_user.page = Page(html=processed_page["html"], raw=processed_page["raw"])
         session.add(current_user)
+        current_user_id = current_user.id
+        raw_length = len(request.body)
+        html_length = len(processed_page["html"])
         await session.commit()
         await session.refresh(current_user)
 
-        await cache_service.invalidate_user_cache(current_user.id)
-        logger.info(f"Updated user page for user {current_user.id}; raw_length={len(request.body)}")
+        await cache_service.invalidate_user_cache(current_user_id)
+        hub.emit(UserPageUpdatedEvent(user_id=current_user_id, raw_length=raw_length, html_length=html_length))
+        logger.info(f"Updated user page for user {current_user_id}; raw_length={raw_length}")
 
         # 返回官方格式的响应：只包含html
         return UpdateUserpageResponse(html=processed_page["html"])
@@ -321,6 +328,7 @@ async def change_user_preference(
     session: Database,
     current_user: ClientUser,
     cache_service: UserCacheService,
+    emit_event: bool = True,
 ):
     if await current_user.is_restricted(session):
         raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
@@ -363,10 +371,13 @@ async def change_user_preference(
         except ValueError:
             raise RequestError(ErrorType.INVALID_PROFILE_COLOUR_HEX)
 
-    await cache_service.invalidate_user_cache(current_user.id)
-    await session.commit()
+    current_user_id = current_user.id
+    await cache_service.invalidate_user_cache(current_user_id)
     updated_fields = sorted(request.model_dump(exclude_none=True).keys())
-    logger.info(f"Updated preferences for user {current_user.id}; fields={updated_fields}")
+    await session.commit()
+    if emit_event:
+        hub.emit(UserPreferencesUpdatedEvent(user_id=current_user_id, action="update", updated_fields=updated_fields))
+    logger.info(f"Updated preferences for user {current_user_id}; fields={updated_fields}")
 
 
 @router.put(
@@ -385,12 +396,15 @@ async def overwrite_user_preference(
     if await current_user.is_restricted(session):
         raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
 
+    current_user_id = current_user.id
+    updated_fields = sorted(request.model_dump(exclude_none=True).keys())
     await Preferences.clear(current_user, [])
-    await change_user_preference(request, session, current_user, cache_service)
+    await change_user_preference(request, session, current_user, cache_service, emit_event=False)
 
-    await cache_service.invalidate_user_cache(current_user.id)
+    await cache_service.invalidate_user_cache(current_user_id)
     await session.commit()
-    logger.info(f"Overwrote preferences for user {current_user.id}")
+    hub.emit(UserPreferencesUpdatedEvent(user_id=current_user_id, action="overwrite", updated_fields=updated_fields))
+    logger.info(f"Overwrote preferences for user {current_user_id}")
 
 
 @router.delete(
@@ -413,6 +427,9 @@ async def delete_user_preference(
 
     await Preferences.clear(current_user, fields)
 
-    await cache_service.invalidate_user_cache(current_user.id)
+    current_user_id = current_user.id
+    cleared_fields = fields or ["all"]
+    await cache_service.invalidate_user_cache(current_user_id)
     await session.commit()
-    logger.info(f"Cleared preferences for user {current_user.id}; fields={fields or ['all']}")
+    hub.emit(UserPreferencesUpdatedEvent(user_id=current_user_id, action="clear", updated_fields=cleared_fields))
+    logger.info(f"Cleared preferences for user {current_user_id}; fields={cleared_fields}")

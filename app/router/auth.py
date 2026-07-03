@@ -35,7 +35,7 @@ from app.dependencies.user_agent import UserAgentInfo
 from app.helpers import utcnow
 from app.log import log
 from app.models.error import ErrorType, RequestError
-from app.models.events.user import UserRegisteredEvent
+from app.models.events.user import UserLoginEvent, UserRegisteredEvent
 from app.models.extended_auth import ExtendedTokenResponse
 from app.models.oauth import (
     OAuthErrorResponse,
@@ -223,14 +223,17 @@ async def register_user(
         daily_challenge_user_stats = DailyChallengeStats(user_id=new_user.id)
         db.add(daily_challenge_user_stats)
 
+        new_user_id = new_user.id
+        new_username = new_user.username
+        new_user_country_code = new_user.country_code
+        await db.commit()
         hub.emit(
             UserRegisteredEvent(
-                user_id=new_user.id,
-                username=new_user.username,
-                country_code=new_user.country_code,
+                user_id=new_user_id,
+                username=new_username,
+                country_code=new_user_country_code,
             )
         )
-        await db.commit()
     except Exception:
         await db.rollback()
         # Print detailed error info for debugging
@@ -482,15 +485,36 @@ async def oauth_token(
                 notes=f"Normal login - IP: {ip_address}, Country: {country_code}",
             )
 
+        session_verified = not session_verification_method
+        login_session = await LoginSessionService.create_session(
+            db,
+            user_id,
+            token_id,
+            ip_address,
+            user_agent.raw_ua,
+            not trusted_device,
+            web_uuid,
+            session_verified,
+        )
         if session_verification_method:
-            await LoginSessionService.create_session(
-                db, user_id, token_id, ip_address, user_agent.raw_ua, not trusted_device, web_uuid, False
-            )
             await LoginSessionService.set_login_method(user_id, token_id, session_verification_method, redis)
-        else:
-            await LoginSessionService.create_session(
-                db, user_id, token_id, ip_address, user_agent.raw_ua, not trusted_device, web_uuid, True
+        session_id = login_session.id
+        user_agent_raw = user_agent.raw_ua
+        hub.emit(
+            UserLoginEvent(
+                user_id=user_id,
+                token_id=token_id,
+                client_id=client_id,
+                scopes=scopes,
+                ip_address=ip_address,
+                user_agent=user_agent_raw,
+                country_code=country_code,
+                trusted_device=trusted_device,
+                verification_method=session_verification_method,
+                session_id=session_id,
+                session_verified=session_verified,
             )
+        )
 
         return TokenResponse(
             access_token=access_token,

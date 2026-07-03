@@ -11,6 +11,13 @@ from app.dependencies.database import Database
 from app.dependencies.user import ClientUser
 from app.log import log
 from app.models.error import ErrorType, RequestError
+from app.models.events.api_key import (
+    APIKeyCreatedEvent,
+    APIKeyDeletedEvent,
+    APIKeyRegeneratedEvent,
+    APIKeyUpdatedEvent,
+)
+from app.plugins import hub
 
 from .router import router
 
@@ -52,10 +59,12 @@ async def create_api_key(
         name=name,
         owner_id=current_user.id,
     )
+    current_user_id = current_user.id
     session.add(api_key)
     await session.commit()
     await session.refresh(api_key)
-    logger.info(f"User {current_user.id} created v1 API key {api_key.id} ({api_key.name})")
+    hub.emit(APIKeyCreatedEvent(user_id=current_user_id, key_id=api_key.id, name=api_key.name))
+    logger.info(f"User {current_user_id} created v1 API key {api_key.id} ({api_key.name})")
     return APIKeyResponse(id=api_key.id, name=api_key.name, key=api_key.key)
 
 
@@ -113,10 +122,12 @@ async def update_api_key(
     if api_key.owner_id != current_user.id:
         raise RequestError(ErrorType.FORBIDDEN_NOT_OWNER)
 
+    current_user_id = current_user.id
     api_key.name = name
     await session.commit()
     await session.refresh(api_key)
-    logger.info(f"User {current_user.id} renamed v1 API key {api_key.id} to {api_key.name}")
+    hub.emit(APIKeyUpdatedEvent(user_id=current_user_id, key_id=api_key.id, name=api_key.name))
+    logger.info(f"User {current_user_id} renamed v1 API key {api_key.id} to {api_key.name}")
     return APIKeyListResponse(id=api_key.id, name=api_key.name)
 
 
@@ -138,9 +149,12 @@ async def delete_api_key(
     if api_key.owner_id != current_user.id:
         raise RequestError(ErrorType.FORBIDDEN_NOT_OWNER)
 
+    api_key_name = api_key.name
+    current_user_id = current_user.id
     await session.delete(api_key)
     await session.commit()
-    logger.info(f"User {current_user.id} deleted v1 API key {key_id}")
+    hub.emit(APIKeyDeletedEvent(user_id=current_user_id, key_id=key_id, name=api_key_name))
+    logger.info(f"User {current_user_id} deleted v1 API key {key_id}")
 
 
 @router.post(
@@ -161,8 +175,10 @@ async def regenerate_api_key(
     if api_key.owner_id != current_user.id:
         raise RequestError(ErrorType.FORBIDDEN_NOT_OWNER)
 
+    current_user_id = current_user.id
     api_key.key = secrets.token_hex()
     await session.commit()
     await session.refresh(api_key)
-    logger.info(f"User {current_user.id} regenerated v1 API key {api_key.id}")
+    hub.emit(APIKeyRegeneratedEvent(user_id=current_user_id, key_id=api_key.id, name=api_key.name))
+    logger.info(f"User {current_user_id} regenerated v1 API key {api_key.id}")
     return APIKeyResponse(id=api_key.id, name=api_key.name, key=api_key.key)
