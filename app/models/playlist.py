@@ -1,8 +1,18 @@
 from datetime import datetime
+from enum import IntEnum
 
 from app.models.mods import APIMod
 
 from pydantic import BaseModel, Field
+
+
+class WinCondition(IntEnum):
+    """Enumeration for win conditions in a playlist item."""
+
+    SCORE = 0
+    ACCURACY = 1
+    COMBO = 2
+    PP = 3
 
 
 class PlaylistItem(BaseModel):
@@ -18,3 +28,4 @@ class PlaylistItem(BaseModel):
     played_at: datetime | None = None
     star_rating: float = 0.0
     freestyle: bool = False
+    win_condition: WinCondition | None = None

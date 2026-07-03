@@ -126,5 +126,7 @@ async def add_playlists_to_room(session: AsyncSession, room_id: int, playlist: l
         item.id = await Playlist.get_next_id_for_room(room_id, session)
         item.room_id = room_id
         item.owner_id = owner_id
+        # Playlist room should not have win conditions.
+        item.win_condition = None
         session.add(item)
     await session.commit()

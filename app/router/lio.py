@@ -17,7 +17,7 @@ from app.helpers import camel_to_snake, utcnow
 from app.log import log
 from app.models.error import ErrorType, FieldMissingError, RequestError
 from app.models.events.score import ReplayUploadedEvent
-from app.models.playlist import PlaylistItem
+from app.models.playlist import PlaylistItem, WinCondition
 from app.models.room import MatchType, QueueMode, RoomCategory, RoomStatus
 from app.models.score import RULESETS_VERSION_HASH, GameMode, VersionEntry
 from app.plugins import hub
@@ -146,6 +146,7 @@ def _coerce_playlist_item(item_data: dict[str, Any], default_order: int, host_us
         "freestyle": bool(item_data.get("freestyle", True)),
         "beatmap_checksum": item_data.get("beatmap_checksum", ""),
         "star_rating": item_data.get("star_rating", 0.0),
+        "win_condition": item_data.get("win_condition", WinCondition.SCORE),  # Compatibility with non-osu-gu client.
     }
 
 
@@ -166,6 +167,14 @@ def _validate_playlist_items(items: list[dict[str, Any]]) -> None:
             raise RequestError(
                 ErrorType.INVALID_RULESET_ID,
                 {"error": f"Playlist item at index {idx} has invalid ruleset_id {ruleset_id}"},
+            )
+
+        win_condition = item.get("win_condition", WinCondition.SCORE)
+        freestyle = item.get("freestyle", True)
+        if freestyle and win_condition not in {WinCondition.SCORE, WinCondition.ACCURACY}:
+            raise RequestError(
+                ErrorType.PLAYLIST_WIN_CONDITION_INVALID,
+                {"error": f"Playlist item at index {idx} has invalid win_condition {win_condition} for freestyle mode"},
             )
 
 
@@ -240,6 +249,7 @@ async def _add_playlist_items(db: Database, room_id: int, room_data: dict[str, A
             freestyle=item_data["freestyle"],
             beatmap_checksum=item_data["beatmap_checksum"],
             star_rating=item_data["star_rating"],
+            win_condition=item_data.get("win_condition", WinCondition.SCORE),  # Compatibility with non-osu-gu client.
         )
         await DBPlaylist.add_to_db(playlist_item, room_id=room_id, session=db)
 

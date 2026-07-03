@@ -7,9 +7,9 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 
 from app.models.mods import APIMod
-from app.models.playlist import PlaylistItem
+from app.models.playlist import PlaylistItem, WinCondition
 
-from ._base import DatabaseModel, ondemand
+from ._base import DatabaseModel, OnDemand, ondemand
 from .beatmap import Beatmap, BeatmapDict, BeatmapModel
 
 from sqlalchemy.orm import Mapped
@@ -46,6 +46,7 @@ class PlaylistDict(TypedDict):
     owner_id: int
     playlist_order: int
     played_at: datetime | None
+    win_condition: NotRequired[WinCondition]
     beatmap: NotRequired["BeatmapDict"]
     scores: NotRequired[list[dict[str, Any]]]
 
@@ -76,6 +77,8 @@ class PlaylistModel(DatabaseModel[PlaylistDict]):
         sa_column=Column(DateTime(timezone=True)),
         default=None,
     )
+
+    win_condition: OnDemand[WinCondition | None] = Field(default=None)
 
     @ondemand
     @staticmethod
@@ -142,6 +145,7 @@ class Playlist(PlaylistModel, table=True):
             played_at=playlist.played_at,
             freestyle=playlist.freestyle,
             room_id=room_id,
+            win_condition=playlist.win_condition,
         )
 
     @classmethod
@@ -159,6 +163,7 @@ class Playlist(PlaylistModel, table=True):
         db_playlist.playlist_order = playlist.playlist_order
         db_playlist.played_at = playlist.played_at
         db_playlist.freestyle = playlist.freestyle
+        db_playlist.win_condition = playlist.win_condition
         await session.commit()
 
     @classmethod

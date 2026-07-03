@@ -5,6 +5,7 @@ replay downloads, and room/playlist score management.
 """
 
 from datetime import UTC, date
+import sys
 import time
 from typing import Annotated
 
@@ -61,6 +62,7 @@ from app.models.events.score import (
     SoloScoreCreatedEvent,
     SoloScoreSubmittedEvent,
 )
+from app.models.playlist import WinCondition
 from app.models.room import RoomCategory
 from app.models.score import (
     GameMode,
@@ -240,11 +242,11 @@ async def submit_score(
     resp = await ScoreModel.transform(
         score,
     )
-    await db.commit()
     logger.info(
         f"Score {resp['id']} submitted by user {user_id}; beatmap={score.beatmap_id}, "
         f"mode={score.gamemode}, passed={score.passed}, pp={score.pp}"
     )
+    await db.commit()
     background_task.add_task(_process_user_achievement, resp["id"])
     background_task.add_task(_process_user, resp["id"], user_id, redis, fetcher)
     return resp
@@ -939,7 +941,6 @@ class IndexedScoreResp(MultiplayerScores):
 
 @router.get(
     "/rooms/{room_id}/playlist/{playlist_id}/scores",
-    # response_model=IndexedScoreResp,
     name="Get room item leaderboard",
     description="Get the leaderboard for a room playlist item.",
     tags=["Scores"],
@@ -961,8 +962,8 @@ async def index_playlist_scores(
     limit: Annotated[int, Query(ge=1, le=50, description="Number of results (1-50)")] = 50,
     cursor: Annotated[
         int,
-        Query(alias="cursor[total_score]", description="Pagination cursor (previous page lowest score)"),
-    ] = 2000000,
+        Query(alias="cursor[total_score]", description="Pagination cursor (previous page lowest sort value)"),
+    ] = sys.maxsize,  # use `total_score` to be compatible with osu! APPs.
 ):
     """Get playlist item leaderboard.
 
@@ -986,19 +987,43 @@ async def index_playlist_scores(
     room = await session.get(Room, room_id)
     if not room:
         raise RequestError(ErrorType.ROOM_NOT_FOUND)
+    playitem = (
+        await session.exec(
+            select(Playlist).where(
+                Playlist.id == playlist_id,
+                Playlist.room_id == room_id,
+            )
+        )
+    ).first()
+    if not playitem:
+        raise RequestError(ErrorType.PLAYLIST_ITEM_NOT_FOUND)
+    match playitem.win_condition:
+        case WinCondition.ACCURACY:
+            sort_case = col(Score.accuracy).desc()
+            filter_case = col(PlaylistBestScore.score).has(col(Score.accuracy) < cursor)
+        case WinCondition.COMBO:
+            sort_case = col(Score.max_combo).desc()
+            filter_case = col(PlaylistBestScore.score).has(col(Score.max_combo) < cursor)
+        case WinCondition.PP:
+            sort_case = col(Score.pp).desc()
+            filter_case = col(PlaylistBestScore.score).has(col(Score.pp) < cursor)
+        case _:
+            sort_case = col(PlaylistBestScore.total_score).desc()
+            filter_case = col(PlaylistBestScore.total_score) < cursor
 
     limit = clamp(limit, 1, 50)
 
     scores = (
         await session.exec(
             select(PlaylistBestScore)
+            .join(Score, col(PlaylistBestScore.score_id) == Score.id)
             .where(
                 PlaylistBestScore.playlist_id == playlist_id,
                 PlaylistBestScore.room_id == room_id,
-                PlaylistBestScore.total_score < cursor,
+                filter_case,
                 ~User.is_restricted_query(col(PlaylistBestScore.user_id)),
             )
-            .order_by(col(PlaylistBestScore.total_score).desc())
+            .order_by(sort_case)
             .limit(limit + 1)
         )
     ).all()

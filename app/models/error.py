@@ -106,6 +106,11 @@ class ErrorType(Enum):
     )
     PLAYLIST_ITEM_EXPIRED = ("playlist_item_expired", 400, "Playlist item has expired")
     PLAYLIST_ITEM_ALREADY_PLAYED = ("playlist_item_already_played", 400, "Playlist item has already been played")
+    PLAYLIST_WIN_CONDITION_INVALID = (
+        "playlist_win_condition_invalid",
+        422,
+        "Invalid win condition for playlist item (maybe freestyle is enabled?)",
+    )
 
     SCORE_NOT_PINNED = ("score_not_pinned", 400, "Score is not pinned")
     BEATMAPSET_RATING_FORBIDDEN = ("beatmapset_rating_forbidden", 403, "User Cannot Rate This Beatmapset")
