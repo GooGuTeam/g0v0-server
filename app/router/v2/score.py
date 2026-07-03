@@ -1050,8 +1050,17 @@ async def index_playlist_scores(
         },
     )
     if has_more:
+        match playitem.win_condition:
+            case WinCondition.ACCURACY:
+                cursor_value = scores[-1].score.accuracy
+            case WinCondition.COMBO:
+                cursor_value = scores[-1].score.max_combo
+            case WinCondition.PP:
+                cursor_value = scores[-1].score.pp
+            case _:
+                cursor_value = scores[-1].total_score
         resp.cursor = {
-            "total_score": scores[-1].total_score,
+            "total_score": cursor_value,
         }
     return resp
 
