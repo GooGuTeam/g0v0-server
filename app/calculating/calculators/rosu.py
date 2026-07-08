@@ -122,6 +122,7 @@ class RosuPerformanceCalculator(BasePerformanceCalculator):
                 speed=attr.pp_speed or 0,
                 accuracy=attr.pp_accuracy or 0,
                 flashlight=attr.pp_flashlight or 0,
+                reading=0,  # FIXME: waiting for rosu-pp-py update
                 effective_miss_count=attr.effective_miss_count or 0,
                 speed_deviation=attr.speed_deviation,
                 combo_based_estimated_miss_count=attr.combo_based_estimated_miss_count or 0,
@@ -184,12 +185,14 @@ class RosuPerformanceCalculator(BasePerformanceCalculator):
                 aim_difficult_slider_count=diff.aim_difficult_slider_count or 0,
                 speed_difficulty=diff.speed or 0,
                 speed_note_count=diff.speed_note_count or 0,
-                slider_factor=diff.slider_factor or 0,
-                aim_difficult_strain_count=diff.aim_difficult_strain_count or 0,
-                speed_difficult_strain_count=diff.speed_difficult_strain_count or 0,
                 flashlight_difficulty=diff.flashlight or 0,
+                reading_difficulty=0,  # FIXME: waiting for rosu-pp-py update
+                slider_factor=diff.slider_factor or 0,
                 aim_top_weighted_slider_factor=diff.aim_top_weighted_slider_factor or 0,
                 speed_top_weighted_slider_factor=diff.speed_top_weighted_slider_factor or 0,
+                aim_difficult_strain_count=diff.aim_difficult_strain_count or 0,
+                speed_difficult_strain_count=diff.speed_difficult_strain_count or 0,
+                reading_difficult_note_count=0,  # FIXME: waiting for rosu-pp-py update
                 nested_score_per_object=diff.nested_score_per_object or 0,
                 legacy_score_base_multiplier=diff.legacy_score_base_multiplier or 0,
                 maximum_legacy_combo_score=diff.maximum_legacy_combo_score or 0,
