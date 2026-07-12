@@ -21,7 +21,7 @@ dependencies = [
     "jinja2>=3.1.0",
     "loguru>=0.7.3",
     "maxminddb>=2.8.2",
-    "newrelic>=13.1.1",
+    "newrelic>=13.2.0",
     "passlib[bcrypt]>=1.7.4",
     "pillow>=12.3.0",
     "pydantic-settings>=2.14.2",
@@ -31,7 +31,7 @@ dependencies = [
     "python-jose[cryptography]>=3.5.0",
     "python-multipart>=0.0.32",
     "redis>=8.0.1",
-    "regex>=2026.6.28",
+    "regex>=2026.7.10",
     "sentry-sdk[fastapi,httpx,loguru,sqlalchemy]>=2.62.0",
     "sqlalchemy>=2.0.51",
     "sqlmodel>=0.0.39",
@@ -131,9 +131,9 @@ g0v0-migrations = { workspace = true }
 
 [dependency-groups]
 dev = [
-    "datamodel-code-generator>=0.67.0",
+    "datamodel-code-generator>=0.68.1",
     "pre-commit>=4.6.0",
     "pyright>=1.1.411",
-    "ruff>=0.15.20",
+    "ruff>=0.15.21",
     "types-aioboto3[aioboto3,essential]>=15.5.0",
 ]
