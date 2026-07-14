@@ -54,7 +54,7 @@ class PlaylistDict(TypedDict):
 class PlaylistModel(DatabaseModel[PlaylistDict]):
     """Base model for playlist items with transformation support."""
 
-    id: int = Field(index=True)
+    id: int = Field(default=None, sa_column=Column(BigInteger, index=True, primary_key=True))
     room_id: int = Field(foreign_key="rooms.id")
     beatmap_id: int = Field(
         foreign_key="beatmaps.id",
@@ -112,7 +112,6 @@ class Playlist(PlaylistModel, table=True):
     """Database table for room playlist items."""
 
     __tablename__: str = "room_playlists"
-    db_id: int = Field(default=None, primary_key=True, index=True, exclude=True)
 
     beatmap: Mapped[Beatmap] = Relationship(
         sa_relationship_kwargs={
@@ -125,16 +124,8 @@ class Playlist(PlaylistModel, table=True):
     )
 
     @classmethod
-    async def get_next_id_for_room(cls, room_id: int, session: AsyncSession) -> int:
-        stmt = select(func.coalesce(func.max(cls.id), -1) + 1).where(cls.room_id == room_id)
-        result = await session.exec(stmt)
-        return result.one()
-
-    @classmethod
-    async def from_model(cls, playlist: PlaylistItem, room_id: int, session: AsyncSession) -> "Playlist":
-        next_id = await cls.get_next_id_for_room(room_id, session=session)
+    async def from_model(cls, playlist: PlaylistItem, room_id: int) -> "Playlist":
         return cls(
-            id=next_id,
             owner_id=playlist.owner_id,
             ruleset_id=playlist.ruleset_id,
             beatmap_id=playlist.beatmap_id,
@@ -168,7 +159,7 @@ class Playlist(PlaylistModel, table=True):
 
     @classmethod
     async def add_to_db(cls, playlist: PlaylistItem, room_id: int, session: AsyncSession):
-        db_playlist = await cls.from_model(playlist, room_id, session)
+        db_playlist = await cls.from_model(playlist, room_id)
         session.add(db_playlist)
         await session.commit()
         await session.refresh(db_playlist)

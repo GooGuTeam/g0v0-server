@@ -123,7 +123,6 @@ async def add_playlists_to_room(session: AsyncSession, room_id: int, playlist: l
         if not (await session.exec(select(exists().where(col(Beatmap.id) == item.beatmap)))).first():
             fetcher = await get_fetcher()
             await Beatmap.get_or_fetch(session, fetcher, item.beatmap_id)
-        item.id = await Playlist.get_next_id_for_room(room_id, session)
         item.room_id = room_id
         item.owner_id = owner_id
         # Playlist room should not have win conditions.
