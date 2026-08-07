@@ -98,23 +98,36 @@ class RedisRateLimiter:
 
     def _get_route_index_and_dependency_index(self, request: Request) -> tuple[int, int] | None:
         current_route = request.scope.get("route")
-        route_index = 0
-        dep_index = 0
+        path = request.scope["path"]
+        method = request.method
 
         for i, route in enumerate(request.app.routes):
-            if current_route is route or (
-                route.path == request.scope["path"] and hasattr(route, "methods") and request.method in route.methods
-            ):
-                route_index = i
-                if hasattr(route, "endpoint") and getattr(route.endpoint, "_skip_limiter", False):
-                    return None
-                for j, dependency in enumerate(route.dependencies):
-                    if self is dependency.dependency:
-                        dep_index = j
-                        break
-                break
+            # FastAPI 0.139+ 在匹配后会将实际 APIRoute 写入 scope["route"]，优先短路匹配
+            if current_route is route:
+                return self._route_match(i, route)
 
-        return route_index, dep_index
+            # FastAPI `_IncludedRouter`（include_router 的包装对象）没有 path 属性，
+            # 通过 effective_route_contexts() 展开为带完整 path 的有效路由再匹配
+            effective_contexts = getattr(route, "effective_route_contexts", None)
+            if effective_contexts is not None:
+                for candidate in effective_contexts():
+                    if candidate.path == path and method in candidate.methods:
+                        return self._route_match(i, candidate)
+                continue
+
+            # 普通 Starlette 路由（Route / WebSocketRoute / Mount）
+            if getattr(route, "path", None) == path and method in getattr(route, "methods", ()):
+                return self._route_match(i, route)
+
+        return None
+
+    def _route_match(self, route_index: int, route: Any) -> tuple[int, int] | None:
+        if getattr(getattr(route, "endpoint", None), "_skip_limiter", False):
+            return None
+        for j, dependency in enumerate(getattr(route, "dependencies", ())):
+            if self is dependency.dependency:
+                return route_index, j
+        return route_index, 0
 
     async def __call__(self, request: Request, response: Response):
         route_indexes = self._get_route_index_and_dependency_index(request)
