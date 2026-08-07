@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 import os
 from pathlib import Path
+import random
 import sys
 import warnings
 
@@ -34,6 +35,7 @@ from app.plugins import manager
 
 from httpx import HTTPError
 from redis.asyncio import Redis
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import joinedload
 from sqlmodel import col, delete, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -678,6 +680,21 @@ def _retry_wait_seconds(exc: HTTPError) -> float | None:
         return max(delay, 1.0)
 
 
+def _is_deadlock_or_timeout(exc: Exception) -> bool:
+    """Check if an OperationalError is a MySQL deadlock (1213) or lock wait timeout (1205).
+
+    Both errors are transient and safe to retry: the transaction was rolled back by
+    InnoDB, so re-running the whole task (fresh session) will not corrupt data.
+    """
+    original = getattr(exc, "orig", None)
+    if original is not None:
+        args = getattr(original, "args", ())
+        if args and args[0] in (1213, 1205):
+            return True
+    args = getattr(exc, "args", ())
+    return bool(args) and args[0] in (1213, 1205)
+
+
 async def determine_targets(
     config: PerformanceConfig | LeaderboardConfig,
 ) -> dict[tuple[int, GameMode], set[int] | None]:
@@ -1319,125 +1336,161 @@ async def recalculate_user_mode_accuracy_rank(
     score_filter: set[int],
     global_config: GlobalConfig,
     semaphore: asyncio.Semaphore,
+    write_lock: asyncio.Lock,
     csv_writer: CSVWriter | None = None,
 ) -> None:
-    async with semaphore, AsyncSession(engine, expire_on_commit=False, autoflush=False) as session:
-        try:
-            statistics = (
-                await session.exec(
-                    select(UserStatistics).where(
-                        UserStatistics.user_id == user_id,
-                        UserStatistics.mode == gamemode,
+    """Recalculate accuracy/rank and rebuild best-score tables for one user/mode pair.
+
+    The read + local-compute phase runs concurrently (guarded by ``semaphore``).
+    The write phase (DELETE + INSERT on ``best_scores``/``total_score_best_scores``
+    plus statistics update) is serialized through ``write_lock``: concurrently
+    deleting/inserting rows into the same secondary indexes takes overlapping
+    InnoDB gap locks which leads to deadlock (MySQL error 1213).
+
+    As a safety net for deadlocks caused by unrelated writers (e.g. live score
+    submissions), the whole task is retried with a small random backoff.
+    """
+    max_attempts = 3
+    for attempt in range(1, max_attempts + 1):
+        retry = False
+        async with semaphore, AsyncSession(engine, expire_on_commit=False, autoflush=False) as session:
+            try:
+                statistics = (
+                    await session.exec(
+                        select(UserStatistics).where(
+                            UserStatistics.user_id == user_id,
+                            UserStatistics.mode == gamemode,
+                        )
                     )
+                ).first()
+                if statistics is None:
+                    logger.warning(f"No statistics found for user {user_id} mode {gamemode}")
+                    return
+
+                score_stmt = (
+                    select(Score)
+                    .where(Score.user_id == user_id, Score.gamemode == gamemode)
+                    .options(joinedload(Score.beatmap))
                 )
-            ).first()
-            if statistics is None:
-                logger.warning(f"No statistics found for user {user_id} mode {gamemode}")
-                return
+                result = await session.exec(score_stmt)
+                scores: list[Score] = list(result)
 
-            score_stmt = (
-                select(Score)
-                .where(Score.user_id == user_id, Score.gamemode == gamemode)
-                .options(joinedload(Score.beatmap))
-            )
-            result = await session.exec(score_stmt)
-            scores: list[Score] = list(result)
+                target_scores = [score for score in scores if score.id in score_filter]
+                if not target_scores:
+                    logger.info(f"User {user_id} mode {gamemode}: no scores matched filters")
+                    return
 
-            target_scores = [score for score in scores if score.id in score_filter]
-            if not target_scores:
-                logger.info(f"User {user_id} mode {gamemode}: no scores matched filters")
-                return
+                recalculated = 0
+                failed = 0
+                accuracy_changed = 0
+                rank_changed = 0
+                for score in target_scores:
+                    try:
+                        changed_accuracy, changed_rank = recalculate_score_accuracy_and_rank(score)
+                    except NotImplementedError as exc:
+                        failed += 1
+                        logger.warning(
+                            f"Score {score.id} mode {score.gamemode}: {exc}; skipping accuracy/rank recalculation"
+                        )
+                        continue
 
-            recalculated = 0
-            failed = 0
-            accuracy_changed = 0
-            rank_changed = 0
-            for score in target_scores:
-                try:
-                    changed_accuracy, changed_rank = recalculate_score_accuracy_and_rank(score)
-                except NotImplementedError as exc:
-                    failed += 1
+                    recalculated += 1
+                    if changed_accuracy:
+                        accuracy_changed += 1
+                    if changed_rank:
+                        rank_changed += 1
+
+                passed_scores = [score for score in scores if score.passed]
+                best_scores = build_best_scores(user_id, gamemode, passed_scores)
+                total_best_scores = build_total_score_best_scores(passed_scores)
+
+                # 写关键区：串行化 best_scores/total_score_best_scores 的 DELETE+INSERT 与统计更新，
+                # 避免并发任务在多个二级索引上交叉持有间隙锁（gap lock）导致 InnoDB 死锁。
+                async with write_lock:
+                    await session.execute(
+                        delete(BestScore).where(
+                            col(BestScore.user_id) == user_id,
+                            col(BestScore.gamemode) == gamemode,
+                        )
+                    )
+                    session.add_all(best_scores)
+                    await session.execute(
+                        delete(TotalScoreBestScore).where(
+                            col(TotalScoreBestScore.user_id) == user_id,
+                            col(TotalScoreBestScore.gamemode) == gamemode,
+                        )
+                    )
+                    session.add_all(total_best_scores)
+                    await session.flush()
+
+                    await _recalculate_statistics(statistics, session, scores)
+                    await session.flush()
+
+                    if global_config.dry_run:
+                        await session.rollback()
+                    else:
+                        await session.commit()
+
+                message = (
+                    "Dry-run | user {user_id} mode {mode} | recalculated {recalculated} scores (failed {failed}) | "
+                    "accuracy changed {accuracy_changed} | rank changed {rank_changed}"
+                )
+                success_message = (
+                    "Recalculated accuracy/rank | user {user_id} mode {mode} | updated {recalculated} scores "
+                    "(failed {failed}) | accuracy changed {accuracy_changed} | rank changed {rank_changed}"
+                )
+
+                if global_config.dry_run:
+                    logger.info(
+                        message.format(
+                            user_id=user_id,
+                            mode=gamemode,
+                            recalculated=recalculated,
+                            failed=failed,
+                            accuracy_changed=accuracy_changed,
+                            rank_changed=rank_changed,
+                        )
+                    )
+                else:
+                    logger.success(
+                        success_message.format(
+                            user_id=user_id,
+                            mode=gamemode,
+                            recalculated=recalculated,
+                            failed=failed,
+                            accuracy_changed=accuracy_changed,
+                            rank_changed=rank_changed,
+                        )
+                    )
+
+                if csv_writer:
+                    await csv_writer.write_accuracy_rank(
+                        user_id,
+                        str(gamemode),
+                        recalculated,
+                        failed,
+                        accuracy_changed,
+                        rank_changed,
+                    )
+            except OperationalError as exc:
+                if session.in_transaction():
+                    await session.rollback()
+                if _is_deadlock_or_timeout(exc) and attempt < max_attempts:
+                    retry = True
+                    wait = random.uniform(0.5, 2.0) * attempt
                     logger.warning(
-                        f"Score {score.id} mode {score.gamemode}: {exc}; skipping accuracy/rank recalculation"
+                        f"Deadlock/lock-timeout while processing accuracy/rank for user {user_id} mode {gamemode} "
+                        f"(attempt {attempt}/{max_attempts}); waiting {wait:.2f}s before retry"
                     )
-                    continue
-
-                recalculated += 1
-                if changed_accuracy:
-                    accuracy_changed += 1
-                if changed_rank:
-                    rank_changed += 1
-
-            passed_scores = [score for score in scores if score.passed]
-            best_scores = build_best_scores(user_id, gamemode, passed_scores)
-            total_best_scores = build_total_score_best_scores(passed_scores)
-
-            await session.execute(
-                delete(BestScore).where(
-                    col(BestScore.user_id) == user_id,
-                    col(BestScore.gamemode) == gamemode,
-                )
-            )
-            session.add_all(best_scores)
-            await session.execute(
-                delete(TotalScoreBestScore).where(
-                    col(TotalScoreBestScore.user_id) == user_id,
-                    col(TotalScoreBestScore.gamemode) == gamemode,
-                )
-            )
-            session.add_all(total_best_scores)
-            await session.flush()
-
-            await _recalculate_statistics(statistics, session, scores)
-            await session.flush()
-
-            message = (
-                "Dry-run | user {user_id} mode {mode} | recalculated {recalculated} scores (failed {failed}) | "
-                "accuracy changed {accuracy_changed} | rank changed {rank_changed}"
-            )
-            success_message = (
-                "Recalculated accuracy/rank | user {user_id} mode {mode} | updated {recalculated} scores "
-                "(failed {failed}) | accuracy changed {accuracy_changed} | rank changed {rank_changed}"
-            )
-
-            if global_config.dry_run:
-                await session.rollback()
-                logger.info(
-                    message.format(
-                        user_id=user_id,
-                        mode=gamemode,
-                        recalculated=recalculated,
-                        failed=failed,
-                        accuracy_changed=accuracy_changed,
-                        rank_changed=rank_changed,
-                    )
-                )
-            else:
-                await session.commit()
-                logger.success(
-                    success_message.format(
-                        user_id=user_id,
-                        mode=gamemode,
-                        recalculated=recalculated,
-                        failed=failed,
-                        accuracy_changed=accuracy_changed,
-                        rank_changed=rank_changed,
-                    )
-                )
-
-            if csv_writer:
-                await csv_writer.write_accuracy_rank(
-                    user_id,
-                    str(gamemode),
-                    recalculated,
-                    failed,
-                    accuracy_changed,
-                    rank_changed,
-                )
-        except Exception:
-            if session.in_transaction():
-                await session.rollback()
-            logger.exception(f"Failed to process score accuracy/rank for user {user_id} mode {gamemode}")
+                    await asyncio.sleep(wait)
+                else:
+                    logger.exception(f"Failed to process score accuracy/rank for user {user_id} mode {gamemode}")
+            except Exception:
+                if session.in_transaction():
+                    await session.rollback()
+                logger.exception(f"Failed to process score accuracy/rank for user {user_id} mode {gamemode}")
+        if not retry:
+            return
 
 
 async def recalculate_beatmap_rating(
@@ -1688,9 +1741,20 @@ async def recalculate_accuracy_rank(
     )
 
     semaphore = asyncio.Semaphore(global_config.concurrency)
+    # 写锁：所有并发的 accuracy-rank 任务共享，串行化 best_scores 等表的 DELETE+INSERT，
+    # 从根源上避免并发任务互相持有间隙锁造成的 InnoDB 死锁。
+    write_lock = asyncio.Lock()
     async with CSVWriter(global_config.output_csv) as csv_writer:
         coroutines = [
-            recalculate_user_mode_accuracy_rank(user_id, mode, score_ids, global_config, semaphore, csv_writer)
+            recalculate_user_mode_accuracy_rank(
+                user_id,
+                mode,
+                score_ids,
+                global_config,
+                semaphore,
+                write_lock,
+                csv_writer,
+            )
             for (user_id, mode), score_ids in targets.items()
         ]
         await run_in_batches(coroutines, global_config.concurrency)
