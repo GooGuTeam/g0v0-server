@@ -98,6 +98,19 @@ READ_SCORE_TIMEOUT = 10
 
 logger = log("Score")
 
+SCORE_DETAIL_INCLUDES = [
+    "beatmap",
+    "beatmapset",
+    "current_user_attributes",
+    "position",
+    "rank_country",
+    "rank_global",
+    "user",
+    "user.country",
+    "user.cover",
+    "user.team",
+]
+
 
 async def _process_user_achievement(score_id: int):
     """Process achievements for a submitted score.
@@ -540,6 +553,88 @@ async def get_user_all_beatmap_scores(
     return [
         await score.to_resp(db, api_version, includes=ScoreModel.DEFAULT_SCORE_INCLUDES) for score in all_user_scores
     ]
+
+
+@router.get(
+    "/scores/{score}",
+    tags=["Scores"],
+    responses={
+        200: api_doc(
+            "Get score details.",
+            ScoreModel | LegacyScoreResp,
+            SCORE_DETAIL_INCLUDES,
+        )
+    },
+    name="Get a score",
+    description="Get the details of a specific score.",
+)
+async def get_score(
+    db: Database,
+    api_version: APIVersion,
+    score: Annotated[int, Path(description="Score ID")],
+    current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
+):
+    """Get a score by ID.
+
+    Args:
+        db: Database session dependency.
+        api_version: API version from request headers.
+        score: The score ID.
+        current_user: The authenticated user.
+
+    Returns:
+        dict: The score details.
+
+    Raises:
+        RequestError: If the score is not found.
+    """
+    score_record = (await db.exec(select(Score).where(Score.id == score))).first()
+    if not score_record:
+        raise RequestError(ErrorType.SCORE_NOT_FOUND)
+
+    return await score_record.to_resp(db, api_version, includes=SCORE_DETAIL_INCLUDES)
+
+
+@router.get(
+    "/scores/{ruleset}/{score}",
+    tags=["Scores"],
+    responses={
+        200: api_doc(
+            "Get score details for a specific ruleset.",
+            ScoreModel | LegacyScoreResp,
+            SCORE_DETAIL_INCLUDES,
+        )
+    },
+    name="Get a score by ruleset",
+    description="Get the details of a specific score under the requested ruleset.",
+)
+async def get_score_by_ruleset(
+    db: Database,
+    api_version: APIVersion,
+    ruleset: Annotated[GameMode, Path(description="Specified ruleset")],
+    score: Annotated[int, Path(description="Score ID")],
+    current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
+):
+    """Get a score by ruleset and ID.
+
+    Args:
+        db: Database session dependency.
+        api_version: API version from request headers.
+        ruleset: The requested ruleset.
+        score: The score ID.
+        current_user: The authenticated user.
+
+    Returns:
+        dict: The score details.
+
+    Raises:
+        RequestError: If the score is not found or the ruleset does not match.
+    """
+    score_record = (await db.exec(select(Score).where(Score.id == score, Score.gamemode == ruleset))).first()
+    if not score_record:
+        raise RequestError(ErrorType.SCORE_NOT_FOUND)
+
+    return await score_record.to_resp(db, api_version, includes=SCORE_DETAIL_INCLUDES)
 
 
 @router.post(
