@@ -51,10 +51,11 @@ async def create_oauth_app(
         redirect_uris=redirect_uris,
         owner_id=current_user.id,
     )
+    user_id = current_user.id
     session.add(oauth_client)
     await session.commit()
     await session.refresh(oauth_client)
-    logger.info(f"User {current_user.id} created OAuth app {oauth_client.client_id} ({oauth_client.name})")
+    logger.info(f"User {user_id} created OAuth app {oauth_client.client_id} ({oauth_client.name})")
     return {
         "client_secret": oauth_client.client_secret,
         **oauth_client.model_dump(exclude={"client_secret"}),
@@ -116,9 +117,10 @@ async def delete_oauth_app(
     for token in tokens:
         await session.delete(token)
 
+    user_id = current_user.id
     await session.delete(oauth_client)
     await session.commit()
-    logger.info(f"User {current_user.id} deleted OAuth app {client_id}")
+    logger.info(f"User {user_id} deleted OAuth app {client_id}")
 
 
 @router.patch(
@@ -145,9 +147,10 @@ async def update_oauth_app(
     oauth_client.description = description
     oauth_client.redirect_uris = redirect_uris
 
+    user_id = current_user.id
     await session.commit()
     await session.refresh(oauth_client)
-    logger.info(f"User {current_user.id} updated OAuth app {oauth_client.client_id} ({oauth_client.name})")
+    logger.info(f"User {user_id} updated OAuth app {oauth_client.client_id} ({oauth_client.name})")
 
     return {
         "client_secret": oauth_client.client_secret,
