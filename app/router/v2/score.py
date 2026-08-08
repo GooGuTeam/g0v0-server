@@ -556,6 +556,104 @@ async def get_user_all_beatmap_scores(
 
 
 @router.get(
+    "/scores/{score_id}/download",
+    name="Download score replay",
+    description="Download the replay file for a specific score.",
+    tags=["Scores"],
+    dependencies=[Depends(create_rate_limiter(Rate(10, Duration.MINUTE), bucket_key="rate-limit:v2:score-download"))],
+)
+async def download_score_replay(
+    score_id: int,
+    db: Database,
+    current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
+    storage_service: StorageService,
+):
+    """Download a score replay.
+
+    Args:
+        score_id: The score ID.
+        db: Database session dependency.
+        current_user: The authenticated user.
+        storage_service: Storage service for file access.
+
+    Returns:
+        RedirectResponse: Redirect to the replay file URL.
+
+    Raises:
+        RequestError: If score or replay file is not found.
+    """
+    # Get user ID immediately to avoid lazy loading issues
+    user_id = current_user.id
+
+    score = (await db.exec(select(Score).where(Score.id == score_id))).first()
+    if not score:
+        raise RequestError(ErrorType.SCORE_NOT_FOUND)
+
+    filepath = score.replay_filename
+    owner_id = score.user_id
+    owner_username = score.user.username
+    gamemode = score.gamemode
+    ended_at = score.ended_at
+    beatmap_id = score.beatmap_id
+
+    if not await storage_service.is_exists(filepath):
+        raise RequestError(ErrorType.REPLAY_FILE_NOT_FOUND)
+
+    is_friend = (
+        score.user_id == user_id
+        or (
+            await db.exec(
+                select(exists()).where(
+                    Relationship.user_id == user_id,
+                    Relationship.target_id == score.user_id,
+                    Relationship.type == RelationshipType.FOLLOW,
+                )
+            )
+        ).first()
+    )
+    if not is_friend:
+        replay_watched_count = (
+            await db.exec(
+                select(ReplayWatchedCount).where(
+                    ReplayWatchedCount.user_id == score.user_id,
+                    ReplayWatchedCount.year == date.today().year,
+                    ReplayWatchedCount.month == date.today().month,
+                )
+            )
+        ).first()
+        if replay_watched_count is None:
+            replay_watched_count = ReplayWatchedCount(
+                user_id=score.user_id, year=date.today().year, month=date.today().month
+            )
+            db.add(replay_watched_count)
+        replay_watched_count.count += 1
+        await db.commit()
+
+    hub.emit(
+        ReplayDownloadedEvent(
+            score_id=score_id,
+            owner_user_id=owner_id,
+            downloader_user_id=user_id,
+        )
+    )
+
+    beatmap = await db.get(Beatmap, beatmap_id)
+    if beatmap is None:
+        raise RequestError(ErrorType.BEATMAP_NOT_FOUND)
+
+    return Response(
+        await storage_service.read_file(filepath),
+        headers={
+            "Content-Type": "application/x-osu-replay",
+            "Content-Disposition": (
+                f'attachment; filename="{owner_username} playing {beatmap.beatmapset.artist} - {beatmap.beatmapset.title}'  # noqa: E501
+                f' [{beatmap.version}] {gamemode.readable()} ({ended_at:%Y-%m-%d}).osr"'
+            ),
+        },
+    )
+
+
+@router.get(
     "/scores/{score}",
     tags=["Scores"],
     responses={
@@ -1508,101 +1606,3 @@ async def reorder_score_pin(
     score_record.pinned_order = final_target
     await user_cache_service.invalidate_user_scores_cache(user_id, score_record.gamemode)
     await db.commit()
-
-
-@router.get(
-    "/scores/{score_id}/download",
-    name="Download score replay",
-    description="Download the replay file for a specific score.",
-    tags=["Scores"],
-    dependencies=[Depends(create_rate_limiter(Rate(10, Duration.MINUTE), bucket_key="rate-limit:v2:score-download"))],
-)
-async def download_score_replay(
-    score_id: int,
-    db: Database,
-    current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
-    storage_service: StorageService,
-):
-    """Download a score replay.
-
-    Args:
-        score_id: The score ID.
-        db: Database session dependency.
-        current_user: The authenticated user.
-        storage_service: Storage service for file access.
-
-    Returns:
-        RedirectResponse: Redirect to the replay file URL.
-
-    Raises:
-        RequestError: If score or replay file is not found.
-    """
-    # Get user ID immediately to avoid lazy loading issues
-    user_id = current_user.id
-
-    score = (await db.exec(select(Score).where(Score.id == score_id))).first()
-    if not score:
-        raise RequestError(ErrorType.SCORE_NOT_FOUND)
-
-    filepath = score.replay_filename
-    owner_id = score.user_id
-    owner_username = score.user.username
-    gamemode = score.gamemode
-    ended_at = score.ended_at
-    beatmap_id = score.beatmap_id
-
-    if not await storage_service.is_exists(filepath):
-        raise RequestError(ErrorType.REPLAY_FILE_NOT_FOUND)
-
-    is_friend = (
-        score.user_id == user_id
-        or (
-            await db.exec(
-                select(exists()).where(
-                    Relationship.user_id == user_id,
-                    Relationship.target_id == score.user_id,
-                    Relationship.type == RelationshipType.FOLLOW,
-                )
-            )
-        ).first()
-    )
-    if not is_friend:
-        replay_watched_count = (
-            await db.exec(
-                select(ReplayWatchedCount).where(
-                    ReplayWatchedCount.user_id == score.user_id,
-                    ReplayWatchedCount.year == date.today().year,
-                    ReplayWatchedCount.month == date.today().month,
-                )
-            )
-        ).first()
-        if replay_watched_count is None:
-            replay_watched_count = ReplayWatchedCount(
-                user_id=score.user_id, year=date.today().year, month=date.today().month
-            )
-            db.add(replay_watched_count)
-        replay_watched_count.count += 1
-        await db.commit()
-
-    hub.emit(
-        ReplayDownloadedEvent(
-            score_id=score_id,
-            owner_user_id=owner_id,
-            downloader_user_id=user_id,
-        )
-    )
-
-    beatmap = await db.get(Beatmap, beatmap_id)
-    if beatmap is None:
-        raise RequestError(ErrorType.BEATMAP_NOT_FOUND)
-
-    return Response(
-        await storage_service.read_file(filepath),
-        headers={
-            "Content-Type": "application/x-osu-replay",
-            "Content-Disposition": (
-                f'attachment; filename="{owner_username} playing {beatmap.beatmapset.artist} - {beatmap.beatmapset.title}'  # noqa: E501
-                f' [{beatmap.version}] {gamemode.readable()} ({ended_at:%Y-%m-%d}).osr"'
-            ),
-        },
-    )
