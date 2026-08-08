@@ -59,7 +59,7 @@ class OAuthClient(UTCBaseModel, SQLModel, table=True):
     client_id: int | None = Field(default=None, primary_key=True, index=True)
     client_secret: str = Field(default_factory=secrets.token_hex, index=True, exclude=True)
     redirect_uris: list[str] = Field(default_factory=list, sa_column=Column(JSON))
-    owner_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True), exclude=True)
+    owner_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
 
     created_at: datetime = Field(default_factory=utcnow, sa_column=Column(DateTime))
     updated_at: datetime = Field(
