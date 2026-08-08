@@ -13,9 +13,11 @@ from app.database import (
     Beatmapset,
     BeatmapsetModel,
     FavouriteBeatmapset,
+    Score,
     SearchBeatmapsetsResp,
     User,
 )
+from app.database.beatmapset_ratings import BeatmapRating
 from app.dependencies.beatmap_download import DownloadService
 from app.dependencies.cache import BeatmapsetCacheService, UserCacheService
 from app.dependencies.database import Database, Redis
@@ -25,7 +27,7 @@ from app.dependencies.user import ClientUser, get_current_user
 from app.helpers import api_doc, asset_proxy_response
 from app.models.beatmap import SearchQueryModel
 from app.models.error import ErrorType, RequestError
-from app.models.events.beatmapset import BeatmapsetFavouriteChangedEvent
+from app.models.events.beatmapset import BeatmapsetFavouriteChangedEvent, BeatmapsetRatedEvent
 from app.plugins import hub
 from app.service.beatmapset_cache_service import generate_hash
 
@@ -33,6 +35,7 @@ from .router import router
 
 from fastapi import (
     BackgroundTasks,
+    Body,
     Form,
     HTTPException,
     Path,
@@ -42,7 +45,12 @@ from fastapi import (
 )
 from fastapi.responses import PlainTextResponse, RedirectResponse
 from httpx import HTTPError
-from sqlmodel import select
+from pydantic import BaseModel
+from sqlmodel import col, exists, func, select
+
+
+class BeatmapsetRatingResponse(BaseModel):
+    updated_rating: float
 
 
 @router.get(
@@ -343,3 +351,53 @@ async def favourite_beatmapset(
     await cache_service.invalidate_user_beatmapsets_cache(user_id)
     await db.commit()
     hub.emit(BeatmapsetFavouriteChangedEvent(user_id=user_id, beatmapset_id=beatmapset_id, action=action))
+
+
+@router.post(
+    "/beatmapsets/{beatmapset_id}/ratings",
+    tags=["Beatmapsets"],
+    name="Submit beatmapset rating",
+    response_model=BeatmapsetRatingResponse,
+    description="Submit a rating for a beatmapset.",
+)
+async def rate_beatmapset(
+    db: Database,
+    beatmapset_id: Annotated[int, Path(..., description="Beatmapset ID")],
+    rating: Annotated[int, Body(..., embed=True, ge=1, le=10)],
+    current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
+) -> BeatmapsetRatingResponse:
+    if await current_user.is_restricted(db):
+        raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
+
+    if not (await db.exec(select(exists()).where(Beatmapset.id == beatmapset_id))).first():
+        raise RequestError(ErrorType.BEATMAPSET_NOT_FOUND)
+
+    user_id = current_user.id
+    previous_rating = (
+        await db.exec(
+            select(BeatmapRating).where(
+                BeatmapRating.user_id == user_id,
+                BeatmapRating.beatmapset_id == beatmapset_id,
+            )
+        )
+    ).first()
+    has_passed_beatmap = await db.exec(
+        select(exists()).where(
+            Score.user_id == user_id,
+            col(Score.beatmap).has(col(Beatmap.beatmapset_id) == beatmapset_id),
+            col(Score.passed).is_(True),
+        )
+    )
+    if previous_rating is not None:
+        raise RequestError(ErrorType.BEATMAPSET_HAS_BEEN_RATED)
+    if not has_passed_beatmap.first():
+        raise RequestError(ErrorType.BEATMAPSET_HAS_NOT_BEEN_PLAYED)
+
+    db.add(BeatmapRating(beatmapset_id=beatmapset_id, user_id=user_id, rating=rating))
+    await db.commit()
+
+    updated_rating = (
+        await db.exec(select(func.avg(BeatmapRating.rating)).where(BeatmapRating.beatmapset_id == beatmapset_id))
+    ).one()
+    hub.emit(BeatmapsetRatedEvent(user_id=user_id, beatmapset_id=beatmapset_id, rating=rating))
+    return BeatmapsetRatingResponse(updated_rating=float(updated_rating))

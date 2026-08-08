@@ -114,6 +114,8 @@ class ErrorType(Enum):
 
     SCORE_NOT_PINNED = ("score_not_pinned", 400, "Score is not pinned")
     BEATMAPSET_RATING_FORBIDDEN = ("beatmapset_rating_forbidden", 403, "User Cannot Rate This Beatmapset")
+    BEATMAPSET_HAS_BEEN_RATED = ("beatmapset_has_been_rated", 403, "You've already rated this beatmap set")
+    BEATMAPSET_HAS_NOT_BEEN_PLAYED = ("beatmapset_has_not_been_played", 403, "You have not played this beatmap set yet")
     MAX_ATTEMPTS_REACHED = ("max_attempts_reached", 422, "You have reached the maximum attempts for this room")
 
     # File / IO

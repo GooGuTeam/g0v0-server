@@ -29,7 +29,8 @@ from sqlmodel import col, exists, select
     name="Check if user can rate beatmapset",
     response_model=bool,
     tags=["Beatmapset", "g0v0 API"],
-    description="Check if the user can rate a beatmapset.",
+    description="Check if the user can rate a beatmapset. Deprecated: use the v2 rating endpoint instead.",
+    deprecated=True,
 )
 async def can_rate_beatmapset(
     beatmapset_id: int,
@@ -56,7 +57,8 @@ async def can_rate_beatmapset(
     name="Submit beatmapset rating",
     status_code=201,
     tags=["Beatmapset", "g0v0 API"],
-    description="Submit a rating for a beatmapset.",
+    description="Submit a rating for a beatmapset. Deprecated: use the v2 rating endpoint instead.",
+    deprecated=True,
 )
 async def rate_beatmaps(
     beatmapset_id: int,
