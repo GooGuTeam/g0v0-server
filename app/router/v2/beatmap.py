@@ -18,7 +18,7 @@ from app.database import (
 from app.database.beatmap import calculate_beatmap_attributes
 from app.dependencies.database import Database, Redis
 from app.dependencies.fetcher import Fetcher
-from app.dependencies.user import get_current_user
+from app.dependencies.user import get_optional_user
 from app.helpers import api_doc, asset_proxy_response
 from app.models.error import ErrorType, RequestError
 from app.models.mods import APIMod, int_to_mods
@@ -47,7 +47,7 @@ from sqlmodel import col, select
 @asset_proxy_response
 async def lookup_beatmap(
     db: Database,
-    current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
+    current_user: Annotated[User | None, Security(get_optional_user, scopes=["public"])],
     fetcher: Fetcher,
     id: Annotated[int | None, Query(alias="id", description="Beatmap ID")] = None,
     md5: Annotated[str | None, Query(alias="checksum", description="Beatmap file MD5")] = None,
@@ -78,7 +78,8 @@ async def lookup_beatmap(
 
     if beatmap is None:
         raise RequestError(ErrorType.BEATMAP_NOT_FOUND)
-    await db.refresh(current_user)
+    if current_user is not None:
+        await db.refresh(current_user)
 
     return await BeatmapModel.transform(beatmap, user=current_user, includes=BeatmapModel.TRANSFORMER_INCLUDES)
 
@@ -94,7 +95,7 @@ async def lookup_beatmap(
 async def get_beatmap(
     db: Database,
     beatmap_id: Annotated[int, Path(..., description="Beatmap ID")],
-    current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
+    current_user: Annotated[User | None, Security(get_optional_user, scopes=["public"])],
     fetcher: Fetcher,
 ):
     """Get details for a single beatmap by ID.
@@ -113,7 +114,8 @@ async def get_beatmap(
     """
     try:
         beatmap = await Beatmap.get_or_fetch(db, fetcher, beatmap_id)
-        await db.refresh(current_user)
+        if current_user is not None:
+            await db.refresh(current_user)
         return await BeatmapModel.transform(
             beatmap,
             user=current_user,
@@ -144,7 +146,7 @@ async def batch_get_beatmaps(
         list[int],
         Query(alias="ids[]", default_factory=list, description="List of beatmap IDs (max 50)"),
     ],
-    current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
+    current_user: Annotated[User | None, Security(get_optional_user, scopes=["public"])],
     fetcher: Fetcher,
 ):
     """Batch retrieve multiple beatmaps.
@@ -173,7 +175,8 @@ async def batch_get_beatmaps(
         )
         for beatmap in beatmaps:
             await db.refresh(beatmap)
-    await db.refresh(current_user)
+    if current_user is not None:
+        await db.refresh(current_user)
     return {
         "beatmaps": [
             await BeatmapModel.transform(bm, user=current_user, includes=BeatmapModel.TRANSFORMER_INCLUDES)
@@ -194,7 +197,7 @@ async def batch_get_beatmaps(
 async def get_beatmap_attributes(
     db: Database,
     beatmap_id: Annotated[int, Path(..., description="Beatmap ID")],
-    current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
+    current_user: Annotated[User | None, Security(get_optional_user, scopes=["public"])],
     mods: Annotated[
         list[str],
         Query(

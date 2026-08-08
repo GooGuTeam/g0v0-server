@@ -36,7 +36,7 @@ class OAuthToken(UTCBaseModel, SQLModel, table=True):
     __tablename__: str = "oauth_tokens"
 
     id: int = Field(default=None, primary_key=True, index=True)
-    user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
+    user_id: int | None = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True, nullable=True))
     client_id: int = Field(index=True)
     access_token: str = Field(max_length=500, unique=True)
     refresh_token: str = Field(max_length=500, unique=True)

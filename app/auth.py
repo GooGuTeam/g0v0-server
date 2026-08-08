@@ -320,7 +320,7 @@ def verify_token(token: str) -> dict | None:
 
 async def store_token(
     db: AsyncSession,
-    user_id: int,
+    user_id: int | None,
     client_id: int,
     scopes: list[str],
     access_token: str,

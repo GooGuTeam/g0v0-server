@@ -48,7 +48,7 @@ from app.dependencies.database import Database, Redis, get_redis, with_db
 from app.dependencies.fetcher import Fetcher, get_fetcher
 from app.dependencies.rate_limit import create_rate_limiter
 from app.dependencies.storage import StorageService
-from app.dependencies.user import ClientUser, get_current_user
+from app.dependencies.user import ClientUser, get_optional_user
 from app.helpers import api_doc, utcnow
 from app.log import log
 from app.models.beatmap import BeatmapRankStatus
@@ -351,7 +351,7 @@ async def get_beatmap_scores(
         list[str],
         Query(default_factory=set, alias="mods[]", description="Filter by mods (optional, multiple values)"),
     ],
-    current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
+    current_user: Annotated[User | None, Security(get_optional_user, scopes=["public"])],
     legacy_only: Annotated[bool | None, Query(description="Whether to only query Stable scores")] = None,
     type: Annotated[
         LeaderboardType,
@@ -437,7 +437,7 @@ async def get_user_beatmap_score(
     api_version: APIVersion,
     beatmap_id: Annotated[int, Path(description="Beatmap ID")],
     user_id: Annotated[int, Path(description="User ID")],
-    current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
+    current_user: Annotated[User | None, Security(get_optional_user, scopes=["public"])],
     legacy_only: Annotated[bool | None, Query(description="Whether to only query Stable scores")] = None,
     mode: Annotated[GameMode | None, Query(description="Specified ruleset (optional)")] = None,
     mods: Annotated[str | None, Query(description="Filter by mods (not implemented)")] = None,
@@ -518,7 +518,7 @@ async def get_user_all_beatmap_scores(
     api_version: APIVersion,
     beatmap_id: Annotated[int, Path(description="Beatmap ID")],
     user_id: Annotated[int, Path(description="User ID")],
-    current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
+    current_user: Annotated[User | None, Security(get_optional_user, scopes=["public"])],
     legacy_only: Annotated[bool | None, Query(description="Whether to only query Stable scores")] = None,
     ruleset: Annotated[GameMode | None, Query(description="Specified ruleset (optional)")] = None,
 ):
@@ -565,7 +565,7 @@ async def get_user_all_beatmap_scores(
 async def download_score_replay(
     score_id: int,
     db: Database,
-    current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
+    current_user: Annotated[User | None, Security(get_optional_user, scopes=["public"])],
     storage_service: StorageService,
 ):
     """Download a score replay.
@@ -583,7 +583,7 @@ async def download_score_replay(
         RequestError: If score or replay file is not found.
     """
     # Get user ID immediately to avoid lazy loading issues
-    user_id = current_user.id
+    user_id = current_user.id if current_user is not None else None
 
     score = (await db.exec(select(Score).where(Score.id == score_id))).first()
     if not score:
@@ -599,7 +599,7 @@ async def download_score_replay(
     if not await storage_service.is_exists(filepath):
         raise RequestError(ErrorType.REPLAY_FILE_NOT_FOUND)
 
-    is_friend = (
+    is_friend = user_id is not None and (
         score.user_id == user_id
         or (
             await db.exec(
@@ -670,7 +670,7 @@ async def get_score(
     db: Database,
     api_version: APIVersion,
     score: Annotated[int, Path(description="Score ID")],
-    current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
+    current_user: Annotated[User | None, Security(get_optional_user, scopes=["public"])],
 ):
     """Get a score by ID.
 
@@ -711,7 +711,7 @@ async def get_score_by_ruleset(
     api_version: APIVersion,
     ruleset: Annotated[GameMode, Path(description="Specified ruleset")],
     score: Annotated[int, Path(description="Score ID")],
-    current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
+    current_user: Annotated[User | None, Security(get_optional_user, scopes=["public"])],
 ):
     """Get a score by ruleset and ID.
 
@@ -1151,7 +1151,7 @@ async def index_playlist_scores(
     session: Database,
     room_id: int,
     playlist_id: int,
-    current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
+    current_user: Annotated[User | None, Security(get_optional_user, scopes=["public"])],
     limit: Annotated[int, Query(ge=1, le=50, description="Number of results (1-50)")] = 50,
     cursor: Annotated[
         int,
@@ -1175,7 +1175,7 @@ async def index_playlist_scores(
         RequestError: If the room is not found.
     """
     # Get user ID immediately to avoid lazy loading issues
-    user_id = current_user.id
+    user_id = current_user.id if current_user is not None else None
 
     room = await session.get(Room, room_id)
     if not room:
@@ -1227,9 +1227,10 @@ async def index_playlist_scores(
     user_score = None
     score_resp = [await ScoreModel.transform(score.score, includes=Score.MULTIPLAYER_BASE_INCLUDES) for score in scores]
     for score in score_resp:
-        if (room.category == RoomCategory.DAILY_CHALLENGE and score["user_id"] == user_id and score["passed"]) or score[
-            "user_id"
-        ] == user_id:
+        if user_id is not None and (
+            (room.category == RoomCategory.DAILY_CHALLENGE and score["user_id"] == user_id and score["passed"])
+            or score["user_id"] == user_id
+        ):
             user_score = score
             user_score["position"] = await get_position(room_id, playlist_id, score["id"], session)
             break

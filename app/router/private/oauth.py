@@ -8,7 +8,7 @@ from typing import Annotated
 
 from app.database.auth import OAuthClient, OAuthToken
 from app.dependencies.database import Database, Redis
-from app.dependencies.user import ClientUser
+from app.dependencies.user import CODE_SCOPES, ClientUser
 from app.log import log
 from app.models.error import ErrorType, RequestError
 
@@ -177,9 +177,10 @@ async def refresh_secret(
     for token in tokens:
         await session.delete(token)
 
+    user_id = current_user.id
     await session.commit()
     await session.refresh(oauth_client)
-    logger.info(f"User {current_user.id} refreshed OAuth secret for app {oauth_client.client_id}")
+    logger.info(f"User {user_id} refreshed OAuth secret for app {oauth_client.client_id}")
 
     return {
         "client_secret": oauth_client.client_secret,
@@ -201,6 +202,14 @@ async def generate_oauth_code(
     scopes: Annotated[list[str], Body(..., description="Requested permission scopes")],
     redis: Redis,
 ):
+    if disallowed_scopes := (set(scopes) - set(CODE_SCOPES.keys())):
+        raise RequestError(
+            ErrorType.SCOPE_NOT_ALLOWED,
+            details={
+                "disallowed_scopes": list(disallowed_scopes),
+            },
+        )
+
     client = await session.get(OAuthClient, client_id)
     if not client:
         raise RequestError(ErrorType.OAUTH_APP_NOT_FOUND)

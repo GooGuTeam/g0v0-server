@@ -26,7 +26,7 @@ from app.database.user import UserModel
 from app.dependencies.api_version import APIVersion
 from app.dependencies.cache import UserCacheService
 from app.dependencies.database import Database, get_redis
-from app.dependencies.user import get_current_user, get_optional_user
+from app.dependencies.user import get_optional_user
 from app.helpers import api_doc, asset_proxy_response, utcnow
 from app.log import log
 from app.models.error import ErrorType, RequestError
@@ -96,7 +96,6 @@ async def get_users(
     request: Request,
     background_task: BackgroundTasks,
     user_ids: Annotated[list[int], Query(default_factory=list, alias="ids[]", description="List of user IDs to query")],
-    # current_user: User = Security(get_current_user, scopes=["public"]),
     include_variant_statistics: Annotated[
         bool,
         Query(description="Whether to include variant statistics for each mode"),
@@ -546,7 +545,7 @@ async def get_user_beatmapsets(
     cache_service: UserCacheService,
     user_id: Annotated[int, Path(description="User ID")],
     type: Annotated[BeatmapsetType, Path(description="Beatmapset type")],
-    current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
+    current_user: Annotated[User | None, Security(get_optional_user, scopes=["public"])],
     limit: Annotated[int, Query(ge=1, le=1000, description="Number of results (1-1000)")] = 100,
     offset: Annotated[int, Query(ge=0, description="Offset")] = 0,
 ):
@@ -687,7 +686,7 @@ async def get_user_scores(
             )
         ),
     ],
-    current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
+    current_user: Annotated[User | None, Security(get_optional_user, scopes=["public"])],
     legacy_only: Annotated[bool, Query(description="Whether to only query Stable scores")] = False,
     include_fails: Annotated[bool, Query(description="Whether to include failed scores")] = False,
     mode: Annotated[

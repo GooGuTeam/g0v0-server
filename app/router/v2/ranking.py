@@ -10,7 +10,7 @@ from app.config import settings
 from app.database import Team, TeamMember, User, UserStatistics
 from app.database.statistics import UserStatisticsModel
 from app.dependencies.database import Database, get_redis
-from app.dependencies.user import get_current_user
+from app.dependencies.user import get_optional_user
 from app.helpers import api_doc
 from app.models.score import GameMode
 from app.service.ranking_cache_service import get_ranking_cache_service
@@ -71,7 +71,7 @@ async def get_team_ranking_pp(
     session: Database,
     background_tasks: BackgroundTasks,
     ruleset: Annotated[GameMode, Path(..., description="The specified ruleset")],
-    current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
+    current_user: Annotated[User | None, Security(get_optional_user, scopes=["public"])],
     page: Annotated[int, Query(ge=1, description="Page number")] = 1,
 ):
     """Get team rankings sorted by performance points.
@@ -108,7 +108,7 @@ async def get_team_ranking(
         ),
     ],
     ruleset: Annotated[GameMode, Path(..., description="The specified ruleset")],
-    current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
+    current_user: Annotated[User | None, Security(get_optional_user, scopes=["public"])],
     page: Annotated[int, Query(ge=1, description="Page number")] = 1,
 ):
     """Get team rankings with configurable sorting.
@@ -264,7 +264,7 @@ async def get_country_ranking_pp(
     session: Database,
     background_tasks: BackgroundTasks,
     ruleset: Annotated[GameMode, Path(..., description="The specified ruleset")],
-    current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
+    current_user: Annotated[User | None, Security(get_optional_user, scopes=["public"])],
     page: Annotated[int, Query(ge=1, description="Page number")] = 1,
 ):
     """Get country rankings sorted by performance points.
@@ -301,7 +301,7 @@ async def get_country_ranking(
             "**This parameter is an extension added by this server, not part of the v2 API**",
         ),
     ],
-    current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
+    current_user: Annotated[User | None, Security(get_optional_user, scopes=["public"])],
     page: Annotated[int, Query(ge=1, description="Page number")] = 1,
 ):
     """Get country rankings with configurable sorting.
@@ -420,7 +420,7 @@ async def get_user_ranking(
     background_tasks: BackgroundTasks,
     ruleset: Annotated[GameMode, Path(..., description="The specified ruleset")],
     sort: Annotated[SortType, Path(..., description="Ranking type: performance (pp) / score (ranked score)")],
-    current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
+    current_user: Annotated[User | None, Security(get_optional_user, scopes=["public"])],
     country: Annotated[str | None, Query(description="Country code")] = None,
     page: Annotated[int, Query(ge=1, description="Page number")] = 1,
 ):
@@ -487,10 +487,9 @@ async def get_user_ranking(
 
     # Transform to response format
     ranking_data = []
+    user_country = current_user.country_code if current_user is not None else None
     for statistics in statistics_list:
-        user_stats_resp = await UserStatisticsModel.transform(
-            statistics, includes=include, user_country=current_user.country_code
-        )
+        user_stats_resp = await UserStatisticsModel.transform(statistics, includes=include, user_country=user_country)
         ranking_data.append(user_stats_resp)
 
     # Async cache data (don't wait for completion)

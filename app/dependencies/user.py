@@ -6,7 +6,7 @@ from app.const import SUPPORT_TOTP_VERIFICATION_VER
 from app.database import User
 from app.database.auth import OAuthToken, V1APIKeys
 from app.models.error import ErrorType, RequestError
-from app.models.oauth import OAuth2ClientCredentialsBearer
+from app.models.oauth import OAuth2ClientCredentialsBearer, ScopeInfo
 
 from .api_version import APIVersion
 from .database import Database, get_redis
@@ -29,27 +29,52 @@ security = HTTPBearer()
 oauth2_password = OAuth2PasswordBearer(
     tokenUrl="oauth/token",
     refreshUrl="oauth/token",
-    scopes={"*": "允许访问全部 API。"},
-    description="osu!lazer 或网页客户端密码登录认证，具有全部权限",
+    scopes={"*": "Allow to access all API."},
+    description="osu!lazer or osu!lazer or web client password login authentication, with full permissions",
     scheme_name="Password Grant",
     auto_error=False,
 )
+
+# scope: (scope_description, can_delegate)
+SCOPES: dict[str, ScopeInfo] = {
+    "chat.read": ScopeInfo(description="Allows read chat messages on a user's behalf.", can_delegate=False),
+    "chat.write": ScopeInfo(description="Allows sending chat messages on a user's behalf.", can_delegate=True),
+    "chat.write_manage": ScopeInfo(
+        description="Allows joining and leaving chat channels on a user's behalf.", can_delegate=True
+    ),
+    "delegate": ScopeInfo(
+        description="Allows acting as the owner of a client; only available for Client Credentials Grant.",
+        can_delegate=True,
+    ),
+    "forum.write": ScopeInfo(
+        description="Allows creating and editing forum posts on a user's behalf.", can_delegate=True
+    ),
+    "forum.write_manage": ScopeInfo(description="Allows managing forum topics on a user's behalf.", can_delegate=True),
+    "friends.read": ScopeInfo(description="Allows reading of the user's friend list.", can_delegate=False),
+    "group_permissions": ScopeInfo(
+        description="Allows delegate tokens to inherit the Resource Owner's group permissions in some cases.",
+        can_delegate=False,
+    ),
+    "identify": ScopeInfo(description="Allows reading of the public profile of the user (/me).", can_delegate=False),
+    "multiplayer.write_manage": ScopeInfo(
+        description="Allows creating and managing multiplayer rooms on a user's behalf. "
+        "This is a separate SignalR-based API; see documentation.",
+        can_delegate=True,
+    ),
+    "public": ScopeInfo(
+        description="Allows reading of publicly available data on behalf of the user.", can_delegate=False
+    ),
+}
+
+CODE_SCOPES = {scope: SCOPES[scope] for scope in SCOPES if scope != "delegate"}
+CLIENT_CREDENTIALS_SCOPES = {scope: SCOPES[scope] for scope in SCOPES if SCOPES[scope].can_delegate}
 
 oauth2_code = OAuth2AuthorizationCodeBearer(
     authorizationUrl="oauth/authorize",
     tokenUrl="oauth/token",
     refreshUrl="oauth/token",
-    scopes={
-        "chat.read": "允许代表用户读取聊天消息。",
-        "chat.write": "允许代表用户发送聊天消息。",
-        "chat.write_manage": ("允许代表用户加入和离开聊天频道。"),
-        "delegate": ("允许作为客户端的所有者进行操作；仅适用于客户端凭证授权。"),
-        "forum.write": "允许代表用户创建和编辑论坛帖子。",
-        "friends.read": "允许读取用户的好友列表。",
-        "identify": "允许读取用户的公开资料 (/me)。",
-        "public": "允许代表用户读取公开数据。",
-    },
-    description="osu! OAuth 认证 （授权码认证）",
+    scopes={scope: CODE_SCOPES[scope].description for scope in CODE_SCOPES},
+    description="osu! OAuth authentication (Authorization Code Grant)",
     scheme_name="Authorization Code Grant",
     auto_error=False,
 )
@@ -57,15 +82,13 @@ oauth2_code = OAuth2AuthorizationCodeBearer(
 oauth2_client_credentials = OAuth2ClientCredentialsBearer(
     tokenUrl="oauth/token",
     refreshUrl="oauth/token",
-    scopes={
-        "public": "允许读取公开数据。",
-    },
-    description="osu! OAuth 认证 （客户端凭证流）",
+    scopes={scope: CLIENT_CREDENTIALS_SCOPES[scope].description for scope in CLIENT_CREDENTIALS_SCOPES},
+    description="osu! OAuth authentication (Client Credentials Grant)",
     scheme_name="Client Credentials Grant",
     auto_error=False,
 )
 
-v1_api_key = APIKeyQuery(name="k", scheme_name="V1 API Key", description="v1 API 密钥")
+v1_api_key = APIKeyQuery(name="k", scheme_name="V1 API Key", description="v1 API key")
 
 
 async def v1_authorize(
@@ -197,7 +220,27 @@ async def get_optional_user(
     if not token:
         return None
 
-    return (await _validate_token(db, token, security_scopes))[0]
+    token_record = await get_token_by_access_token(db, token)
+    if not token_record:
+        raise RequestError(ErrorType.INVALID_OR_EXPIRED_TOKEN)
+
+    is_client = token_record.client_id in (
+        settings.osu_client_id,
+        settings.osu_web_client_id,
+    )
+
+    if not is_client:
+        for scope in security_scopes.scopes:
+            if scope not in token_record.scope.split(","):
+                raise RequestError(ErrorType.INSUFFICIENT_SCOPE, {"scope": scope})
+
+    if token_record.user_id is None:
+        return None
+
+    user = (await db.exec(select(User).where(User.id == token_record.user_id))).first()
+    if not user:
+        raise RequestError(ErrorType.USER_NOT_FOUND)
+    return user
 
 
 ClientUser = Annotated[User, Security(get_client_user, scopes=["*"])]

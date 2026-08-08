@@ -11,6 +11,11 @@ from fastapi.security.utils import get_authorization_scheme_param
 from pydantic import BaseModel
 
 
+class ScopeInfo(BaseModel):
+    description: str
+    can_delegate: bool
+
+
 class TokenRequest(BaseModel):
     grant_type: str
     username: str | None = None

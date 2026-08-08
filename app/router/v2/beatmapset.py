@@ -23,7 +23,7 @@ from app.dependencies.cache import BeatmapsetCacheService, UserCacheService
 from app.dependencies.database import Database, Redis
 from app.dependencies.fetcher import Fetcher
 from app.dependencies.geoip import IPAddress, get_geoip_helper
-from app.dependencies.user import ClientUser, get_current_user
+from app.dependencies.user import ClientUser, get_current_user, get_optional_user
 from app.helpers import api_doc, asset_proxy_response
 from app.models.beatmap import SearchQueryModel
 from app.models.error import ErrorType, RequestError
@@ -64,7 +64,7 @@ async def search_beatmapset(
     query: Annotated[SearchQueryModel, Query()],
     request: Request,
     background_tasks: BackgroundTasks,
-    current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
+    current_user: Annotated[User | None, Security(get_optional_user, scopes=["public"])],
     fetcher: Fetcher,
     redis: Redis,
     cache_service: BeatmapsetCacheService,
@@ -158,7 +158,7 @@ async def lookup_beatmapset(
     db: Database,
     request: Request,
     beatmap_id: Annotated[int, Query(description="Beatmap ID")],
-    current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
+    current_user: Annotated[User | None, Security(get_optional_user, scopes=["public"])],
     fetcher: Fetcher,
     cache_service: BeatmapsetCacheService,
 ):
@@ -209,7 +209,7 @@ async def get_beatmapset(
     db: Database,
     request: Request,
     beatmapset_id: Annotated[int, Path(..., description="Beatmapset ID")],
-    current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
+    current_user: Annotated[User | None, Security(get_optional_user, scopes=["public"])],
     fetcher: Fetcher,
     cache_service: BeatmapsetCacheService,
 ):
@@ -236,7 +236,8 @@ async def get_beatmapset(
 
     try:
         beatmapset = await Beatmapset.get_or_fetch(db, fetcher, beatmapset_id)
-        await db.refresh(current_user)
+        if current_user is not None:
+            await db.refresh(current_user)
         resp = await BeatmapsetModel.transform(beatmapset, includes=BeatmapsetModel.API_INCLUDES, user=current_user)
 
         # Cache result

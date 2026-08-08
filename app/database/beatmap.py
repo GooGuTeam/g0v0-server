@@ -165,7 +165,9 @@ class BeatmapModel(DatabaseModel[BeatmapDict]):
 
     @ondemand
     @staticmethod
-    async def current_user_playcount(_session: AsyncSession, beatmap: "Beatmap", user: "User") -> int:
+    async def current_user_playcount(_session: AsyncSession, beatmap: "Beatmap", user: "User | None" = None) -> int:
+        if user is None:
+            return 0
         playcount = (
             await _session.exec(
                 select(BeatmapPlaycounts.playcount).where(

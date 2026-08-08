@@ -24,13 +24,14 @@ from app.auth import (
     validate_username,
 )
 from app.config import settings
-from app.const import BANCHOBOT_ID, SUPPORT_TOTP_VERIFICATION_VER
+from app.const import SUPPORT_TOTP_VERIFICATION_VER
 from app.database import DailyChallengeStats, OAuthClient, User
 from app.database.auth import TotpKeys
 from app.database.statistics import UserStatistics
 from app.dependencies.api_version import APIVersion
 from app.dependencies.database import Database, Redis
 from app.dependencies.geoip import GeoIPService, IPAddress
+from app.dependencies.user import CLIENT_CREDENTIALS_SCOPES
 from app.dependencies.user_agent import UserAgentInfo
 from app.helpers import utcnow
 from app.log import log
@@ -639,10 +640,12 @@ async def oauth_token(
                     "or unsupported authentication method)."
                 ),
             )
-        elif scopes != ["public"]:
+        scopes_set = set(scopes)
+        if disallowed_scopes := (scopes_set - set(CLIENT_CREDENTIALS_SCOPES.keys())):
             return raise_oauth_error(
                 error="invalid_scope",
-                error_type=ErrorType.SCOPE_NOT_PUBLIC,
+                error_type=ErrorType.SCOPE_NOT_ALLOWED,
+                hint=f"Disallowed scopes: {', '.join(disallowed_scopes)}",
             )
 
         # Generate tokens
@@ -653,7 +656,7 @@ async def oauth_token(
         # Store token
         await store_token(
             db,
-            BANCHOBOT_ID,
+            client.owner_id if "delegate" in scopes_set else None,
             client_id,
             scopes,
             access_token,

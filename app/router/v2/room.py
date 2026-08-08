@@ -20,7 +20,7 @@ from app.database.room_participated_user import RoomParticipatedUser
 from app.database.score import Score
 from app.database.user import User, UserModel
 from app.dependencies.database import Database, Redis
-from app.dependencies.user import ClientUser, get_current_user
+from app.dependencies.user import ClientUser, get_optional_user
 from app.helpers import api_doc, utcnow
 from app.models.error import ErrorType, RequestError
 from app.models.events.room import RoomCreatedEvent, RoomEndedEvent, RoomUserJoinedEvent, RoomUserLeftEvent
@@ -57,7 +57,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 )
 async def get_all_rooms(
     db: Database,
-    current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
+    current_user: Annotated[User | None, Security(get_optional_user, scopes=["public"])],
     mode: Annotated[
         Literal["open", "ended", "participated", "owned"] | None,
         Query(
@@ -103,6 +103,8 @@ async def get_all_rooms(
         )
 
     if mode == "participated":
+        if current_user is None:
+            return []
         where_clauses.append(
             exists().where(
                 col(RoomParticipatedUser.room_id) == Room.id,
@@ -111,6 +113,8 @@ async def get_all_rooms(
         )
 
     if mode == "owned":
+        if current_user is None:
+            return []
         where_clauses.append(col(Room.host_id) == current_user.id)
 
     if mode == "ended":
@@ -240,7 +244,7 @@ async def create_room(
 async def get_room(
     db: Database,
     room_id: Annotated[int, Path(..., description="Room ID")],
-    current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
+    current_user: Annotated[User | None, Security(get_optional_user, scopes=["public"])],
     category: Annotated[
         str,
         Query(
@@ -423,7 +427,7 @@ async def remove_user_from_room(
 async def get_room_leaderboard(
     db: Database,
     room_id: Annotated[int, Path(..., description="Room ID")],
-    current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
+    current_user: Annotated[User | None, Security(get_optional_user, scopes=["public"])],
 ):
     """Get the leaderboard for a room.
 
@@ -450,11 +454,11 @@ async def get_room_leaderboard(
     user_agg = None
     for i, agg in enumerate(aggs):
         includes = ["user.country"]
-        if agg.user_id == current_user.id:
+        if current_user is not None and agg.user_id == current_user.id:
             includes.append("position")
         resp = await ItemAttemptsCountModel.transform(agg, includes=includes)
         aggs_resp.append(resp)
-        if agg.user_id == current_user.id:
+        if current_user is not None and agg.user_id == current_user.id:
             user_agg = resp
 
     return {
@@ -490,7 +494,7 @@ async def get_room_leaderboard(
 async def get_room_events(
     db: Database,
     room_id: Annotated[int, Path(..., description="Room ID")],
-    current_user: Annotated[User, Security(get_current_user, scopes=["public"])],
+    current_user: Annotated[User | None, Security(get_optional_user, scopes=["public"])],
     limit: Annotated[int, Query(ge=1, le=1000, description="Number of results to return (1-1000)")] = 100,
     after: Annotated[int | None, Query(ge=0, description="Only include events with ID greater than this")] = None,
     before: Annotated[int | None, Query(ge=0, description="Only include events with ID less than this")] = None,

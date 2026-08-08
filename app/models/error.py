@@ -206,7 +206,7 @@ class ErrorType(Enum):
     INVALID_REFRESH_TOKEN = ("invalid_refresh_token", 403, "Invalid refresh token")
     AUTH_CODE_REQUIRED = ("auth_code_required", 422, "Authorization code required")
     INVALID_AUTH_CODE = ("invalid_auth_code", 403, "Invalid authorization code")
-    SCOPE_NOT_PUBLIC = ("scope_not_public", 422, "Scope must be 'public'")
+    SCOPE_NOT_ALLOWED = ("scope_not_allowed", 422, "Scope not allowed for this method")
 
     # Beatmap / proxy services
     NO_DOWNLOAD_ENDPOINTS_AVAILABLE = ("no_download_endpoints_available", 503, "No download endpoints available")
