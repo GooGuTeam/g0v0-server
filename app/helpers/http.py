@@ -37,7 +37,7 @@ def extract_user_agent(user_agent: str | None) -> "UserAgentInfo":
     if not ua:
         return info
 
-    client_identifiers = ("osu!", "osu!lazer", "osu-framework")
+    client_identifiers = ("osu!", "osu!lazer", "osu-framework", "g0v0!")
     if any(identifier in lower_ua for identifier in client_identifiers):
         info.browser = "osu!"
         info.is_client = True
