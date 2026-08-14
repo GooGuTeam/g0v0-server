@@ -97,6 +97,12 @@ class ErrorType(Enum):
         410,
         "Room has ended and cannot accept new participants",
     )
+    YOU_CANNOT_END_REALTIME_ROOM = ("you_cannot_end_realtime_room_by_api", 403, "You cannot end a realtime room by API")
+    YOU_CANNOT_JOIN_OR_LEAVE_REALTIME_ROOM_BY_API = (
+        "you_cannot_join_or_leave_realtime_room_by_api",
+        403,
+        "You cannot join or leave a realtime room by API",
+    )
 
     # Playlists
     PLAYLIST_EMPTY_ON_CREATION = (
