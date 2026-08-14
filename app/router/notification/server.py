@@ -359,6 +359,18 @@ class ChatServer:
             logger.info(f"User {user_id} leaving channel {channel_id} (type: {db_channel.type.value})")
             await self.leave_channel(user, db_channel)
 
+    async def is_user_in_channel(self, channel_id: int, user_id: int) -> bool:
+        """Check if a user is in a channel.
+
+        Args:
+            channel_id: The channel ID to check.
+            user_id: The user ID to check.
+
+        Returns:
+            True if the user is in the channel, False otherwise.
+        """
+        return user_id in self.channels.get(channel_id, [])
+
     async def new_private_notification(self, detail: NotificationDetail):
         """Create and send a new private notification.
 

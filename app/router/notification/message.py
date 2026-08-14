@@ -137,6 +137,8 @@ async def send_message(
 
     if db_channel is None:
         raise RequestError(ErrorType.CHANNEL_NOT_FOUND)
+    if server.is_user_in_channel(db_channel.channel_id, current_user.id) is False:
+        raise RequestError(ErrorType.YOU_ARE_NOT_IN_CHANNEL)
 
     # Extract all needed attributes immediately to avoid lazy loading later
     channel_id = db_channel.channel_id
@@ -235,6 +237,8 @@ async def get_message(
 
     if db_channel is None:
         raise RequestError(ErrorType.CHANNEL_NOT_FOUND)
+    if server.is_user_in_channel(db_channel.channel_id, current_user.id) is False:
+        raise RequestError(ErrorType.YOU_ARE_NOT_IN_CHANNEL)
 
     channel_id = db_channel.channel_id
 
@@ -308,6 +312,8 @@ async def mark_as_read(
 
     if db_channel is None:
         raise RequestError(ErrorType.CHANNEL_NOT_FOUND)
+    if server.is_user_in_channel(db_channel.channel_id, current_user.id) is False:
+        raise RequestError(ErrorType.YOU_ARE_NOT_IN_CHANNEL)
 
     # Extract needed attribute immediately
     channel_id = db_channel.channel_id
