@@ -7,9 +7,9 @@ two-factor authentication.
 
 from typing import Annotated, Literal
 
-from app.auth import check_totp_backup_code, verify_totp_key_with_replay_protection
+from app.auth import verify_totp_key_with_replay_protection
 from app.config import settings
-from app.const import BACKUP_CODE_LENGTH, SUPPORT_TOTP_VERIFICATION_VER
+from app.const import SUPPORT_TOTP_VERIFICATION_VER
 from app.database.auth import TotpKeys
 from app.dependencies.api_version import APIVersion
 from app.dependencies.database import Database, Redis, get_redis
@@ -161,13 +161,8 @@ async def verify_session(
                     )
                     verify_method = "mail"
                     raise VerifyFailedError("User TOTP has been deleted, switched to email verification")
-                # If email verification is not enabled, consider authentication passed
-                # Should not normally reach here
-
             elif await verify_totp_key_with_replay_protection(user_id, totp_key.secret, verification_key, redis):
                 pass
-            elif len(verification_key) == BACKUP_CODE_LENGTH and check_totp_backup_code(totp_key, verification_key):
-                login_method = "totp_backup_code"
             else:
                 # Log detailed verification failure reason (ref: osu-web error handling)
                 if len(verification_key) != 6:
@@ -181,7 +176,10 @@ async def verify_session(
                         reason="incorrect_key",
                     )
         else:
-            success, message = await EmailVerificationService.verify_email_code(db, redis, user_id, verification_key)
+            totp_key = await current_user.awaitable_attrs.totp_key
+            success, message = await EmailVerificationService.verify_email_code(
+                db, redis, user_id, verification_key, totp_key is not None
+            )
             if not success:
                 raise VerifyFailedError(f"Email verification failed: {message}")
 

@@ -198,13 +198,19 @@ class EmailVerificationService:
         redis: Redis,
         user_id: int,
         code: str,
+        user_has_totp: bool = False,
     ) -> tuple[bool, str]:
         """Verify email verification code."""
         try:
             # Check if email verification feature is enabled
             if not settings.enable_email_verification:
-                logger.debug(f"Email verification is disabled, auto-approving for user {user_id}")
-                return True, "Verification successful (email verification disabled)"
+                if not user_has_totp:
+                    logger.debug(f"Email verification is disabled, auto-approving for user {user_id}")
+                    return True, "Verification successful (email verification disabled)"
+                logger.warning(
+                    f"Email verification is disabled, but user {user_id} has TOTP enabled. Verification failed."
+                )
+                return False, "Verification failed (email verification disabled, TOTP enabled)"
 
             # Check Redis first
             verification_id = await redis.get(f"email_verification:{user_id}:{code}")
