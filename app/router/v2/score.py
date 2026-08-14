@@ -645,7 +645,7 @@ async def download_score_replay(
     filename = f"{owner_username} playing {beatmap.beatmapset.artist} - {beatmap.beatmapset.title} [{beatmap.version}] {gamemode.readable} ({ended_at:%Y-%m-%d}).osr"  # noqa: E501
     encoded_filename = quote(filename)
     if encoded_filename != filename:
-        content_disposition = f'attatchment; filename*=utf-8\'\' filename = "{filename}"'  # RFC 5987
+        content_disposition = f"attatchment; filename*=utf-8'' filename = \"{filename}\""  # RFC 5987
     else:
         content_disposition = f'attachment; filename="{filename}"'
 
