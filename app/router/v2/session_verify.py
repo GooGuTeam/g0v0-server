@@ -14,9 +14,12 @@ from app.database.auth import TotpKeys
 from app.dependencies.api_version import APIVersion
 from app.dependencies.database import Database, Redis, get_redis
 from app.dependencies.geoip import IPAddress
+from app.dependencies.rate_limit import create_rate_limiter
 from app.dependencies.user import UserAndToken, get_client_user_and_token
 from app.dependencies.user_agent import UserAgentInfo
 from app.log import log
+
+from pyrate_limiter import Duration, Rate
 
 logger = log("Verification")
 from app.models.error import ErrorType, RequestError
@@ -79,6 +82,9 @@ class VerifyFailedError(Exception):
         401: {"model": VerifyMethod, "description": "Verification failed, returns current verification method"},
         204: {"description": "Verification successful, no content returned"},
     },
+    dependencies=[
+        Depends(create_rate_limiter(Rate(3, Duration.MINUTE * 5), bucket_key="rate-limit:v2:session-verify")),
+    ],
 )
 async def verify_session(
     request: Request,
@@ -243,6 +249,11 @@ async def verify_session(
     description="Resend the email verification code",
     response_model=SessionReissueResponse,
     tags=["Verification"],
+    dependencies=[
+        Depends(
+            create_rate_limiter(Rate(3, Duration.MINUTE * 5), bucket_key="rate-limit:v2:reissue-verification-code")
+        ),
+    ],
 )
 async def reissue_verification_code(
     db: Database,
@@ -315,6 +326,9 @@ async def reissue_verification_code(
     description="Fall back to email verification when TOTP verification is unavailable",
     response_model=VerifyMethod,
     tags=["Verification"],
+    dependencies=[
+        Depends(create_rate_limiter(Rate(3, Duration.MINUTE * 5), bucket_key="rate-limit:v2:mail-fallback")),
+    ],
 )
 async def fallback_email(
     db: Database,
