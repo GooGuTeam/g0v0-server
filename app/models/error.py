@@ -104,6 +104,15 @@ class ErrorType(Enum):
         "You cannot join or leave a realtime room by API",
     )
 
+    # Score submission
+    SCORE_TOKEN_USER_MISMATCH = ("score_token_user_mismatch", 403, "Score token user mismatch")
+    SCORE_TOKEN_PLAYLIST_ITEM_MISMATCH = (
+        "score_token_playlist_item_mismatch",
+        403,
+        "Score token playlist item mismatch",
+    )
+    SCORE_TOKEN_ROOM_MISMATCH = ("score_token_room_mismatch", 403, "Score token room mismatch")
+
     # Playlists
     PLAYLIST_EMPTY_ON_CREATION = (
         "playlist_empty_on_creation",

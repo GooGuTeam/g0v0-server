@@ -1093,6 +1093,15 @@ async def submit_playlist_score(
     room = await session.get(Room, room_id)
     if not room:
         raise RequestError(ErrorType.ROOM_NOT_FOUND)
+    score_token = (await session.exec(select(ScoreToken).where(ScoreToken.id == token))).first()
+    if not score_token:
+        raise RequestError(ErrorType.SCORE_TOKEN_NOT_FOUND)
+    if score_token.user_id != user_id:
+        raise RequestError(ErrorType.SCORE_TOKEN_USER_MISMATCH)
+    if score_token.playlist_item_id != playlist_id:
+        raise RequestError(ErrorType.SCORE_TOKEN_PLAYLIST_ITEM_MISMATCH)
+    if score_token.room_id != room_id:
+        raise RequestError(ErrorType.SCORE_TOKEN_ROOM_MISMATCH)
     room_category = room.category
     score_resp = await submit_score(
         background_task,
