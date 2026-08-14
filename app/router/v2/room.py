@@ -303,12 +303,13 @@ async def delete_room(
     db_room = (await db.exec(select(Room).where(Room.id == room_id))).first()
     if db_room is None:
         raise RequestError(ErrorType.ROOM_NOT_FOUND)
-    else:
-        current_user_id = current_user.id
-        db_room.ends_at = utcnow()
-        await db.commit()
-        hub.emit(RoomEndedEvent(room_id=room_id, actor_user_id=current_user_id))
-        return None
+    if db_room.host_id != current_user.id:
+        raise RequestError(ErrorType.YOU_CANNOT_END_ROOM)
+    current_user_id = current_user.id
+    db_room.ends_at = utcnow()
+    await db.commit()
+    hub.emit(RoomEndedEvent(room_id=room_id, actor_user_id=current_user_id))
+    return None
 
 
 @router.put(
@@ -341,6 +342,8 @@ async def add_user_to_room(
     """
     if await current_user.is_restricted(db):
         raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
+    if current_user.id != user_id:
+        raise RequestError(ErrorType.YOU_CANNOT_LET_OTHERS_JOIN_OR_REMOVE)
 
     db_room = (await db.exec(select(Room).where(Room.id == room_id))).first()
     if db_room is not None:
@@ -384,6 +387,8 @@ async def remove_user_from_room(
     """
     if await current_user.is_restricted(db):
         raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
+    if current_user.id != user_id:
+        raise RequestError(ErrorType.YOU_CANNOT_LET_OTHERS_JOIN_OR_REMOVE)
 
     db_room = (await db.exec(select(Room).where(Room.id == room_id))).first()
     if db_room is not None:

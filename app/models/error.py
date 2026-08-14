@@ -43,6 +43,7 @@ class ErrorType(Enum):
     PLAYLIST_ITEM_NOT_FOUND = ("playlist_item_not_found", 404, "Playlist item not found")
     REPLAY_FILE_NOT_FOUND = ("replay_file_not_found", 404, "Replay file not found")
     CHANNEL_NOT_FOUND = ("channel_not_found", 404, "Channel not found")
+    YOU_ARE_NOT_IN_CHANNEL = ("you_are_not_in_channel", 404, "You are not in this channel")
     TAG_NOT_FOUND = ("tag_not_found", 404, "Tag not found")
     RELATIONSHIP_NOT_FOUND = ("relationship_not_found", 404, "Relationship not found")
     TEAM_NOT_FOUND = ("team_not_found", 404, "Team not found")
@@ -83,6 +84,12 @@ class ErrorType(Enum):
         "cannot_calculate_difficulty",
         422,
         "Cannot calculate difficulty for the specified ruleset",
+    )
+    YOU_CANNOT_END_ROOM = ("you_cannot_end_room", 403, "You cannot end this room")
+    YOU_CANNOT_LET_OTHERS_JOIN_OR_REMOVE = (
+        "you_cannot_let_others_join_or_remove",
+        403,
+        "You cannot let others join or remove from this room",
     )
     ROOM_HAS_ENDED = ("room_has_ended", 400, "Room has ended")
     ROOM_ENDED_CANNOT_ACCEPT_NEW = (
