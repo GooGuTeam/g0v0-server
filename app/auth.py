@@ -66,15 +66,15 @@ def validate_username(username: str) -> list[str]:
         errors.append("Username is required")
         return errors
 
-    if len(username) < 3:
-        errors.append("Username must be at least 3 characters long")
+    if len(username) < 1:
+        errors.append("Username must be at least 1 characters long")
 
     if len(username) > 15:
         errors.append("Username must be at most 15 characters long")
 
-    # Check username format (only letters, numbers, underscores, hyphens)
-    if not re.match(r"^[a-zA-Z0-9_-]+$", username):
-        errors.append("Username can only contain letters, numbers, underscores, and hyphens")
+    # Block whitespace and control characters (allow all other Unicode)
+    if re.search(r"[\s\x00-\x1f\x7f]", username):
+        errors.append("Username cannot contain spaces or control characters")
 
     # Check if starts with a number
     if username[0].isdigit():
