@@ -15,6 +15,7 @@ Functions:
     verify_token: Verify and decode a JWT token.
 """
 
+import asyncio
 from datetime import timedelta
 import hashlib
 import re
@@ -615,6 +616,9 @@ async def _store_totp_key(user: User, secret: str, db: AsyncSession) -> list[str
     return backup_codes
 
 
+totp_lock = asyncio.Lock()
+
+
 async def finish_create_totp_key(
     user: User, code: str, redis: Redis, db: AsyncSession
 ) -> tuple[FinishStatus, list[str]]:
@@ -632,25 +636,26 @@ async def finish_create_totp_key(
         A tuple of (FinishStatus, backup_codes). Backup codes are only
         returned on success.
     """
-    data = await redis.hgetall(totp_redis_key(user))
-    if not data or "secret" not in data or "fails" not in data:
-        return FinishStatus.INVALID, []
+    async with totp_lock:
+        data = await redis.hgetall(totp_redis_key(user))
+        if not data or "secret" not in data or "fails" not in data:
+            return FinishStatus.INVALID, []
 
-    secret = cast(str, data["secret"])
-    fails = int(data["fails"])
+        secret = cast(str, data["secret"])
+        fails = int(data["fails"])
 
-    if fails >= 3:
-        await redis.delete(totp_redis_key(user))
-        return FinishStatus.TOO_MANY_ATTEMPTS, []
+        if fails >= 3:
+            await redis.delete(totp_redis_key(user))
+            return FinishStatus.TOO_MANY_ATTEMPTS, []
 
-    if verify_totp_key(secret, code):
-        await redis.delete(totp_redis_key(user))
-        backup_codes = await _store_totp_key(user, secret, db)
-        return FinishStatus.SUCCESS, backup_codes
-    else:
-        fails += 1
-        await redis.hset(totp_redis_key(user), "fails", str(fails))
-        return FinishStatus.FAILED, []
+        if verify_totp_key(secret, code):
+            await redis.delete(totp_redis_key(user))
+            backup_codes = await _store_totp_key(user, secret, db)
+            return FinishStatus.SUCCESS, backup_codes
+        else:
+            fails += 1
+            await redis.hset(totp_redis_key(user), "fails", str(fails))
+            return FinishStatus.FAILED, []
 
 
 async def disable_totp(user: User, db: AsyncSession) -> None:
