@@ -8,7 +8,7 @@ from app.config import settings
 from app.database.notification import Notification, UserNotification
 from app.database.user import User
 from app.dependencies.database import Database
-from app.dependencies.user import get_client_user
+from app.dependencies.user import ClientUser
 from app.helpers import utcnow
 from app.models.chat import ChatEvent
 from app.router.v2 import api_v2_router as router
@@ -19,7 +19,7 @@ from .server import (
     server,
 )
 
-from fastapi import Body, Query, Security
+from fastapi import Body, Query
 from pydantic import BaseModel
 from sqlmodel import col, func, select
 
@@ -53,8 +53,8 @@ class NotificationResp(BaseModel):
 )
 async def get_notifications(
     session: Database,
+    current_user: ClientUser,
     max_id: int | None = Query(None, description="Get notifications with ID less than this value"),
-    current_user: User = Security(get_client_user),
 ):
     """Get unread notifications for the current user.
 
@@ -162,9 +162,9 @@ async def _get_notifications(
 )
 async def mark_notifications_as_read(
     session: Database,
+    current_user: ClientUser,
     identities: list[_IdentityReq] = Body(default_factory=list),
     notifications: list[_IdentityReq] = Body(default_factory=list),
-    current_user: User = Security(get_client_user),
 ):
     """Mark specified notifications as read.
 

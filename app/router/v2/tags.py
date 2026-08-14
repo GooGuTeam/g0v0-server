@@ -11,7 +11,7 @@ from app.database.beatmap_tags import BeatmapTagVote
 from app.database.score import Score
 from app.database.user import User
 from app.dependencies.database import Database
-from app.dependencies.user import get_client_user
+from app.dependencies.user import ClientUser
 from app.models.error import ErrorType, RequestError
 from app.models.events.beatmapset import BeatmapTagVoteChangedEvent
 from app.models.score import Rank
@@ -20,7 +20,7 @@ from app.plugins import hub
 
 from .router import router
 
-from fastapi import Depends, Path
+from fastapi import Path
 from pydantic import BaseModel
 from sqlmodel import col, exists, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -89,7 +89,7 @@ async def vote_beatmap_tags(
     beatmap_id: Annotated[int, Path(..., description="Beatmap ID")],
     tag_id: Annotated[int, Path(..., description="Tag ID")],
     session: Database,
-    current_user: Annotated[User, Depends(get_client_user)],
+    current_user: ClientUser,
 ) -> None:
     """Vote for a tag on a beatmap.
 
@@ -141,7 +141,7 @@ async def devote_beatmap_tags(
     beatmap_id: Annotated[int, Path(..., description="Beatmap ID")],
     tag_id: Annotated[int, Path(..., description="Tag ID")],
     session: Database,
-    current_user: Annotated[User, Depends(get_client_user)],
+    current_user: ClientUser,
 ) -> None:
     """Remove a tag vote from a beatmap.
 

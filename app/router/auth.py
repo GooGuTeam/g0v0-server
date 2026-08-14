@@ -540,6 +540,18 @@ async def oauth_token(
                 error="invalid_grant",
                 error_type=ErrorType.INVALID_REFRESH_TOKEN,
             )
+        if token_record.client_id != client_id:
+            return raise_oauth_error(
+                error="invalid_client",
+                error_type=ErrorType.INVALID_AUTH_CLIENT,
+                hint="Refresh token does not belong to the provided client",
+            )
+        if token_record.scope != scope:
+            return raise_oauth_error(
+                error="invalid_scope",
+                error_type=ErrorType.MISMATCH_SCOPE,
+                hint="Requested scope does not match the original token's scope",
+            )
 
         # Generate new access token
         access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)

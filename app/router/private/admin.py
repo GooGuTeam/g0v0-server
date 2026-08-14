@@ -46,7 +46,7 @@ class SessionsResp(BaseModel):
 )
 async def get_sessions(
     session: Database,
-    user_and_token: Annotated[UserAndToken, Security(get_client_user_and_token)],
+    user_and_token: Annotated[UserAndToken, Security(get_client_user_and_token, scopes=["*"])],
     geoip: GeoIPService,
 ):
     current_user, token = user_and_token

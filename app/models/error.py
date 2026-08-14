@@ -198,6 +198,7 @@ class ErrorType(Enum):
     # Password & OAuth
     # General error for client not providing enough information or being malformed
     INVALID_AUTH_CLIENT = ("invalid_auth_client", 401, "Invalid client credentials")
+    MISMATCH_SCOPE = ("mismatch_scope", 422, "The requested scope does not match the client's allowed scopes")
 
     INCORRECT_SIGNIN = ("incorrect_signin", 403, "Incorrect sign-in")
     INVALID_SCOPE = (

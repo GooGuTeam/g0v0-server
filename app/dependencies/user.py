@@ -106,20 +106,13 @@ async def v1_authorize(
 
 async def get_client_user_and_token(
     db: Database,
+    security_scopes: SecurityScopes,
     token: Annotated[str | None, Depends(oauth2_password), FastDepends(oauth2_password)],
 ) -> tuple[User, OAuthToken]:
     if token is None:
         raise RequestError(ErrorType.NOT_AUTHENTICATED)
 
-    token_record = await get_token_by_access_token(db, token)
-    if not token_record:
-        raise RequestError(ErrorType.INVALID_OR_EXPIRED_TOKEN)
-
-    user = (await db.exec(select(User).where(User.id == token_record.user_id))).first()
-    if not user:
-        raise RequestError(ErrorType.INVALID_OR_EXPIRED_TOKEN)
-
-    return user, token_record
+    return await _validate_token(db, token, security_scopes)
 
 
 UserAndToken = tuple[User, OAuthToken]
