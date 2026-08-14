@@ -348,9 +348,9 @@ async def add_user_to_room(
         raise RequestError(ErrorType.YOU_CANNOT_LET_OTHERS_JOIN_OR_REMOVE)
 
     db_room = (await db.exec(select(Room).where(Room.id == room_id))).first()
-    if db_room.category == RoomCategory.REALTIME:
-        raise RequestError(ErrorType.YOU_CANNOT_JOIN_OR_LEAVE_REALTIME_ROOM_BY_API)
     if db_room is not None:
+        if db_room.category == RoomCategory.REALTIME:
+            raise RequestError(ErrorType.YOU_CANNOT_JOIN_OR_LEAVE_REALTIME_ROOM_BY_API)
         await _participate_room(room_id, user_id, db_room, db, redis)
         await db.commit()
         await db.refresh(db_room)
@@ -395,9 +395,9 @@ async def remove_user_from_room(
         raise RequestError(ErrorType.YOU_CANNOT_LET_OTHERS_JOIN_OR_REMOVE)
 
     db_room = (await db.exec(select(Room).where(Room.id == room_id))).first()
-    if db_room.category == RoomCategory.REALTIME:
-        raise RequestError(ErrorType.YOU_CANNOT_JOIN_OR_LEAVE_REALTIME_ROOM_BY_API)
     if db_room is not None:
+        if db_room.category == RoomCategory.REALTIME:
+            raise RequestError(ErrorType.YOU_CANNOT_JOIN_OR_LEAVE_REALTIME_ROOM_BY_API)
         participated_user = (
             await db.exec(
                 select(RoomParticipatedUser).where(
