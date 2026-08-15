@@ -21,6 +21,7 @@ import hashlib
 import re
 import secrets
 import string
+import unicodedata
 from typing import cast
 
 from app.config import settings
@@ -72,13 +73,13 @@ def validate_username(username: str) -> list[str]:
     if len(username) > 15:
         errors.append("Username must be at most 15 characters long")
 
-    # Block whitespace and control characters (allow all other Unicode)
-    if re.search(r"[\s\x00-\x1f\x7f]", username):
-        errors.append("Username cannot contain spaces or control characters")
-
-    # Check if starts with a number
-    if username[0].isdigit():
-        errors.append("Username cannot start with a number")
+    # Block invisible characters by Unicode category (control, format, surrogate,
+    # line/paragraph separators, and whitespace). Allows all visible Unicode characters.
+    if any(
+        unicodedata.category(ch) in {"Cc", "Cf", "Cs", "Zl", "Zp", "Zs"}
+        for ch in username
+    ):
+        errors.append("Username cannot contain invisible or control characters")
 
     if username.lower() in settings.banned_name:
         errors.append("This username is not allowed")
