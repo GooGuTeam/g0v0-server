@@ -18,11 +18,10 @@ Functions:
 import asyncio
 from datetime import timedelta
 import hashlib
-import re
 import secrets
 import string
-import unicodedata
 from typing import cast
+import unicodedata
 
 from app.config import settings
 from app.const import BACKUP_CODE_LENGTH
@@ -75,10 +74,7 @@ def validate_username(username: str) -> list[str]:
 
     # Block invisible characters by Unicode category (control, format, surrogate,
     # line/paragraph separators, and whitespace). Allows all visible Unicode characters.
-    if any(
-        unicodedata.category(ch) in {"Cc", "Cf", "Cs", "Zl", "Zp", "Zs"}
-        for ch in username
-    ):
+    if any(unicodedata.category(ch) in {"Cc", "Cf", "Cs", "Zl", "Zp", "Zs"} for ch in username):
         errors.append("Username cannot contain invisible or control characters")
 
     if username.lower() in settings.banned_name:
