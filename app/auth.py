@@ -76,7 +76,6 @@ def validate_username(username: str) -> list[str]:
     if re.search(r"[\s\x00-\x1f\x7f]", username):
         errors.append("Username cannot contain spaces or control characters")
 
-
     if username.lower() in settings.banned_name:
         errors.append("This username is not allowed")
 
