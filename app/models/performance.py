@@ -152,6 +152,7 @@ PerformanceAttributesUnion = (
     | CatchPerformanceAttributes
     | ManiaPerformanceAttributes
     | SentakkiPerformanceAttributes
+    | TauPerformanceAttribute
     | RushPerformanceAttributes
     | HishigataPerformanceAttributes
     | SoyokazePerformanceAttributes
