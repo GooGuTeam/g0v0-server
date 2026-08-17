@@ -73,9 +73,8 @@ def validate_username(username: str) -> list[str]:
         errors.append("Username must be at most 15 characters long")
 
     # Block whitespace and control characters (allow all other Unicode)
-    if re.search(r"[\s\x00-\x1f\x7f]", username):
+    if re.search(r"^[\w \[\]-]{2,15}$", username):
         errors.append("Username cannot contain spaces or control characters")
-
 
     if username.lower() in settings.banned_name:
         errors.append("This username is not allowed")
