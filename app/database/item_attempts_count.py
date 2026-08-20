@@ -11,16 +11,7 @@ from .user import User, UserDict, UserModel
 
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import Mapped
-from sqlmodel import (
-    BigInteger,
-    Column,
-    Field,
-    ForeignKey,
-    Relationship,
-    col,
-    func,
-    select,
-)
+from sqlmodel import Column, Field, ForeignKey, Integer, Relationship, col, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 
@@ -48,7 +39,7 @@ class ItemAttemptsCountModel(DatabaseModel[ItemAttemptsCountDict]):
     pp: float = 0
     room_id: int = Field(foreign_key="rooms.id", index=True)
     total_score: int = 0
-    user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
+    user_id: int = Field(sa_column=Column(Integer, ForeignKey("lazer_users.id"), index=True))
 
     @ondemand
     @staticmethod

@@ -7,7 +7,7 @@ from .beatmapset import Beatmapset
 from .user import User
 
 from sqlalchemy.orm import Mapped
-from sqlmodel import BigInteger, Column, Field, ForeignKey, Relationship, SQLModel
+from sqlmodel import BigInteger, Column, Field, ForeignKey, Integer, Relationship, SQLModel
 
 
 class BeatmapRating(SQLModel, table=True):
@@ -19,7 +19,7 @@ class BeatmapRating(SQLModel, table=True):
         sa_column=Column(BigInteger, primary_key=True, autoincrement=True),
     )
     beatmapset_id: int = Field(foreign_key="beatmapsets.id", index=True)
-    user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
+    user_id: int = Field(sa_column=Column(Integer, ForeignKey("lazer_users.id"), index=True))
     rating: int
 
     beatmapset: Mapped[Beatmapset] = Relationship()

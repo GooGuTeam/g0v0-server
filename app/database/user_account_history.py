@@ -12,7 +12,7 @@ from app.helpers import utcnow
 from app.models.model import UTCBaseModel
 
 from sqlalchemy.orm import Mapped
-from sqlmodel import BigInteger, Column, Field, ForeignKey, Integer, Relationship, SQLModel
+from sqlmodel import Column, Field, ForeignKey, Integer, Relationship, SQLModel
 
 if TYPE_CHECKING:
     from .user import User
@@ -50,7 +50,7 @@ class UserAccountHistory(UserAccountHistoryBase, table=True):
             primary_key=True,
         )
     )
-    user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
+    user_id: int = Field(sa_column=Column(Integer, ForeignKey("lazer_users.id"), index=True))
 
     user: Mapped["User"] = Relationship(back_populates="account_history")
 

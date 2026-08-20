@@ -67,23 +67,11 @@ from .user import User, UserDict, UserModel
 
 from pydantic import BaseModel, field_serializer, field_validator
 from redis.asyncio import Redis
-from sqlalchemy import Boolean, Column, DateTime, Index, TextClause, exists
+from sqlalchemy import Boolean, Column, DateTime, Index, Integer, TextClause, exists
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import Mapped, aliased, joinedload
 from sqlalchemy.sql.elements import ColumnElement
-from sqlmodel import (
-    JSON,
-    BigInteger,
-    Field,
-    ForeignKey,
-    Relationship,
-    SQLModel,
-    col,
-    func,
-    select,
-    text,
-    true,
-)
+from sqlmodel import JSON, BigInteger, Field, ForeignKey, Relationship, SQLModel, col, func, select, text, true
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 if TYPE_CHECKING:
@@ -159,7 +147,7 @@ class ScoreModel(AsyncAttrs, DatabaseModel[ScoreDict]):
     user_id: int = Field(
         default=None,
         sa_column=Column(
-            BigInteger,
+            Integer,
             ForeignKey("lazer_users.id"),
             index=True,
         ),

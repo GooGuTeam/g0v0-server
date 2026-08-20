@@ -15,16 +15,7 @@ from .verification import LoginSession
 
 from sqlalchemy import Column, DateTime
 from sqlalchemy.orm import Mapped
-from sqlmodel import (
-    JSON,
-    BigInteger,
-    Field,
-    ForeignKey,
-    Relationship,
-    SQLModel,
-    Text,
-    text,
-)
+from sqlmodel import JSON, Field, ForeignKey, Integer, Relationship, SQLModel, Text, text
 
 if TYPE_CHECKING:
     from .user import User
@@ -36,7 +27,7 @@ class OAuthToken(UTCBaseModel, SQLModel, table=True):
     __tablename__: str = "oauth_tokens"
 
     id: int = Field(default=None, primary_key=True, index=True)
-    user_id: int | None = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True, nullable=True))
+    user_id: int | None = Field(sa_column=Column(Integer, ForeignKey("lazer_users.id"), index=True, nullable=True))
     client_id: int = Field(index=True)
     access_token: str = Field(max_length=500, unique=True)
     refresh_token: str = Field(max_length=500, unique=True)
@@ -59,7 +50,7 @@ class OAuthClient(UTCBaseModel, SQLModel, table=True):
     client_id: int | None = Field(default=None, primary_key=True, index=True)
     client_secret: str = Field(default_factory=secrets.token_hex, index=True, exclude=True)
     redirect_uris: list[str] = Field(default_factory=list, sa_column=Column(JSON))
-    owner_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
+    owner_id: int = Field(sa_column=Column(Integer, ForeignKey("lazer_users.id"), index=True))
 
     created_at: datetime = Field(default_factory=utcnow, sa_column=Column(DateTime))
     updated_at: datetime = Field(
@@ -75,14 +66,14 @@ class V1APIKeys(SQLModel, table=True):
     id: int = Field(default=None, primary_key=True)
     name: str = Field(max_length=100, index=True)
     key: str = Field(default_factory=secrets.token_hex, index=True)
-    owner_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
+    owner_id: int = Field(sa_column=Column(Integer, ForeignKey("lazer_users.id"), index=True))
 
 
 class TotpKeys(SQLModel, table=True):
     """Database table for TOTP (two-factor authentication) keys."""
 
     __tablename__: str = "totp_keys"
-    user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), primary_key=True))
+    user_id: int = Field(sa_column=Column(Integer, ForeignKey("lazer_users.id"), primary_key=True))
     secret: str = Field(max_length=100)
     backup_keys: list[str] = Field(default_factory=list, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=utcnow, sa_column=Column(DateTime))

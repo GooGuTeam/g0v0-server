@@ -14,7 +14,7 @@ from app.models.score import GameMode
 from pydantic import BaseModel
 from sqlalchemy import Column, DateTime
 from sqlalchemy.orm import Mapped
-from sqlmodel import BigInteger, Field, ForeignKey, Relationship, SQLModel, Text, col, func, select
+from sqlmodel import Field, ForeignKey, Integer, Relationship, SQLModel, Text, col, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 if TYPE_CHECKING:
@@ -118,7 +118,7 @@ class TeamBase(SQLModel, UTCBaseModel):
     flag_url: str | None = Field(default=None)
     cover_url: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow, sa_column=Column(DateTime))
-    leader_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id")))
+    leader_id: int = Field(sa_column=Column(Integer, ForeignKey("lazer_users.id")))
     description: str | None = Field(default=None, sa_column=Column(Text))
     playmode: GameMode = Field(default=GameMode.OSU)
     website: str | None = Field(default=None, sa_column=Column(Text))
@@ -165,7 +165,7 @@ class TeamMember(SQLModel, UTCBaseModel, table=True):
 
     __tablename__: str = "team_members"
 
-    user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), primary_key=True))
+    user_id: int = Field(sa_column=Column(Integer, ForeignKey("lazer_users.id"), primary_key=True))
     team_id: int = Field(foreign_key="teams.id")
     joined_at: datetime = Field(default_factory=utcnow, sa_column=Column(DateTime))
 
@@ -178,7 +178,7 @@ class TeamRequest(SQLModel, UTCBaseModel, table=True):
 
     __tablename__: str = "team_requests"
 
-    user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), primary_key=True))
+    user_id: int = Field(sa_column=Column(Integer, ForeignKey("lazer_users.id"), primary_key=True))
     team_id: int = Field(foreign_key="teams.id", primary_key=True)
     requested_at: datetime = Field(default_factory=utcnow, sa_column=Column(DateTime))
 

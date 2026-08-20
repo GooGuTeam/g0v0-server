@@ -9,17 +9,7 @@ from .user import User
 
 from redis.asyncio import Redis
 from sqlalchemy.orm import Mapped
-from sqlmodel import (
-    BigInteger,
-    Column,
-    Field,
-    ForeignKey,
-    Relationship,
-    SQLModel,
-    col,
-    func,
-    select,
-)
+from sqlmodel import BigInteger, Column, Field, ForeignKey, Integer, Relationship, SQLModel, col, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 if TYPE_CHECKING:
@@ -31,7 +21,7 @@ class PlaylistBestScore(SQLModel, table=True):
 
     __tablename__: str = "playlist_best_scores"
 
-    user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
+    user_id: int = Field(sa_column=Column(Integer, ForeignKey("lazer_users.id"), index=True))
     score_id: int = Field(sa_column=Column(BigInteger, ForeignKey("scores.id"), primary_key=True))
     room_id: int = Field(foreign_key="rooms.id", index=True)
     playlist_id: int = Field(index=True)

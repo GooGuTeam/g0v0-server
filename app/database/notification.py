@@ -11,16 +11,7 @@ from app.helpers import utcnow
 from app.models.notification import NotificationDetail, NotificationName
 
 from sqlalchemy.orm import Mapped
-from sqlmodel import (
-    JSON,
-    BigInteger,
-    Column,
-    DateTime,
-    Field,
-    ForeignKey,
-    Relationship,
-    SQLModel,
-)
+from sqlmodel import JSON, BigInteger, Column, DateTime, Field, ForeignKey, Integer, Relationship, SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 
@@ -52,7 +43,7 @@ class UserNotification(SQLModel, table=True):
         default=None,
     )
     notification_id: int = Field(index=True, foreign_key="notifications.id")
-    user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
+    user_id: int = Field(sa_column=Column(Integer, ForeignKey("lazer_users.id"), index=True))
     is_read: bool = Field(index=True)
 
     notification: Mapped[Notification] = Relationship(sa_relationship_kwargs={"lazy": "joined"})

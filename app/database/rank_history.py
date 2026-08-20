@@ -13,17 +13,7 @@ from app.models.score import GameMode
 
 from pydantic import BaseModel
 from sqlalchemy.orm import Mapped
-from sqlmodel import (
-    BigInteger,
-    Column,
-    Date,
-    Field,
-    ForeignKey,
-    Relationship,
-    SQLModel,
-    col,
-    select,
-)
+from sqlmodel import BigInteger, Column, Date, Field, ForeignKey, Integer, Relationship, SQLModel, col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 if TYPE_CHECKING:
@@ -36,7 +26,7 @@ class RankHistory(SQLModel, table=True):
     __tablename__: str = "rank_history"
 
     id: int | None = Field(default=None, sa_column=Column(BigInteger, primary_key=True))
-    user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
+    user_id: int = Field(sa_column=Column(Integer, ForeignKey("lazer_users.id"), index=True))
     mode: GameMode
     rank: int
     date: dt = Field(
@@ -53,7 +43,7 @@ class RankTop(SQLModel, table=True):
     __tablename__: str = "rank_top"
 
     id: int | None = Field(default=None, sa_column=Column(BigInteger, primary_key=True))
-    user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
+    user_id: int = Field(sa_column=Column(Integer, ForeignKey("lazer_users.id"), index=True))
     mode: GameMode
     rank: int
     date: dt = Field(

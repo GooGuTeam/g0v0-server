@@ -26,7 +26,7 @@ from .user import User, UserDict, UserModel
 from pydantic import field_validator
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import Mapped
-from sqlmodel import BigInteger, Column, DateTime, Field, ForeignKey, Relationship, SQLModel, col, select
+from sqlmodel import Column, DateTime, Field, ForeignKey, Integer, Relationship, SQLModel, col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 
@@ -216,7 +216,7 @@ class Room(AsyncAttrs, RoomModel, table=True):
 
     __tablename__: str = "rooms"
 
-    host_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
+    host_id: int = Field(sa_column=Column(Integer, ForeignKey("lazer_users.id"), index=True))
     password: str | None = Field(default=None)
 
     host: Mapped[User] = Relationship()

@@ -10,16 +10,9 @@ from typing import TYPE_CHECKING, Any, Optional
 from app.models.model import UTCBaseModel
 from app.models.mods import APIMod
 
-from sqlalchemy import Column, DateTime, ForeignKey, Index, SmallInteger
+from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, SmallInteger
 from sqlalchemy.orm import Mapped
-from sqlmodel import (
-    JSON,
-    BigInteger,
-    Field,
-    Relationship,
-    SQLModel,
-    func,
-)
+from sqlmodel import JSON, Field, Relationship, SQLModel, func
 
 if TYPE_CHECKING:
     from .beatmap import Beatmap
@@ -31,7 +24,7 @@ class MatchmakingUserStatsBase(SQLModel, UTCBaseModel):
 
     user_id: int = Field(
         default=None,
-        sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), primary_key=True),
+        sa_column=Column(Integer, ForeignKey("lazer_users.id"), primary_key=True),
     )
     pool_id: int = Field(
         default=None,

@@ -11,16 +11,7 @@ from .statistics import UserStatistics
 from .user import User
 
 from sqlalchemy.orm import Mapped
-from sqlmodel import (
-    BigInteger,
-    Column,
-    Field,
-    Float,
-    ForeignKey,
-    Relationship,
-    SQLModel,
-    select,
-)
+from sqlmodel import BigInteger, Column, Field, Float, ForeignKey, Integer, Relationship, SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 if TYPE_CHECKING:
@@ -32,7 +23,7 @@ class BestScore(SQLModel, table=True):
     """Tracks a user's best PP scores for each beatmap/mode combination."""
 
     __tablename__: str = "best_scores"
-    user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
+    user_id: int = Field(sa_column=Column(Integer, ForeignKey("lazer_users.id"), index=True))
     score_id: int = Field(sa_column=Column(BigInteger, ForeignKey("scores.id"), primary_key=True))
     beatmap_id: int = Field(foreign_key="beatmaps.id", index=True)
     gamemode: GameMode = Field(index=True)

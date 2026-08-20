@@ -10,16 +10,7 @@ from app.helpers import are_adjacent_weeks, utcnow
 from app.models.model import UTCBaseModel
 
 from sqlalchemy.orm import Mapped
-from sqlmodel import (
-    BigInteger,
-    Column,
-    DateTime,
-    Field,
-    ForeignKey,
-    Relationship,
-    SQLModel,
-    select,
-)
+from sqlmodel import Column, DateTime, Field, ForeignKey, Integer, Relationship, SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 if TYPE_CHECKING:
@@ -49,7 +40,7 @@ class DailyChallengeStats(DailyChallengeStatsBase, table=True):
     user_id: int | None = Field(
         default=None,
         sa_column=Column(
-            BigInteger,
+            Integer,
             ForeignKey("lazer_users.id"),
             unique=True,
             index=True,

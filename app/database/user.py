@@ -33,19 +33,7 @@ from .user_preference import DEFAULT_ORDER, UserPreference
 from pydantic import field_validator
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import Mapped
-from sqlmodel import (
-    JSON,
-    BigInteger,
-    Column,
-    DateTime,
-    Field,
-    Relationship,
-    col,
-    exists,
-    func,
-    select,
-    text,
-)
+from sqlmodel import JSON, Column, DateTime, Field, Integer, Relationship, col, exists, func, select, text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 if TYPE_CHECKING:
@@ -283,7 +271,7 @@ class UserModel(DatabaseModel[UserDict]):
     # ? default_group: str|None
     id: int = Field(
         default=None,
-        sa_column=Column(BigInteger, primary_key=True, autoincrement=True, index=True),
+        sa_column=Column(Integer, primary_key=True, autoincrement=True, index=True),
     )
     is_active: bool = True
     is_bot: bool = False

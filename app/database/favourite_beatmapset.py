@@ -10,15 +10,7 @@ from .user import User
 
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import Mapped
-from sqlmodel import (
-    BigInteger,
-    Column,
-    DateTime,
-    Field,
-    ForeignKey,
-    Relationship,
-    SQLModel,
-)
+from sqlmodel import BigInteger, Column, DateTime, Field, ForeignKey, Integer, Relationship, SQLModel
 
 
 class FavouriteBeatmapset(AsyncAttrs, SQLModel, table=True):
@@ -34,7 +26,7 @@ class FavouriteBeatmapset(AsyncAttrs, SQLModel, table=True):
     user_id: int = Field(
         default=None,
         sa_column=Column(
-            BigInteger,
+            Integer,
             ForeignKey("lazer_users.id"),
             index=True,
         ),

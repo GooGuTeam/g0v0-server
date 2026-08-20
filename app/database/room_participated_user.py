@@ -10,15 +10,7 @@ from app.helpers import utcnow
 
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import Mapped
-from sqlmodel import (
-    BigInteger,
-    Column,
-    DateTime,
-    Field,
-    ForeignKey,
-    Relationship,
-    SQLModel,
-)
+from sqlmodel import BigInteger, Column, DateTime, Field, ForeignKey, Integer, Relationship, SQLModel
 
 if TYPE_CHECKING:
     from .room import Room
@@ -32,7 +24,7 @@ class RoomParticipatedUser(AsyncAttrs, SQLModel, table=True):
 
     id: int | None = Field(default=None, sa_column=Column(BigInteger, primary_key=True, autoincrement=True))
     room_id: int = Field(sa_column=Column(ForeignKey("rooms.id"), nullable=False))
-    user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), nullable=False))
+    user_id: int = Field(sa_column=Column(Integer, ForeignKey("lazer_users.id"), nullable=False))
     joined_at: datetime = Field(
         sa_column=Column(DateTime(timezone=True), nullable=False),
         default_factory=utcnow,

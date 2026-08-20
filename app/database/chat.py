@@ -17,18 +17,7 @@ from .user import User, UserDict, UserModel
 
 from pydantic import BaseModel
 from sqlalchemy.orm import Mapped
-from sqlmodel import (
-    VARCHAR,
-    BigInteger,
-    Column,
-    DateTime,
-    Field,
-    ForeignKey,
-    Relationship,
-    SQLModel,
-    col,
-    select,
-)
+from sqlmodel import VARCHAR, Column, DateTime, Field, ForeignKey, Integer, Relationship, SQLModel, col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 if TYPE_CHECKING:
@@ -273,7 +262,7 @@ class ChatMessageModel(DatabaseModel[ChatMessageDict]):
     channel_id: int = Field(index=True, foreign_key="chat_channels.channel_id")
     content: str = Field(sa_column=Column(VARCHAR(1000)))
     message_id: int = Field(index=True, primary_key=True, default=None)
-    sender_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
+    sender_id: int = Field(sa_column=Column(Integer, ForeignKey("lazer_users.id"), index=True))
     timestamp: datetime = Field(sa_column=Column(DateTime, index=True), default_factory=utcnow)
     type: MessageType = Field(default=MessageType.PLAIN, index=True)
     uuid: str | None = Field(default=None)
@@ -302,7 +291,7 @@ class SilenceUser(UTCBaseModel, SQLModel, table=True):
 
     __tablename__: str = "chat_silence_users"
     id: int = Field(primary_key=True, default=None, index=True)
-    user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
+    user_id: int = Field(sa_column=Column(Integer, ForeignKey("lazer_users.id"), index=True))
     channel_id: int = Field(foreign_key="chat_channels.channel_id", index=True)
     until: datetime | None = Field(sa_column=Column(DateTime, index=True), default=None)
     reason: str | None = Field(default=None, sa_column=Column(VARCHAR(255), index=True))

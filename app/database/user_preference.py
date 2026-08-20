@@ -8,7 +8,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.orm import Mapped
-from sqlmodel import JSON, BigInteger, Column, Field, ForeignKey, Relationship, SQLModel
+from sqlmodel import JSON, Column, Field, ForeignKey, Integer, Relationship, SQLModel
 
 if TYPE_CHECKING:
     from .user import User
@@ -75,7 +75,7 @@ class UserPreference(SQLModel, table=True):
     """Database table for user preferences."""
 
     user_id: int = Field(
-        exclude=True, sa_column=Column(BigInteger, ForeignKey("lazer_users.id", ondelete="CASCADE"), primary_key=True)
+        exclude=True, sa_column=Column(Integer, ForeignKey("lazer_users.id", ondelete="CASCADE"), primary_key=True)
     )
 
     theme: str = "light"

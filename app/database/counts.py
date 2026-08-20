@@ -7,14 +7,7 @@ from datetime import date
 from typing import TYPE_CHECKING
 
 from sqlalchemy.orm import Mapped
-from sqlmodel import (
-    BigInteger,
-    Column,
-    Field,
-    ForeignKey,
-    Relationship,
-    SQLModel,
-)
+from sqlmodel import BigInteger, Column, Field, ForeignKey, Integer, Relationship, SQLModel
 
 if TYPE_CHECKING:
     from .user import User
@@ -37,7 +30,7 @@ class MonthlyPlaycounts(CountBase, table=True):
         default=None,
         sa_column=Column(BigInteger, primary_key=True, autoincrement=True),
     )
-    user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
+    user_id: int = Field(sa_column=Column(Integer, ForeignKey("lazer_users.id"), index=True))
     user: Mapped["User"] = Relationship(back_populates="monthly_playcounts")
 
 
@@ -50,7 +43,7 @@ class ReplayWatchedCount(CountBase, table=True):
         default=None,
         sa_column=Column(BigInteger, primary_key=True, autoincrement=True),
     )
-    user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
+    user_id: int = Field(sa_column=Column(Integer, ForeignKey("lazer_users.id"), index=True))
     user: Mapped["User"] = Relationship(back_populates="replays_watched_counts")
 
 

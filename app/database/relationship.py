@@ -16,6 +16,7 @@ from sqlmodel import (
     Column,
     Field,
     ForeignKey,
+    Integer,
     Relationship as SQLRelationship,
     select,
 )
@@ -55,7 +56,7 @@ class RelationshipModel(DatabaseModel[RelationshipDict]):
     user_id: int = Field(
         default=None,
         sa_column=Column(
-            BigInteger,
+            Integer,
             ForeignKey("lazer_users.id"),
             index=True,
         ),
@@ -64,7 +65,7 @@ class RelationshipModel(DatabaseModel[RelationshipDict]):
     target_id: int = Field(
         default=None,
         sa_column=Column(
-            BigInteger,
+            Integer,
             ForeignKey("lazer_users.id"),
             index=True,
         ),

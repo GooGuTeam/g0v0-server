@@ -18,16 +18,7 @@ from .events import Event, EventType
 
 from redis.asyncio import Redis
 from sqlalchemy.orm import Mapped, joinedload
-from sqlmodel import (
-    BigInteger,
-    Column,
-    DateTime,
-    Field,
-    ForeignKey,
-    Relationship,
-    SQLModel,
-    select,
-)
+from sqlmodel import Column, DateTime, Field, ForeignKey, Integer, Relationship, SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 if TYPE_CHECKING:
@@ -47,7 +38,7 @@ class UserAchievement(UserAchievementBase, table=True):
     __tablename__: str = "lazer_user_achievements"
 
     id: int | None = Field(default=None, primary_key=True, index=True)
-    user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id")), exclude=True)
+    user_id: int = Field(sa_column=Column(Integer, ForeignKey("lazer_users.id")), exclude=True)
     user: Mapped["User"] = Relationship(back_populates="achievement")
 
 

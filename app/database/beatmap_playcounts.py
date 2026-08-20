@@ -14,15 +14,7 @@ from .events import Event, EventType
 
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import Mapped
-from sqlmodel import (
-    BigInteger,
-    Column,
-    Field,
-    ForeignKey,
-    Index,
-    Relationship,
-    select,
-)
+from sqlmodel import BigInteger, Column, Field, ForeignKey, Index, Integer, Relationship, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 if TYPE_CHECKING:
@@ -45,7 +37,7 @@ class BeatmapPlaycountsModel(AsyncAttrs, DatabaseModel[BeatmapPlaycountsDict]):
     """Base model for beatmap play counts with transformation support."""
 
     id: int = Field(default=None, sa_column=Column(BigInteger, primary_key=True, autoincrement=True), exclude=True)
-    user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
+    user_id: int = Field(sa_column=Column(Integer, ForeignKey("lazer_users.id"), index=True))
     beatmap_id: int = Field(foreign_key="beatmaps.id", index=True)
     playcount: int = Field(default=0, exclude=True)
 

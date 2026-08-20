@@ -13,7 +13,7 @@ from app.models.score import GameMode
 from .beatmap import Beatmap
 from .user import User
 
-from sqlalchemy import Column, DateTime, Index
+from sqlalchemy import Column, DateTime, Index, Integer
 from sqlalchemy.orm import Mapped
 from sqlmodel import BigInteger, Field, ForeignKey, Relationship, SQLModel
 
@@ -32,7 +32,7 @@ class ScoreTokenBase(SQLModel, UTCBaseModel):
     )
     score_id: int | None = Field(sa_column=Column(BigInteger), default=None)
     ruleset_id: GameMode
-    user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id")))
+    user_id: int = Field(sa_column=Column(Integer, ForeignKey("lazer_users.id")))
     beatmap_id: int = Field(foreign_key="beatmaps.id")
     room_id: int | None = Field(default=None)
     playlist_item_id: int | None = Field(default=None)  # playlist

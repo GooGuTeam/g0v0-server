@@ -10,15 +10,7 @@ from typing import Any
 from app.helpers import utcnow
 from app.models.model import UTCBaseModel
 
-from sqlmodel import (
-    JSON,
-    BigInteger,
-    Column,
-    DateTime,
-    Field,
-    ForeignKey,
-    SQLModel,
-)
+from sqlmodel import JSON, BigInteger, Column, DateTime, Field, ForeignKey, Integer, SQLModel
 
 
 class MultiplayerEventBase(SQLModel, UTCBaseModel):
@@ -27,7 +19,7 @@ class MultiplayerEventBase(SQLModel, UTCBaseModel):
     playlist_item_id: int | None = None
     user_id: int | None = Field(
         default=None,
-        sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True),
+        sa_column=Column(Integer, ForeignKey("lazer_users.id"), index=True),
     )
     created_at: datetime = Field(
         sa_column=Column(

@@ -13,17 +13,7 @@ from ._base import DatabaseModel, OnDemand, ondemand
 from .beatmap import Beatmap, BeatmapDict, BeatmapModel
 
 from sqlalchemy.orm import Mapped
-from sqlmodel import (
-    JSON,
-    BigInteger,
-    Column,
-    DateTime,
-    Field,
-    ForeignKey,
-    Relationship,
-    func,
-    select,
-)
+from sqlmodel import JSON, BigInteger, Column, DateTime, Field, ForeignKey, Integer, Relationship, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 if TYPE_CHECKING:
@@ -71,7 +61,7 @@ class PlaylistModel(DatabaseModel[PlaylistDict]):
     )
     freestyle: bool = Field(default=False)
     expired: bool = Field(default=False)
-    owner_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id")))
+    owner_id: int = Field(sa_column=Column(Integer, ForeignKey("lazer_users.id")))
     playlist_order: int = Field(default=0)
     played_at: datetime | None = Field(
         sa_column=Column(DateTime(timezone=True)),

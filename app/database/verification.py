@@ -11,9 +11,9 @@ from app.helpers import GeoIPHelper, extract_user_agent, utcnow
 from app.models.model import UserAgentInfo, UTCBaseModel
 
 from pydantic import BaseModel
-from sqlalchemy import BigInteger, Column, ForeignKey
+from sqlalchemy import BigInteger, Column, ForeignKey, Integer
 from sqlalchemy.orm import Mapped
-from sqlmodel import VARCHAR, DateTime, Field, Integer, Relationship, SQLModel, Text
+from sqlmodel import VARCHAR, DateTime, Field, Relationship, SQLModel, Text
 
 if TYPE_CHECKING:
     from .auth import OAuthToken
@@ -33,7 +33,7 @@ class EmailVerification(SQLModel, table=True):
     __tablename__: str = "email_verifications"
 
     id: int | None = Field(default=None, primary_key=True)
-    user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), nullable=False, index=True))
+    user_id: int = Field(sa_column=Column(Integer, ForeignKey("lazer_users.id"), nullable=False, index=True))
     email: str = Field(index=True)
     verification_code: str = Field(max_length=8)  # 8-character verification code
     created_at: datetime = Field(default_factory=utcnow)
@@ -48,7 +48,7 @@ class LoginSessionBase(SQLModel):
     """Base fields for login sessions."""
 
     id: int = Field(default=None, primary_key=True)
-    user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), nullable=False, index=True))
+    user_id: int = Field(sa_column=Column(Integer, ForeignKey("lazer_users.id"), nullable=False, index=True))
     ip_address: str = Field(sa_column=Column(VARCHAR(45), nullable=False), default="127.0.0.1", exclude=True)
     user_agent: str | None = Field(default=None, sa_column=Column(Text))
     is_verified: bool = Field(default=False)  # Whether the session is verified
@@ -103,7 +103,7 @@ class TrustedDeviceBase(SQLModel):
     """Base fields for trusted devices."""
 
     id: int = Field(default=None, primary_key=True)
-    user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), nullable=False, index=True))
+    user_id: int = Field(sa_column=Column(Integer, ForeignKey("lazer_users.id"), nullable=False, index=True))
     ip_address: str = Field(sa_column=Column(VARCHAR(45), nullable=False), default="127.0.0.1", exclude=True)
     user_agent: str = Field(sa_column=Column(Text, nullable=False))
     client_type: Literal["web", "client"] = Field(sa_column=Column(VARCHAR(10), nullable=False), default="web")

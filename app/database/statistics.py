@@ -17,16 +17,7 @@ from .rank_history import RankHistory
 from pydantic import field_validator
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import Mapped
-from sqlmodel import (
-    BigInteger,
-    Column,
-    Field,
-    ForeignKey,
-    Relationship,
-    col,
-    func,
-    select,
-)
+from sqlmodel import BigInteger, Column, Field, ForeignKey, Integer, Relationship, col, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 if TYPE_CHECKING:
@@ -162,7 +153,7 @@ class UserStatistics(AsyncAttrs, UserStatisticsModel, table=True):
     user_id: int = Field(
         default=None,
         sa_column=Column(
-            BigInteger,
+            Integer,
             ForeignKey("lazer_users.id"),
             index=True,
         ),

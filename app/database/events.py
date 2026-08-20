@@ -13,16 +13,7 @@ from app.models.model import UTCBaseModel
 
 from pydantic import model_serializer
 from sqlalchemy.orm import Mapped
-from sqlmodel import (
-    JSON,
-    BigInteger,
-    Column,
-    DateTime,
-    Field,
-    ForeignKey,
-    Relationship,
-    SQLModel,
-)
+from sqlmodel import JSON, Column, DateTime, Field, ForeignKey, Integer, Relationship, SQLModel
 
 if TYPE_CHECKING:
     from .user import User
@@ -57,7 +48,7 @@ class Event(UTCBaseModel, SQLModel, table=True):
     event_payload: dict = Field(exclude=True, default_factory=dict, sa_column=Column(JSON))
     user_id: int | None = Field(
         default=None,
-        sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True),
+        sa_column=Column(Integer, ForeignKey("lazer_users.id"), index=True),
     )
     user: Mapped["User"] = Relationship(back_populates="events")
 

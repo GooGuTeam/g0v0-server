@@ -13,18 +13,7 @@ from .user import User
 
 from sqlalchemy import Index
 from sqlalchemy.orm import Mapped
-from sqlmodel import (
-    JSON,
-    BigInteger,
-    Column,
-    Field,
-    ForeignKey,
-    Relationship,
-    SQLModel,
-    col,
-    func,
-    select,
-)
+from sqlmodel import JSON, BigInteger, Column, Field, ForeignKey, Integer, Relationship, SQLModel, col, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 if TYPE_CHECKING:
@@ -40,7 +29,7 @@ class TotalScoreBestScore(SQLModel, table=True):
         Index("ix_total_score_best_scores_user_mode_score", "user_id", "gamemode", "score_id"),
         Index("ix_total_score_best_scores_beatmap_mode_score", "beatmap_id", "gamemode", "total_score"),
     )
-    user_id: int = Field(sa_column=Column(BigInteger, ForeignKey("lazer_users.id"), index=True))
+    user_id: int = Field(sa_column=Column(Integer, ForeignKey("lazer_users.id"), index=True))
     score_id: int = Field(sa_column=Column(BigInteger, ForeignKey("scores.id"), primary_key=True))
     beatmap_id: int = Field(foreign_key="beatmaps.id", index=True)
     gamemode: GameMode = Field(index=True)
