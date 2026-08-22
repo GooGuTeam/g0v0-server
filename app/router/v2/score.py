@@ -1401,6 +1401,9 @@ async def get_user_playlist_score(
             break
     if not score_record:
         raise RequestError(ErrorType.SCORE_NOT_FOUND)
+    room = await session.get(Room, room_id)
+    if not room:
+        raise RequestError(ErrorType.ROOM_NOT_FOUND)
 
     resp = await ScoreModel.transform(
         score_record.score,
@@ -1409,6 +1412,9 @@ async def get_user_playlist_score(
             "position",
             "scores_around",
         ],
+        playlist_id=playlist_id,
+        room_id=room_id,
+        is_playlist=room.category != RoomCategory.REALTIME,
     )
     return resp
 
