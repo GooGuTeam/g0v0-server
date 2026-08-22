@@ -21,10 +21,12 @@ from enum import StrEnum
 from typing import Any, NoReturn
 import uuid
 
-from app.dependencies.database import get_redis_pubsub
+from app.database import ChannelType, ChatChannel, Room, User
+from app.dependencies.database import get_redis_pubsub, with_db
 from app.helpers.background_task import bg_tasks
 from app.log import log
 from app.models.score import RULESETS_VERSION_HASH
+from app.router.notification.server import server
 from app.service.user_cache_service import get_user_cache_service
 
 from pydantic import BaseModel, Field
@@ -274,6 +276,109 @@ async def init_ipc(redis_client: Redis):
     async def handle_get_ruleset_hashes(message: IPCMessage):
         logger.info(f"Received get_ruleset_hashes request from {message.source_server}")
         return RULESETS_VERSION_HASH
+
+    @ipc_client.handle_request("create_mp_channel")
+    async def handle_create_mp_channel(message: IPCMessage):
+        # TODO: When realtime server implements notification server, this method could be removed.
+        logger.info(f"Received create_mp_channel request from {message.source_server}")
+        if message.data is None:
+            logger.warning("Received create_mp_channel request without data")
+            raise IPCError(code=400, message="Missing data in create_mp_channel request")
+        room_id = message.data.get("room_id")
+        if room_id is None:
+            logger.warning("Received create_mp_channel request without room_id")
+            raise IPCError(code=400, message="Missing room_id in create_mp_channel request")
+        host_id = message.data.get("host_id")
+
+        async with with_db() as db:
+            room = await db.get(Room, room_id)
+            if room is None:
+                logger.warning("Received create_mp_channel request for non-existent room_id: {}", room_id)
+                raise IPCError(code=404, message=f"Room with id {room_id} not found")
+            if room.channel_id == 0:
+                ch = ChatChannel(
+                    channel_name=f"mp_{room_id}",
+                    description=f"Multiplayer room {room_id} chat",
+                    type=ChannelType.MULTIPLAYER,
+                )
+                db.add(ch)
+                await db.commit()
+                await db.refresh(ch)
+                await db.refresh(room)
+                room.channel_id = ch.channel_id
+                channel_id = ch.channel_id
+                logger.info(f"Created new chat channel {channel_id} for room {room_id}")
+                await db.commit()
+                await db.refresh(ch)
+            else:
+                ch = await db.get(ChatChannel, room.channel_id)
+                if ch is None:
+                    logger.warning(
+                        "Received create_mp_channel request for room_id {} with non-existent channel_id: {}",
+                        room_id,
+                        room.channel_id,
+                    )
+                    raise IPCError(
+                        code=404, message=f"Chat channel with id {room.channel_id} not found for room {room_id}"
+                    )
+
+            if host_id is not None:
+                host = await db.get(User, host_id)
+                if host is not None:
+                    await server.join_channel(host, ch)
+            return {"channel_id": ch.channel_id}
+
+    @ipc_client.handle_request("make_user_join_mp_channel")
+    async def handle_make_user_join_mp_channel(message: IPCMessage):
+        logger.info(f"Received make_user_join_mp_channel request from {message.source_server}")
+        if message.data is None:
+            logger.warning("Received make_user_join_mp_channel request without data")
+            raise IPCError(code=400, message="Missing data in make_user_join_mp_channel request")
+        user_id = message.data.get("user_id")
+        channel_id = message.data.get("channel_id")
+        if user_id is None or channel_id is None:
+            logger.warning("Received make_user_join_mp_channel request without user_id or channel_id")
+            raise IPCError(code=400, message="Missing user_id or channel_id in make_user_join_mp_channel request")
+
+        async with with_db() as db:
+            ch = await db.get(ChatChannel, channel_id)
+            if ch is None:
+                logger.warning("Received make_user_join_mp_channel request for non-existent channel_id: {}", channel_id)
+                raise IPCError(code=404, message=f"Chat channel with id {channel_id} not found")
+            user = await db.get(User, user_id)
+            if user is None:
+                logger.warning("Received make_user_join_mp_channel request for non-existent user_id: {}", user_id)
+                raise IPCError(code=404, message=f"User with id {user_id} not found")
+
+            await server.join_channel(user, ch)
+            return {}
+
+    @ipc_client.handle_request("make_user_leave_mp_channel")
+    async def handle_make_user_leave_mp_channel(message: IPCMessage):
+        logger.info(f"Received make_user_leave_mp_channel request from {message.source_server}")
+        if message.data is None:
+            logger.warning("Received make_user_leave_mp_channel request without data")
+            raise IPCError(code=400, message="Missing data in make_user_leave_mp_channel request")
+        user_id = message.data.get("user_id")
+        channel_id = message.data.get("channel_id")
+        if user_id is None or channel_id is None:
+            logger.warning("Received make_user_leave_mp_channel request without user_id or channel_id")
+            raise IPCError(code=400, message="Missing user_id or channel_id in make_user_leave_mp_channel request")
+
+        async with with_db() as db:
+            ch = await db.get(ChatChannel, channel_id)
+            if ch is None:
+                logger.warning(
+                    "Received make_user_leave_mp_channel request for non-existent channel_id: {}", channel_id
+                )
+                raise IPCError(code=404, message=f"Chat channel with id {channel_id} not found")
+            user = await db.get(User, user_id)
+            if user is None:
+                logger.warning("Received make_user_leave_mp_channel request for non-existent user_id: {}", user_id)
+                raise IPCError(code=404, message=f"User with id {user_id} not found")
+
+            await server.leave_channel(user, ch)
+            return {}
 
 
 def get_ipc_client() -> IPCClient:
