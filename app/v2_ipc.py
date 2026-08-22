@@ -24,6 +24,7 @@ import uuid
 from app.dependencies.database import get_redis_pubsub
 from app.helpers.background_task import bg_tasks
 from app.log import log
+from app.models.score import RULESETS_VERSION_HASH
 from app.service.user_cache_service import get_user_cache_service
 
 from pydantic import BaseModel, Field
@@ -51,7 +52,7 @@ class IPCMessage(BaseModel):
     name: str
     uuid: str = Field(default_factory=lambda: str(uuid.uuid4()))
     source_server: str
-    data: dict[str, Any]
+    data: dict[str, Any] | None = None
 
 
 class IPCErrorBody(BaseModel):
@@ -224,7 +225,7 @@ class IPCClient:
                 handler = self.request_handlers[message.name]
                 response_data = await handler(message)
                 await self._send_response(
-                    server=SERVER_IDENTIFIER,
+                    server=message.source_server,
                     name=message.name,
                     uuid=message.uuid,
                     data=response_data,
@@ -258,6 +259,9 @@ async def init_ipc(redis_client: Redis):
                 "Received user_online_status_changed notice isn't from 'realtime': {}", message.source_server
             )
             return
+        if message.data is None:
+            logger.warning("Received user_online_status_changed notice without data")
+            return
 
         user_id = message.data.get("user_id")
         if user_id is None:
@@ -265,6 +269,11 @@ async def init_ipc(redis_client: Redis):
             return
         logger.info(f"Received user online status update for user_id: {user_id}")
         await get_user_cache_service(redis_client).invalidate_user_cache(user_id)
+
+    @ipc_client.handle_request("get_ruleset_hashes")
+    async def handle_get_ruleset_hashes(message: IPCMessage):
+        logger.info(f"Received get_ruleset_hashes request from {message.source_server}")
+        return RULESETS_VERSION_HASH
 
 
 def get_ipc_client() -> IPCClient:
