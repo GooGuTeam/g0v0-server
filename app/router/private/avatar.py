@@ -47,8 +47,8 @@ async def upload_avatar(
     url = await storage.get_file_url(storage_path)
     current_user.avatar_url = url
     await cache_service.invalidate_user_cache(current_user.id)
-    await session.commit()
     logger.info(f"User {current_user.id} uploaded avatar {storage_path}; size={len(content)} bytes")
+    await session.commit()
 
     return {
         "url": url,
