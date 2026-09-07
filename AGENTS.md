@@ -36,13 +36,13 @@ from typing import Annotated
 from fastapi import Security
 from app.dependencies.user import ClientUser, get_current_user
 
+
 @router.get("/some-api")
-async def _(current_user: Annotated[User, Security(get_current_user, scopes=["public"])]):
-    ...
+async def _(current_user: Annotated[User, Security(get_current_user, scopes=["public"])]): ...
+
 
 @router.get("/some-client-api")
-async def _(current_user: ClientUser):
-    ...
+async def _(current_user: ClientUser): ...
 ```
 
 V1 endpoints use `v1_authorize` dependency (API key in query param `k`).
@@ -73,11 +73,11 @@ After modifying any `app/database/` model, generate a migration and manually rev
 ```python
 from app.log import log, system_logger, service_logger, task_logger, fetcher_logger
 
-log("ModuleName").info("...")               # general use (routers)
-system_logger("Component").info("...")      # system/subsystem startup
-service_logger("Name").info("...")          # service classes
-task_logger("Name").info("...")             # task modules
-fetcher_logger("Name").info("...")          # fetcher classes
+log("ModuleName").info("...")  # general use (routers)
+system_logger("Component").info("...")  # system/subsystem startup
+service_logger("Name").info("...")  # service classes
+task_logger("Name").info("...")  # task modules
+fetcher_logger("Name").info("...")  # fetcher classes
 ```
 
 ## Error Handling
