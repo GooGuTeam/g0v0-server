@@ -36,10 +36,10 @@ def generate_model(schema_file: Path, version: str = ""):
 
     code = temp_file.read_text()
     output = code
-    performance_attributes_classes = re.findall(r"class (\w+PerformanceAttributes)", code)
+    performance_attributes_classes = re.findall(r"class (\w+PerformanceAttributes?)", code)
     performance_attributes_classes.append("PerformanceAttributes")
     output += "PerformanceAttributesUnion = " + " | ".join(performance_attributes_classes) + "\n"
-    difficulty_attributes_classes = re.findall(r"class (\w+DifficultyAttributes)", code)
+    difficulty_attributes_classes = re.findall(r"class (\w+DifficultyAttributes?)", code)
     difficulty_attributes_classes.append("DifficultyAttributes")
     output += "DifficultyAttributesUnion = " + " | ".join(difficulty_attributes_classes) + "\n"
     OUTPUT_FILE.write_text(output)
