@@ -53,8 +53,8 @@ async def upload_cover(
     url = await storage.get_file_url(storage_path)
     current_user.cover = UserProfileCover(url=url)
     await cache_service.invalidate_user_cache(current_user.id)
-    await session.commit()
     logger.info(f"User {current_user.id} uploaded profile cover {storage_path}; size={len(content)} bytes")
+    await session.commit()
 
     return {
         "url": url,
