@@ -10,7 +10,7 @@ from .user import User
 
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import Mapped
-from sqlmodel import BigInteger, Column, DateTime, Field, ForeignKey, Integer, Relationship, SQLModel
+from sqlmodel import Column, DateTime, Field, ForeignKey, Integer, Relationship, SQLModel
 
 
 class FavouriteBeatmapset(AsyncAttrs, SQLModel, table=True):
@@ -18,24 +18,19 @@ class FavouriteBeatmapset(AsyncAttrs, SQLModel, table=True):
 
     __tablename__: str = "favourite_beatmapset"
 
-    id: int = Field(
-        default=None,
-        sa_column=Column(BigInteger, autoincrement=True, primary_key=True),
-        exclude=True,
-    )
     user_id: int = Field(
         default=None,
         sa_column=Column(
             Integer,
             ForeignKey("lazer_users.id"),
-            index=True,
+            primary_key=True,
         ),
     )
     beatmapset_id: int = Field(
         default=None,
         sa_column=Column(
             ForeignKey("beatmapsets.id"),
-            index=True,
+            primary_key=True,
         ),
     )
     date: datetime.datetime = Field(

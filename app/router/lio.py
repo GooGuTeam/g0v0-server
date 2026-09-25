@@ -294,35 +294,25 @@ async def _add_or_update_participant(db: Database, room_id: int, user_id: int) -
         room_id: ID of the room.
         user_id: ID of the user to add.
     """
-    # Check if user already has an active participation record
+    # Composite PK (room_id, user_id): at most one record per (room, user).
+    # Check if user already has an active participation record.
     existing_result = await db.execute(
-        select(RoomParticipatedUser.id).where(
-            RoomParticipatedUser.room_id == room_id,
-            RoomParticipatedUser.user_id == user_id,
+        select(RoomParticipatedUser).where(
+            col(RoomParticipatedUser.room_id) == room_id,
+            col(RoomParticipatedUser.user_id) == user_id,
             col(RoomParticipatedUser.left_at).is_(None),
         )
     )
-    existing_ids = existing_result.scalars().all()  # Get all matching IDs
+    existing = existing_result.first()
 
-    if existing_ids:
-        # If multiple records exist, clean up duplicates, keep only the latest one
-        if len(existing_ids) > 1:
-            logger.debug(
-                f"Warning: User {user_id} has {len(existing_ids)} active participation records in room {room_id}"
-            )
-
-            # Mark all records except the first as left (cleanup duplicates)
-            for extra_id in existing_ids[1:]:
-                await db.execute(
-                    update(RoomParticipatedUser)
-                    .where(col(RoomParticipatedUser.id) == extra_id)
-                    .values(left_at=utcnow())
-                )
-
-        # Update the remaining active participation record (refresh join time)
+    if existing:
+        # Refresh join time
         await db.execute(
             update(RoomParticipatedUser)
-            .where(col(RoomParticipatedUser.id) == existing_ids[0])
+            .where(
+                col(RoomParticipatedUser.room_id) == room_id,
+                col(RoomParticipatedUser.user_id) == user_id,
+            )
             .values(joined_at=utcnow())
         )
     else:
@@ -548,7 +538,7 @@ async def remove_user_from_room(
 
         # Check if user is in the room
         participant_result = await db.execute(
-            select(RoomParticipatedUser.id).where(
+            select(RoomParticipatedUser).where(
                 col(RoomParticipatedUser.room_id) == room_id,
                 col(RoomParticipatedUser.user_id) == user_id,
                 col(RoomParticipatedUser.left_at).is_(None),

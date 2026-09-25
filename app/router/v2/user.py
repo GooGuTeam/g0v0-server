@@ -589,24 +589,24 @@ async def get_user_beatmapsets(
 
     elif type == BeatmapsetType.FAVOURITE:
         if offset == 0:
-            cursor = sys.maxsize
+            date_cursor: datetime | None = None
         else:
-            cursor = (
+            date_cursor = (
                 await session.exec(
-                    select(FavouriteBeatmapset.id)
+                    select(FavouriteBeatmapset.date)
                     .where(FavouriteBeatmapset.user_id == user_id)
-                    .order_by(col(FavouriteBeatmapset.id).desc())
+                    .order_by(col(FavouriteBeatmapset.date).desc())
                     .limit(1)
                     .offset(offset - 1)
                 )
             ).first()
-        if cursor is None:
+        if date_cursor is None:
             return []
         favourites = (
             await session.exec(
                 select(FavouriteBeatmapset)
-                .where(FavouriteBeatmapset.user_id == user_id, FavouriteBeatmapset.id < cursor)
-                .order_by(col(FavouriteBeatmapset.id).desc())
+                .where(FavouriteBeatmapset.user_id == user_id, col(FavouriteBeatmapset.date) <= date_cursor)
+                .order_by(col(FavouriteBeatmapset.date).desc())
                 .limit(limit)
             )
         ).all()

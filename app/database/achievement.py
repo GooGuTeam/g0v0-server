@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 class UserAchievementBase(SQLModel, UTCBaseModel):
     """Base fields for user achievement records."""
 
-    achievement_id: int
+    achievement_id: int = Field(primary_key=True)
     achieved_at: datetime = Field(default_factory=utcnow, sa_column=Column(DateTime(timezone=True)))
 
 
@@ -37,8 +37,11 @@ class UserAchievement(UserAchievementBase, table=True):
 
     __tablename__: str = "lazer_user_achievements"
 
-    id: int | None = Field(default=None, primary_key=True, index=True)
-    user_id: int = Field(sa_column=Column(Integer, ForeignKey("lazer_users.id")), exclude=True)
+    user_id: int = Field(
+        sa_column=Column(Integer, ForeignKey("lazer_users.id"), primary_key=True),
+        exclude=True,
+    )
+    achievement_id: int = Field(primary_key=True)
     user: Mapped["User"] = Relationship(back_populates="achievement")
 
 

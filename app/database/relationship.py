@@ -12,7 +12,6 @@ from ._base import DatabaseModel, included, ondemand
 
 from sqlalchemy.orm import Mapped
 from sqlmodel import (
-    BigInteger,
     Column,
     Field,
     ForeignKey,
@@ -48,17 +47,12 @@ class RelationshipModel(DatabaseModel[RelationshipDict]):
     """Base model for user relationships with transformation support."""
 
     __tablename__: str = "relationship"
-    id: int | None = Field(
-        default=None,
-        sa_column=Column(BigInteger, autoincrement=True, primary_key=True),
-        exclude=True,
-    )
     user_id: int = Field(
         default=None,
         sa_column=Column(
             Integer,
             ForeignKey("lazer_users.id"),
-            index=True,
+            primary_key=True,
         ),
         exclude=True,
     )
@@ -67,10 +61,10 @@ class RelationshipModel(DatabaseModel[RelationshipDict]):
         sa_column=Column(
             Integer,
             ForeignKey("lazer_users.id"),
-            index=True,
+            primary_key=True,
         ),
     )
-    type: RelationshipType = Field(default=RelationshipType.FOLLOW, nullable=False)
+    type: RelationshipType = Field(default=RelationshipType.FOLLOW, nullable=False, primary_key=True)
 
     @included
     @staticmethod

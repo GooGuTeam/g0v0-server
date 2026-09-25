@@ -17,7 +17,7 @@ from .rank_history import RankHistory
 from pydantic import field_validator
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import Mapped
-from sqlmodel import BigInteger, Column, Field, ForeignKey, Integer, Relationship, col, func, select
+from sqlmodel import BigInteger, Column, Field, ForeignKey, Index, Integer, Relationship, col, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 if TYPE_CHECKING:
@@ -149,15 +149,17 @@ class UserStatistics(AsyncAttrs, UserStatisticsModel, table=True):
     """Database table for user statistics per game mode."""
 
     __tablename__: str = "lazer_user_statistics"
-    id: int | None = Field(default=None, primary_key=True)
+    __table_args__ = (Index("ix_lazer_user_statistics_mode_pp", "mode", "pp"),)
+
     user_id: int = Field(
         default=None,
         sa_column=Column(
             Integer,
             ForeignKey("lazer_users.id"),
-            index=True,
+            primary_key=True,
         ),
     )
+    mode: GameMode = Field(primary_key=True)
     grade_ss: int = Field(default=0)
     grade_ssh: int = Field(default=0)
     grade_s: int = Field(default=0)

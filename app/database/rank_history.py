@@ -13,7 +13,7 @@ from app.models.score import GameMode
 
 from pydantic import BaseModel
 from sqlalchemy.orm import Mapped
-from sqlmodel import BigInteger, Column, Date, Field, ForeignKey, Integer, Relationship, SQLModel, col, select
+from sqlmodel import BigInteger, Column, Date, Field, ForeignKey, Index, Integer, Relationship, SQLModel, col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 if TYPE_CHECKING:
@@ -24,14 +24,14 @@ class RankHistory(SQLModel, table=True):
     """Daily rank history records for users."""
 
     __tablename__: str = "rank_history"
+    __table_args__ = (Index("ix_rank_history_user_date", "user_id", "date"),)
 
-    id: int | None = Field(default=None, sa_column=Column(BigInteger, primary_key=True))
-    user_id: int = Field(sa_column=Column(Integer, ForeignKey("lazer_users.id"), index=True))
-    mode: GameMode
+    user_id: int = Field(sa_column=Column(Integer, ForeignKey("lazer_users.id"), primary_key=True))
+    mode: GameMode = Field(primary_key=True)
     rank: int
     date: dt = Field(
         default_factory=lambda: utcnow().date(),
-        sa_column=Column(Date, index=True),
+        sa_column=Column(Date, primary_key=True),
     )
 
     user: Mapped[Optional["User"]] = Relationship(back_populates="rank_history")
