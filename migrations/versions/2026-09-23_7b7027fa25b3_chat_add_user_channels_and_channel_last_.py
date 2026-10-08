@@ -1,7 +1,7 @@
 """chat: add user channels and channel last_message_id/moderated/uuid
 
 Revision ID: 7b7027fa25b3
-Revises: 57a4930b6961
+Revises: 49dfd34240d0
 Create Date: 2026-09-23 14:38:28.100496
 
 Adds the per-user channel state table (counterpart of upstream ``user_channels``)
