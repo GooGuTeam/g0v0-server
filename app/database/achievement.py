@@ -82,7 +82,7 @@ async def unlock_achievements(
             )
         elif v2_ipc is not None:
             await v2_ipc.send_notice(
-                "realtime", "new_notification", UserAchievementUnlock.init(r, user_id, gamemode).model_dump()
+                "realtime", "new_notification", UserAchievementUnlock.init(r, user_id, gamemode).to_ipc_dump()
             )
         event = Event(
             created_at=now,
