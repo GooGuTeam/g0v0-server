@@ -13,7 +13,6 @@ from app.models.achievement import MEDALS, Achievement
 from app.models.model import UTCBaseModel
 from app.models.notification import UserAchievementUnlock
 from app.models.score import GameMode
-from app.v2_ipc import IPCClient
 
 from .events import Event, EventType
 
@@ -23,6 +22,8 @@ from sqlmodel import Column, DateTime, Field, ForeignKey, Integer, Relationship,
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 if TYPE_CHECKING:
+    from app.v2_ipc import IPCClient
+
     from .user import User
 
 
@@ -61,7 +62,7 @@ async def unlock_achievements(
     user_id: int,
     gamemode: GameMode | None = None,
     redis: Redis | None = None,
-    v2_ipc: IPCClient | None = None,
+    v2_ipc: "IPCClient | None" = None,
 ):
     from .user import User
 
@@ -104,7 +105,7 @@ async def process_achievements(
     session: AsyncSession,
     score_id: int,
     redis: Redis | None = None,
-    v2_ipc: IPCClient | None = None,
+    v2_ipc: "IPCClient | None" = None,
 ):
     """Process and award achievements for a score submission.
 
