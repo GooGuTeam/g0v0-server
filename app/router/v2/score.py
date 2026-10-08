@@ -120,7 +120,10 @@ async def _process_user_achievement(score_id: int):
         score_id: The score ID to process achievements for.
     """
     async with with_db() as session:
-        await process_achievements(session, get_redis(), score_id)
+        if settings.enable_v2_ipc:
+            await process_achievements(session, score_id, v2_ipc=get_ipc_client())
+        else:
+            await process_achievements(session, score_id, redis=get_redis())
 
 
 async def _process_user(score_id: int, user_id: int, redis: Redis, fetcher: Fetcher):

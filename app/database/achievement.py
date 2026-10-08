@@ -22,6 +22,8 @@ from sqlmodel import Column, DateTime, Field, ForeignKey, Integer, Relationship,
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 if TYPE_CHECKING:
+    from app.v2_ipc import IPCClient
+
     from .user import User
 
 
@@ -55,7 +57,12 @@ class UserAchievementResp(UserAchievementBase):
 
 
 async def unlock_achievements(
-    session: AsyncSession, redis: Redis, achievements: list[Achievement], user_id: int, gamemode: GameMode | None = None
+    session: AsyncSession,
+    achievements: list[Achievement],
+    user_id: int,
+    gamemode: GameMode | None = None,
+    redis: Redis | None = None,
+    v2_ipc: "IPCClient | None" = None,
 ):
     from .user import User
 
@@ -69,10 +76,15 @@ async def unlock_achievements(
                 achieved_at=now,
             )
         )
-        await redis.publish(
-            "chat:notification",
-            UserAchievementUnlock.init(r, user_id, gamemode).model_dump_json(),
-        )
+        if redis is not None:
+            await redis.publish(
+                "chat:notification",
+                UserAchievementUnlock.init(r, user_id, gamemode).model_dump_json(),
+            )
+        elif v2_ipc is not None:
+            await v2_ipc.send_notice(
+                "realtime", "new_notification", UserAchievementUnlock.init(r, user_id, gamemode).to_ipc_dump()
+            )
         event = Event(
             created_at=now,
             type=EventType.ACHIEVEMENT,
@@ -89,7 +101,12 @@ async def unlock_achievements(
     await session.commit()
 
 
-async def process_achievements(session: AsyncSession, redis: Redis, score_id: int):
+async def process_achievements(
+    session: AsyncSession,
+    score_id: int,
+    redis: Redis | None = None,
+    v2_ipc: "IPCClient | None" = None,
+):
     """Process and award achievements for a score submission.
 
     Args:
@@ -114,4 +131,4 @@ async def process_achievements(session: AsyncSession, redis: Redis, score_id: in
         if await v(session, score, score.beatmap):
             result.append(k)
     if result:
-        await unlock_achievements(session, redis, result, score.user_id, score.gamemode)
+        await unlock_achievements(session, result, score.user_id, score.gamemode, redis, v2_ipc)
