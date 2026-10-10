@@ -262,7 +262,7 @@ if settings.frontend_url is not None:
     app.include_router(redirect_router)
 
 
-@app.get("/users/{user_id}/avatar", include_in_schema=False)
+@app.get("/avatar/{user_id}", include_in_schema=False)
 async def get_user_avatar_root(
     user_id: int,
     session: Database,
@@ -277,9 +277,9 @@ async def get_user_avatar_root(
         avatar_url = "https://lazer.g0v0.top/default.jpg"
 
     separator = "&" if "?" in avatar_url else "?"
-    avatar_url_with_timestamp = f"{avatar_url}{separator}"
+    avatar_url_with_timestamp = f"{avatar_url}{separator}t={int(time.time())}"
 
-    return RedirectResponse(url=avatar_url_with_timestamp, status_code=301)
+    return RedirectResponse(url=avatar_url_with_timestamp, status_code=302)
 
 
 @app.get("/ss/{sha256_hash}", include_in_schema=False)
