@@ -307,6 +307,8 @@ class SoloScoreSubmissionInfo(BaseModel):
         incompatible_mods = set()
         # check incompatible mods
         for mod in mods:
+            if mod["acronym"] in settings.disable_submission_mods:
+                raise ValueError(f"Mod {mod['acronym']} is disabled for submission")
             if mod["acronym"] in incompatible_mods:
                 raise ValueError(f"Mod {mod['acronym']} is incompatible with other mods")
             setting_mods = API_MODS[info.data["ruleset_id"]].get(mod["acronym"])

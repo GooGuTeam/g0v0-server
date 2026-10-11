@@ -166,6 +166,7 @@ class Settings(BaseSettings):
     old_score_processing_mode: Annotated[OldScoreProcessingMode, Field(default=OldScoreProcessingMode.NORMAL), "game"]
     scoring_mode: Annotated[ScoringMode, Field(default=ScoringMode.STANDARDISED), "game"]
     use_old_score_multiplier: Annotated[bool, Field(default=False), "game"]
+    disable_submission_mods: Annotated[list[str], Field(default=[]), "game"]
 
     # calculator
     calculator: Annotated[str, Field(default="performance_server"), "calculator"]
