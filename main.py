@@ -230,7 +230,13 @@ app = FastAPI(
 
 app.include_router(api_v2_router)
 app.include_router(api_v1_router)
-app.include_router(chat_router)
+
+if not settings.enable_v2_ipc:
+    app.include_router(chat_router)
+    system_logger("ChatRouter").warning(
+        "Legacy notification server has been deprecated, please consider migrating to V2 Realtime."
+    )
+
 app.include_router(redirect_api_router)
 # app.include_router(fetcher_router)
 app.include_router(file_router)
