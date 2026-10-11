@@ -99,6 +99,9 @@ class NotificationDetail(BaseModel):
     async def get_receivers(self, session: AsyncSession) -> list[int]:
         raise NotImplementedError
 
+    def to_ipc_dump(self) -> dict:
+        return {"name": type(self).name.value, **self.model_dump()}
+
 
 class ChannelMessageBase(NotificationDetail):
     title: str

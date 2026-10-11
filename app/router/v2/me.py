@@ -6,6 +6,7 @@ authenticated user, including their profile and favourite beatmapsets.
 
 from typing import Annotated
 
+from app.config import settings
 from app.database import FavouriteBeatmapset, User
 from app.database.achievement import unlock_achievements
 from app.database.user import UserModel
@@ -15,6 +16,7 @@ from app.helpers import api_doc
 from app.models.achievement import CLIENTSIDE_MEDALS
 from app.models.error import ErrorType, RequestError
 from app.models.score import GameMode
+from app.v2_ipc import get_ipc_client
 
 from .router import router
 
@@ -140,4 +142,7 @@ async def unlock_clientside_achievement(
     achievement = CLIENTSIDE_MEDALS.get(achievement_id)
     if not achievement:
         raise RequestError(ErrorType.ACHIEVEMENT_NOT_FOUND)
-    await unlock_achievements(session, redis, [achievement], current_user.id)
+    if settings.enable_v2_ipc:
+        await unlock_achievements(session, [achievement], current_user.id, None, v2_ipc=get_ipc_client())
+    else:
+        await unlock_achievements(session, [achievement], current_user.id, None, redis=redis)
