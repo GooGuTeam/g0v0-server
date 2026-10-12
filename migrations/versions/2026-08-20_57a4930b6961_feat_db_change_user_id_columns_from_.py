@@ -19,7 +19,10 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
-# (table, column, fk_name) — user id columns referencing lazer_users.id
+# (table, column, historical_fk_name) — user id columns referencing lazer_users.id.
+# The recorded FK name is kept for documentation and the downgrade path only:
+# auto-generated MySQL names differ between fresh installs and existing
+# databases, so the upgrade path discovers the actual names via introspection.
 USER_FK_COLUMNS: list[tuple[str, str, str]] = [
     ("beatmap_playcounts", "user_id", "beatmap_playcounts_ibfk_2"),
     ("beatmap_ratings", "user_id", "beatmap_ratings_ibfk_2"),
@@ -109,11 +112,63 @@ NULLABLE: dict[tuple[str, str], bool] = {
 }
 
 
+def _drop_user_fks(table: str, column: str) -> None:
+    """Drop every FK on (table, column) referencing lazer_users.
+
+    MySQL auto-generates constraint names (``<table>_ibfk_<n>``) that differ
+    between fresh installs and databases with migration history, so the actual
+    names are discovered from the schema instead of hard-coded.
+    """
+    bind = op.get_bind()
+    rows = bind.execute(
+        sa.text(
+            "SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE "
+            "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table AND COLUMN_NAME = :column "
+            "AND REFERENCED_TABLE_NAME = 'lazer_users'"
+        ),
+        {"table": table, "column": column},
+    ).fetchall()
+    for (constraint_name,) in rows:
+        op.drop_constraint(constraint_name, table, type_="foreignkey")
+
+
+def _remove_user_orphans(table: str, column: str) -> None:
+    """Resolve rows whose user id no longer exists before the FK is recreated.
+
+    Legacy databases accumulated rows while the foreign key was absent. Rows in
+    columns that allow NULL keep their data with the reference cleared; rows in
+    NOT NULL columns are removed, as no valid user can be assigned to them.
+    """
+    row = (
+        op.get_bind()
+        .execute(
+            sa.text(
+                "SELECT IS_NULLABLE FROM information_schema.COLUMNS "
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table AND COLUMN_NAME = :column"
+            ),
+            {"table": table, "column": column},
+        )
+        .first()
+    )
+    nullable = bool(row) and row[0] == "YES"
+    if nullable:
+        op.execute(
+            f"UPDATE `{table}` t LEFT JOIN lazer_users r ON t.`{column}` = r.id "  # noqa: S608
+            f"SET t.`{column}` = NULL "
+            f"WHERE t.`{column}` IS NOT NULL AND r.id IS NULL"
+        )
+    else:
+        op.execute(
+            f"DELETE t FROM `{table}` t LEFT JOIN lazer_users r ON t.`{column}` = r.id "
+            f"WHERE t.`{column}` IS NOT NULL AND r.id IS NULL"
+        )
+
+
 def upgrade() -> None:
     """Upgrade schema: bigint -> int for all user id columns."""
     # Drop all FKs referencing lazer_users.id first so the PK can be altered.
-    for table, column, fk_name in USER_FK_COLUMNS:
-        op.drop_constraint(fk_name, table, type_="foreignkey")
+    for table, column, _fk_name in USER_FK_COLUMNS:
+        _drop_user_fks(table, column)
 
     # Alter each child table column.
     for table, column, _ in USER_FK_COLUMNS:
@@ -134,6 +189,11 @@ def upgrade() -> None:
         existing_nullable=False,
         autoincrement=True,
     )
+
+    # Legacy rows may reference users that no longer exist; clean them up
+    # before the FKs are recreated, or the validation would fail.
+    for table, column, _fk_name in USER_FK_COLUMNS:
+        _remove_user_orphans(table, column)
 
     # Recreate FKs (one per column; login_sessions had a duplicated FK).
     seen: set[tuple[str, str]] = set()
