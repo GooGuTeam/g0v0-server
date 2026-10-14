@@ -242,7 +242,7 @@ class Settings(BaseSettings):
     disabled_plugins: Annotated[list[str], Field(default=[]), "plugins"]
 
     # v2
-    enable_v2_ipc: Annotated[bool, Field(default=False), "v2"]
+    enable_v2_ipc: Annotated[bool, Field(default=True), "v2"]
 
     @field_validator("storage_settings", mode="after")
     @classmethod

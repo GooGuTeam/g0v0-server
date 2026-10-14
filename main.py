@@ -30,7 +30,6 @@ from app.router import (
     file_router,
     lio_router,
     private_router,
-    redirect_api_router,
 )
 from app.router.redirect import redirect_router
 from app.service.beatmap_download_service import download_service
@@ -96,9 +95,6 @@ async def lifespan(app: FastAPI):
     # init IPC
     if settings.enable_v2_ipc:
         startup_logger.info("Initializing v2 IPC channel")
-        startup_logger.warning(
-            "v2 realtime server is enabled. It is under development and should not be used in production."
-        )
         await init_ipc(redis_client)
 
     # init game server
@@ -236,13 +232,15 @@ if not settings.enable_v2_ipc:
     system_logger("ChatRouter").warning(
         "Legacy notification server has been deprecated, please consider migrating to V2 Realtime."
     )
+    app.include_router(lio_router)
 
-app.include_router(redirect_api_router)
+if settings.frontend_url is not None:
+    app.include_router(redirect_router)
+
 # app.include_router(fetcher_router)
 app.include_router(file_router)
 app.include_router(auth_router)
 app.include_router(private_router)
-app.include_router(lio_router)
 
 # 会话验证中间件
 if settings.enable_session_verification:
@@ -263,9 +261,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-if settings.frontend_url is not None:
-    app.include_router(redirect_router)
 
 
 @app.get("/avatar/{user_id}", include_in_schema=False)
