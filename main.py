@@ -21,6 +21,7 @@ from app.models.error import RequestError
 from app.models.events.http import RequestHandledEvent, RequestReceivedEvent
 from app.models.mods import init_mods, init_ranked_mods
 from app.models.score import init_ruleset_version_hash
+from app.path import CONFIG_DIR
 from app.plugins import hub, manager, plugin_router
 from app.router import (
     api_v1_router,
@@ -362,6 +363,13 @@ if settings.osu_web_client_secret == "your_osu_web_client_secret_here":  # noqa:
     system_logger("Security").opt(colors=True).warning(
         "<y>osu_web_client_secret</y> is unset. Your server is unsafe. "
         "Use this command to generate: <blue>openssl rand -hex 40</blue>."
+    )
+
+if not (Path(CONFIG_DIR) / "v2-configred").exists():
+    raise RuntimeError(
+        "You haven't migrated to V2 Realtime yet. Please follow the migration guide to update your configuration.\n"
+        "Migration guide: https://docs.g0v0.top/lazer/deploy/migrate-from-spectator-server.html\n"
+        "After migrating, create a file named `v2-configred` in `config/` to start the server."
     )
 
 if __name__ == "__main__":
