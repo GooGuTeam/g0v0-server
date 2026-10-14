@@ -103,10 +103,8 @@
     8000,
     3306,
     6379,
-    8086,
-    80,
-    8080
+    8086
   ],
-  "postCreateCommand": "uv sync --dev --all-extras && uv run alembic upgrade head && uv run pre-commit install && cd spectator-server && dotnet restore && cd ../performance-server && dotnet restore",
+  "postCreateCommand": "uv sync --dev --all-extras && uv run alembic upgrade head && uv run pre-commit install && cd ../performance-server && dotnet restore",
   "remoteUser": "vscode"
 }
