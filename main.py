@@ -365,11 +365,11 @@ if settings.osu_web_client_secret == "your_osu_web_client_secret_here":  # noqa:
         "Use this command to generate: <blue>openssl rand -hex 40</blue>."
     )
 
-if not (Path(CONFIG_DIR) / "v2-configred").exists():
+if settings.enable_v2_ipc and not (Path(CONFIG_DIR) / "v2-configured").exists():
     raise RuntimeError(
         "You haven't migrated to V2 Realtime yet. Please follow the migration guide to update your configuration.\n"
         "Migration guide: https://docs.g0v0.top/lazer/deploy/migrate-from-spectator-server.html\n"
-        "After migrating, create a file named `v2-configred` in `config/` to start the server."
+        "After migrating, create a file named `v2-configured` in `config/` to start the server."
     )
 
 if __name__ == "__main__":
