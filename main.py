@@ -21,7 +21,6 @@ from app.models.error import RequestError
 from app.models.events.http import RequestHandledEvent, RequestReceivedEvent
 from app.models.mods import init_mods, init_ranked_mods
 from app.models.score import init_ruleset_version_hash
-from app.path import CONFIG_DIR
 from app.plugins import hub, manager, plugin_router
 from app.router import (
     api_v1_router,
@@ -52,6 +51,7 @@ from app.tasks import (
     stop_cache_tasks,
 )
 from app.v2_ipc import init_ipc
+from app.version import VERSION, version_check
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -219,7 +219,7 @@ if settings.sentry_dsn is not None:
 
 app = FastAPI(
     title="g0v0-server",
-    version="0.1.0",
+    version=VERSION,
     lifespan=lifespan,
     description=desc,
 )
@@ -365,12 +365,7 @@ if settings.osu_web_client_secret == "your_osu_web_client_secret_here":  # noqa:
         "Use this command to generate: <blue>openssl rand -hex 40</blue>."
     )
 
-if settings.enable_v2_ipc and not (Path(CONFIG_DIR) / "v2-configured").exists():
-    raise RuntimeError(
-        "You haven't migrated to V2 Realtime yet. Please follow the migration guide to update your configuration.\n"
-        "Migration guide: https://docs.g0v0.top/lazer/deploy/migrate-from-spectator-server.html\n"
-        "After migrating, create a file named `v2-configured` in `config/` to start the server."
-    )
+version_check()
 
 if __name__ == "__main__":
     import uvicorn
