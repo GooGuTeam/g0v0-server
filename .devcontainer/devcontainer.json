@@ -102,9 +102,8 @@
   "forwardPorts": [
     8000,
     3306,
-    6379,
-    8086
+    6379
   ],
-  "postCreateCommand": "uv sync --dev --all-extras && uv run alembic upgrade head && uv run pre-commit install && cd ../performance-server && dotnet restore",
+  "postCreateCommand": "uv sync --dev --all-extras && uv run alembic upgrade head && uv run pre-commit install && cd performance-server && dotnet restore",
   "remoteUser": "vscode"
 }
