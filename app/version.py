@@ -8,7 +8,7 @@ NUMERIC_VERSION = tuple(map(int, VERSION.split(".")))
 CHANGES = {
     (0, 2, 0): (
         lambda: settings.enable_v2_ipc,
-        "=== Migrate to v2 Realtime ===\nWe has officially adopted the V2 series of "
+        "=== Migrate to v2 Realtime ===\nWe have officially adopted the V2 series of "
         "Realtime as our realtime game server.\nAnd the original spectator-server will no longer be used.\n"
         "View https://docs.g0v0.top/lazer/deploy/migrate-from-spectator-server.html "
         "to migrate from the original spectator-server.\n"
