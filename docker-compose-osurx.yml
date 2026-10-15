@@ -78,18 +78,10 @@ services:
       - osu-network
     command: redis-server --appendonly yes
 
-  spectator:
-    image:  ghcr.io/googuteam/osu-server-spectator:v2
+  realtime:
+    image: ghcr.io/googuteam/g0v0.server.realtime:main
     environment:
-      - REPLAY_UPLOAD_THREADS=${REPLAY_UPLOAD_THREADS:-1}
-      - TRACK_BUILD_USER_COUNTS=${TRACK_BUILD_USER_COUNTS:-}
-      - SERVER_PORT=${SERVER_PORT:-80}
-      - REDIS_HOST=redis
-      - SENTRY_DSN=${SENTRY_DSN:-}
-      - SHARED_INTEROP_DOMAIN=http://app:8000
-      - SHARED_INTEROP_SECRET=${SHARED_INTEROP_SECRET:-}
-      - MYSQL_HOST=mysql
-      - MYSQL_PORT=3306
+      - ASPNETCORE_URLS=http://0.0.0.0:8080
     env_file:
       - .env
     depends_on:
@@ -98,7 +90,9 @@ services:
       - redis
     restart: unless-stopped
     volumes:
-      - ./rulesets:/data/rulesets
+      - ./v2-config:/app/config:ro
+      - ./rulesets:/app/rulesets:ro
+      - ./storage:/app/storage
     networks:
       - osu-network
 

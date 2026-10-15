@@ -30,7 +30,6 @@ from app.router import (
     file_router,
     lio_router,
     private_router,
-    redirect_api_router,
 )
 from app.router.redirect import redirect_router
 from app.service.beatmap_download_service import download_service
@@ -52,6 +51,7 @@ from app.tasks import (
     stop_cache_tasks,
 )
 from app.v2_ipc import init_ipc
+from app.version import VERSION, version_check
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -96,9 +96,6 @@ async def lifespan(app: FastAPI):
     # init IPC
     if settings.enable_v2_ipc:
         startup_logger.info("Initializing v2 IPC channel")
-        startup_logger.warning(
-            "v2 realtime server is enabled. It is under development and should not be used in production."
-        )
         await init_ipc(redis_client)
 
     # init game server
@@ -222,7 +219,7 @@ if settings.sentry_dsn is not None:
 
 app = FastAPI(
     title="g0v0-server",
-    version="0.1.0",
+    version=VERSION,
     lifespan=lifespan,
     description=desc,
 )
@@ -236,13 +233,15 @@ if not settings.enable_v2_ipc:
     system_logger("ChatRouter").warning(
         "Legacy notification server has been deprecated, please consider migrating to V2 Realtime."
     )
+    app.include_router(lio_router)
 
-app.include_router(redirect_api_router)
+if settings.frontend_url is not None:
+    app.include_router(redirect_router)
+
 # app.include_router(fetcher_router)
 app.include_router(file_router)
 app.include_router(auth_router)
 app.include_router(private_router)
-app.include_router(lio_router)
 
 # 会话验证中间件
 if settings.enable_session_verification:
@@ -263,9 +262,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-if settings.frontend_url is not None:
-    app.include_router(redirect_router)
 
 
 @app.get("/avatar/{user_id}", include_in_schema=False)
@@ -368,6 +364,8 @@ if settings.osu_web_client_secret == "your_osu_web_client_secret_here":  # noqa:
         "<y>osu_web_client_secret</y> is unset. Your server is unsafe. "
         "Use this command to generate: <blue>openssl rand -hex 40</blue>."
     )
+
+version_check()
 
 if __name__ == "__main__":
     import uvicorn
