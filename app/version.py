@@ -4,8 +4,9 @@ from app.config import settings
 from app.path import CONFIG_DIR
 
 VERSION = "0.2.0"
+NUMERIC_VERSION = tuple(map(int, VERSION.split(".")))
 CHANGES = {
-    "0.2.0": (
+    (0, 2, 0): (
         lambda: settings.enable_v2_ipc,
         "=== Migrate to v2 Realtime ===\nWe has officially adopted the V2 series of "
         "Realtime as our realtime game server.\nAnd the original spectator-server will no longer be used.\n"
@@ -22,10 +23,15 @@ ver_file = Path(CONFIG_DIR) / "server-ver"
 def version_check() -> None:
     if not ver_file.exists():
         # init file with the original version
-        current_version = "0.1.0"
-        ver_file.write_text(current_version)
+        ver_str = "0.1.0"
+        ver_file.write_text(ver_str)
     else:
-        current_version = ver_file.read_text().strip()
+        ver_str = ver_file.read_text().strip()
+    try:
+        current_version = tuple(map(int, ver_str.split(".")))
+    except ValueError:
+        raise RuntimeError(f"Invalid version format in {ver_file}: {ver_str}")
+
     changes = []
     for ver, (condition, message) in CHANGES.items():
         if current_version < ver and condition():
