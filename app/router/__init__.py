@@ -9,6 +9,7 @@ This module exports all API routers including:
 - Chat/notification router
 - Private/experimental endpoints router
 - Redirect routers for frontend/legacy API compatibility
+- Wiki asset router for documentation images
 """
 
 from .auth import router as auth_router
@@ -23,6 +24,7 @@ from .redirect import (
 )
 from .v1.router import router as api_v1_router
 from .v2.router import router as api_v2_router
+from .wiki_assets import router as wiki_asset_router
 
 __all__ = [
     "api_v1_router",
@@ -35,4 +37,5 @@ __all__ = [
     "private_router",
     "redirect_api_router",
     "redirect_router",
+    "wiki_asset_router",
 ]
