@@ -30,6 +30,7 @@ from app.router import (
     file_router,
     lio_router,
     private_router,
+    wiki_asset_router,
 )
 from app.router.redirect import redirect_router
 from app.service.beatmap_download_service import download_service
@@ -38,6 +39,7 @@ from app.service.client_verification_service import init_client_verification_ser
 from app.service.email_service import start_email_processor, stop_email_processor
 from app.service.redis_message_system import redis_message_system
 from app.service.subscribers.user_cache import user_online_subscriber
+from app.service.wiki_service import close_wiki_service
 from app.tasks import (
     calculate_user_rank,
     create_banchobot,
@@ -140,6 +142,7 @@ async def lifespan(app: FastAPI):
     stop_scheduler()
     await download_service.stop_health_check()
     await stop_email_processor()
+    await close_wiki_service()
 
     # close database & redis
     shutdown_logger.info("Closing database and Redis connections")
@@ -242,6 +245,7 @@ if settings.frontend_url is not None:
 app.include_router(file_router)
 app.include_router(auth_router)
 app.include_router(private_router)
+app.include_router(wiki_asset_router)
 
 # 会话验证中间件
 if settings.enable_session_verification:
