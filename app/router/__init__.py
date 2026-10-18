@@ -9,7 +9,7 @@ This module exports all API routers including:
 - Chat/notification router
 - Private/experimental endpoints router
 - Redirect routers for frontend/legacy API compatibility
-- Wiki asset router for documentation images
+- Wiki asset router for wiki images
 """
 
 from .auth import router as auth_router

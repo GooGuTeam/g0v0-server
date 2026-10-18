@@ -14,9 +14,8 @@ from pydantic import BaseModel, Field
 class WikiPageLayout(StrEnum):
     """Layout the client uses to render a wiki page.
 
-    The client only special cases `main_page`; everything else, including the
-    VitePress-specific layouts of the documentation repository, is rendered as
-    a regular Markdown article.
+    The client only special cases `main_page`; everything else is rendered as a
+    regular Markdown article.
     """
 
     MARKDOWN_PAGE = "markdown_page"

@@ -39,7 +39,7 @@ from app.service.client_verification_service import init_client_verification_ser
 from app.service.email_service import start_email_processor, stop_email_processor
 from app.service.redis_message_system import redis_message_system
 from app.service.subscribers.user_cache import user_online_subscriber
-from app.service.wiki_service import close_wiki_service
+from app.service.wiki import close_wiki_service
 from app.tasks import (
     calculate_user_rank,
     create_banchobot,

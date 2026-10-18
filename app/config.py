@@ -202,26 +202,19 @@ class Settings(BaseSettings):
 
     # wiki
     enable_wiki: Annotated[bool, Field(default=True), "wiki"]
-    wiki_repository: Annotated[str, Field(default="GooGuTeam/g0v0-docs"), "wiki"]
-    wiki_branch: Annotated[str, Field(default="main"), "wiki"]
+    wiki_repository: Annotated[str, Field(default="ppy/osu-wiki"), "wiki"]
+    wiki_branch: Annotated[str, Field(default="master"), "wiki"]
+    # Directory holding the articles (`ppy/osu-wiki` keeps them under `wiki/`).
+    wiki_content_root: Annotated[str, Field(default="wiki"), "wiki"]
     wiki_raw_base_url: Annotated[str, Field(default="https://raw.githubusercontent.com"), "wiki"]
-    wiki_docs_url: Annotated[HttpUrl, Field(default=HttpUrl("https://docs.g0v0.top")), "wiki"]
-    # The client requests pages by culture code (`zh`, `en`), while the documentation repository keeps its
-    # default language at the root and other languages in a subdirectory: this maps one onto the other.
-    wiki_locales: Annotated[dict[str, str], Field(default={"zh": "", "en": "en"}), "wiki"]
+    # Only used to list the languages a page is translated into; empty disables the listing, and the
+    # response then reports the served locale alone.
+    wiki_listing_base_url: Annotated[str, Field(default="https://api.github.com"), "wiki"]
+    wiki_github_token: Annotated[str, Field(default=""), "wiki"]
     wiki_fallback_locale: Annotated[str, Field(default="en"), "wiki"]
     wiki_cache_expire_seconds: Annotated[int, Field(default=300), "wiki"]
+    wiki_listing_cache_expire_seconds: Annotated[int, Field(default=3600), "wiki"]
     wiki_request_timeout_seconds: Annotated[float, Field(default=10.0), "wiki"]
-
-    @property
-    def wiki_raw_url_base(self) -> str:
-        return f"{self.wiki_raw_base_url.rstrip('/')}/{self.wiki_repository}/{self.wiki_branch}"
-
-    @property
-    def wiki_image_url_base(self) -> str:
-        # `server_url` only ends with `/` when it carries no path (pydantic normalises it), so this
-        # join must not rely on it: `https://host/api` would otherwise become `https://host/apiwiki-images`.
-        return f"{str(self.server_url).rstrip('/')}/wiki-images"
 
     # beatmap_sync
     enable_auto_beatmap_sync: Annotated[bool, Field(default=False), "beatmap_sync"]
