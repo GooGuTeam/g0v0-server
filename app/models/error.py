@@ -62,6 +62,7 @@ class ErrorType(Enum):
     SESSION_NOT_FOUND = ("session_not_found", 404, "Session not found")
     TRUSTED_DEVICE_NOT_FOUND = ("trusted_device_not_found", 404, "Trusted device not found")
     ACHIEVEMENT_NOT_FOUND = ("achievement_not_found", 404, "Achievement not found")
+    SCREENSHOT_NOT_FOUND = ("screenshot_not_found", 404, "Screenshot not found")
 
     # Validation / bad request
     INVALID_REQUEST = ("invalid_request", 400, "Invalid request")

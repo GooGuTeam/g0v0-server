@@ -14,6 +14,7 @@ from app.dependencies.storage import StorageService
 from app.dependencies.user import ClientUser
 from app.log import log
 from app.models.model import UTCBaseModel
+from app.service.screenshot_service import ScreenshotService, resolve_storage_path
 from app.storage import StorageService as OriginStorageService
 
 from .router import router
@@ -23,8 +24,6 @@ from pydantic import Field
 from sqlmodel import col, func, select
 
 logger = log("Screenshot")
-
-SCREENSHOT_STORAGE_PREFIX = "screenshots/"
 
 
 class ScreenshotInfo(UTCBaseModel):
@@ -63,39 +62,6 @@ class ScreenshotsResp(UTCBaseModel):
     items: list[ScreenshotInfo] = Field(description="Screenshots on the current page, newest first")
 
 
-def _canonical_storage_path(screenshot: Screenshot) -> str:
-    """Build the deterministic storage path used by the upload endpoint.
-
-    Args:
-        screenshot: The screenshot record.
-
-    Returns:
-        The storage path of the record.
-    """
-    return f"{SCREENSHOT_STORAGE_PREFIX}{screenshot.user_id}_{screenshot.sha256_hash}.jpg"
-
-
-def _resolve_storage_path(storage: OriginStorageService, screenshot: Screenshot) -> str:
-    """Resolve the storage path of a screenshot record.
-
-    The URL stored in the database may be a presigned URL that cannot be
-    parsed back into a storage key, so the parsed value is only trusted when
-    it stays inside the screenshot prefix. Otherwise the deterministic path
-    used at upload time is returned.
-
-    Args:
-        storage: The storage service.
-        screenshot: The screenshot record.
-
-    Returns:
-        The storage path of the record.
-    """
-    parsed = storage.get_file_name_by_url(screenshot.url)
-    if parsed and parsed.startswith(SCREENSHOT_STORAGE_PREFIX) and ".." not in parsed:
-        return parsed
-    return _canonical_storage_path(screenshot)
-
-
 async def _build_info(storage: OriginStorageService, screenshot: Screenshot) -> ScreenshotInfo:
     """Convert a screenshot record into an API response item.
 
@@ -107,7 +73,7 @@ async def _build_info(storage: OriginStorageService, screenshot: Screenshot) -> 
         The response item of the record.
     """
     try:
-        direct_url: str | None = await storage.get_file_url(_resolve_storage_path(storage, screenshot))
+        direct_url: str | None = await storage.get_file_url(resolve_storage_path(storage, screenshot))
     except RuntimeError as e:
         logger.warning(f"Failed to build direct URL for screenshot {screenshot.id}: {e}")
         direct_url = None
@@ -167,3 +133,30 @@ async def list_screenshots(
         total=total,
         items=[await _build_info(storage, screenshot) for screenshot in screenshots],
     )
+
+
+@router.delete(
+    "/screenshots/{screenshot_id}",
+    status_code=204,
+    name="Delete own screenshot",
+    description="Delete a screenshot submitted by the current user.",
+    tags=["Screenshot", "g0v0 API"],
+)
+async def delete_screenshot(
+    session: Database,
+    screenshot_id: int,
+    current_user: ClientUser,
+    storage: StorageService,
+) -> None:
+    """Delete a screenshot owned by the current user.
+
+    Args:
+        session: Database session.
+        screenshot_id: Screenshot record ID.
+        current_user: The authenticated user.
+        storage: Storage service used to remove the stored image.
+
+    Raises:
+        RequestError: If the screenshot does not exist or belongs to another user.
+    """
+    await ScreenshotService.delete_screenshot(session, storage, screenshot_id, current_user.id)

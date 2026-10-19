@@ -11,6 +11,7 @@ from . import (
     beatmapset_update,
     database_cleanup,
     recalculate_failed_score,
+    screenshot_cleanup,
     update_client_version,
 )
 from .cache import start_cache_tasks, stop_cache_tasks

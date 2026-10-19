@@ -236,6 +236,11 @@ class Settings(BaseSettings):
         "storage",
     ]
 
+    # storage - screenshot cleanup
+    enable_screenshot_cleanup: Annotated[bool, Field(default=False), "storage"]
+    screenshot_retention_days: Annotated[int, Field(default=30), "storage"]
+    screenshot_cleanup_batch_size: Annotated[int, Field(default=200), "storage"]
+
     # plugins
     plugin_dirs: Annotated[list[str], Field(default=["./plugins"]), "plugins"]
     disabled_plugins: Annotated[list[str], Field(default=[]), "plugins"]
