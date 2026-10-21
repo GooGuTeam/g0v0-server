@@ -4,7 +4,6 @@ This module contains various utility endpoints such as seasonal backgrounds and 
 """
 
 from datetime import UTC, datetime
-import hashlib
 from typing import Annotated
 
 from app.config import settings
@@ -82,6 +81,5 @@ async def submit_screenshot(
     screenshot: Annotated[bytes, File(..., description="The screenshot file to be submitted. Max size: 10MB")],
 ) -> ScreenshotResp:
     check_image(screenshot, size=10 * 1024 * 1024, allow_formats=["JPEG"])
-    sha256_hash = hashlib.sha256(screenshot).hexdigest()
-    await ScreenshotService.record_upload(session, storage_service, current_user.id, sha256_hash, screenshot)
+    sha256_hash = await ScreenshotService.record_upload(session, storage_service, current_user.id, screenshot)
     return ScreenshotResp(url=f"{settings.server_url}ss/{sha256_hash}")

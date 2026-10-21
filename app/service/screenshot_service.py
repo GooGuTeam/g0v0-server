@@ -5,6 +5,7 @@ initiated deletion and the periodic cleanup of unused screenshots.
 """
 
 from datetime import timedelta
+import hashlib
 
 from app.database import Screenshot
 from app.helpers import utcnow
@@ -65,9 +66,8 @@ class ScreenshotService:
         db: AsyncSession,
         storage: OriginStorageService,
         user_id: int,
-        sha256_hash: str,
         content: bytes,
-    ) -> None:
+    ) -> str:
         """Store a submitted screenshot, reusing an existing record.
 
         Uploading the same image twice by the same user shares one storage
@@ -75,13 +75,19 @@ class ScreenshotService:
         URL is renewed (presigned links may have expired) and the upload time is
         reset, while the hit counters are preserved.
 
+        The checksum is derived from the exact bytes being stored, so the
+        record can never reference a key that does not match its content.
+
         Args:
             db: Database session.
             storage: Storage service.
             user_id: ID of the uploading user.
-            sha256_hash: SHA-256 hash of the uploaded image.
             content: Raw JPEG bytes.
+
+        Returns:
+            The SHA-256 hex digest of the stored image.
         """
+        sha256_hash = hashlib.sha256(content).hexdigest()
         file_path = canonical_storage_path(user_id, sha256_hash)
         await storage.write_file(file_path, content, "image/jpeg")
         url = await storage.get_file_url(file_path)
@@ -111,6 +117,7 @@ class ScreenshotService:
                 )
             )
         await db.commit()
+        return sha256_hash
 
     @staticmethod
     async def delete_screenshot(
