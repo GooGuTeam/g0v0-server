@@ -37,6 +37,7 @@ dependencies = [
     "sqlmodel>=0.0.39",
     "tinycss2>=1.4.0",
     "uvicorn[standard]>=0.51.0",
+    "certifi>=2026.10.19",
 ]
 authors = [{ name = "GooGuTeam" }]
 
