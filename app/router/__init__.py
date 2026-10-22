@@ -10,12 +10,14 @@ This module exports all API routers including:
 - Private/experimental endpoints router
 - Redirect routers for frontend/legacy API compatibility
 - Wiki asset router for wiki images
+- Media URL router for the images the client loads through it
 """
 
 from .auth import router as auth_router
 from .fetcher import fetcher_router as fetcher_router
 from .file import file_router as file_router
 from .lio import router as lio_router
+from .media_proxy import router as media_url_router
 from .notification import chat_router as chat_router
 from .private import private_router as private_router
 from .redirect import (
@@ -34,6 +36,7 @@ __all__ = [
     "fetcher_router",
     "file_router",
     "lio_router",
+    "media_url_router",
     "private_router",
     "redirect_api_router",
     "redirect_router",

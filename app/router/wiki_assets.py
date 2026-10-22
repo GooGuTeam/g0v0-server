@@ -8,11 +8,6 @@ to the article). The client resolves both against the page URL and then rewrites
 the `/wiki/` segment into `/wiki/images/`, which is the route osu-web serves, so
 `/wiki/images/{path}` maps onto `{content_root}/{path}` and the Markdown needs no
 rewriting at all.
-
-Note that `OsuMarkdownImage` wraps every image URL in
-`https://osu.ppy.sh/media-url?url=...`, so the client only renders these images
-when that proxy can reach `SERVER_URL`; the images cannot be served to an offline
-client no matter what this route returns.
 """
 
 from typing import Annotated

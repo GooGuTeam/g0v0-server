@@ -246,6 +246,7 @@ app.include_router(file_router)
 app.include_router(auth_router)
 app.include_router(private_router)
 app.include_router(wiki_asset_router)
+app.include_router(media_url_router)
 
 # 会话验证中间件
 if settings.enable_session_verification:
