@@ -81,6 +81,10 @@ class WikiBackend(Protocol):
         """
         ...
 
+    async def warm(self) -> None:
+        """Load anything the backend keeps in memory, ahead of the first request."""
+        ...
+
     async def close(self) -> None:
         """Release the resources held by the backend."""
         ...

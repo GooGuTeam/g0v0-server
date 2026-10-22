@@ -6,7 +6,8 @@ osu!(lazer)'s wiki overlay can display the wiki from inside the client.
 The client always addresses a page as `wiki/{locale}/{path}` and keeps the locale
 out of the path (osu-web resolves it to a per-locale file). Untranslated pages
 fall back to a configurable language, and the language actually used is returned
-in `locale`.
+in `locale`. A path that no article carries any more resolves through the
+repository's redirect map, in the same way as on osu-web.
 """
 
 from typing import Annotated
@@ -27,9 +28,8 @@ from fastapi import Path
     tags=["Wiki"],
     name="Get Wiki Page",
     description=(
-        "Get a wiki page, in the shape the osu! client expects. "
-        "In-site links are rewritten to `/wiki/{path}` so that the client browses the wiki in its "
-        "overlay, and images are served from the wiki image route."
+        "Get a wiki page, in the shape the osu! client expects. Articles are served from an osu-wiki "
+        "repository unchanged, and a path listed in its `redirect.yaml` resolves to the page it points at."
     ),
 )
 async def router_get_wiki_page(

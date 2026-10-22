@@ -29,6 +29,7 @@ from app.router import (
     chat_router,
     file_router,
     lio_router,
+    media_url_router,
     private_router,
     wiki_asset_router,
 )
@@ -39,7 +40,7 @@ from app.service.client_verification_service import init_client_verification_ser
 from app.service.email_service import start_email_processor, stop_email_processor
 from app.service.redis_message_system import redis_message_system
 from app.service.subscribers.user_cache import user_online_subscriber
-from app.service.wiki import close_wiki_service
+from app.service.wiki import close_wiki_service, wiki_service
 from app.tasks import (
     calculate_user_rank,
     create_banchobot,
@@ -117,6 +118,10 @@ async def lifespan(app: FastAPI):
     init_beatmapset_update_service(fetcher)  # 初始化谱面集更新服务
     redis_message_system.start()
     start_scheduler()
+
+    if settings.enable_wiki:
+        # The remote repository might be slow or unreachable, making it a background task off the startup path.
+        bg_tasks.add_task(wiki_service.warm)
 
     if not settings.enable_v2_ipc:
         startup_logger.info("Starting user online subscriber")

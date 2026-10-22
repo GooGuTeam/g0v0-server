@@ -213,6 +213,7 @@ class Settings(BaseSettings):
     wiki_github_token: Annotated[str, Field(default=""), "wiki"]
     wiki_fallback_locale: Annotated[str, Field(default="en"), "wiki"]
     wiki_cache_expire_seconds: Annotated[int, Field(default=300), "wiki"]
+    wiki_redirect_cache_expire_seconds: Annotated[int, Field(default=3600), "wiki"]
     wiki_listing_cache_expire_seconds: Annotated[int, Field(default=3600), "wiki"]
     wiki_request_timeout_seconds: Annotated[float, Field(default=10.0), "wiki"]
 

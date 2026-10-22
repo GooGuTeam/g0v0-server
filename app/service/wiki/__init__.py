@@ -34,6 +34,7 @@ class WikiService:
             async with self._lock:
                 if self._backend is None:
                     self._backend = OsuWikiBackend()
+        assert self._backend is not None
         return self._backend
 
     async def get_page(self, locale: str | None, path: str) -> WikiPage | None:
@@ -59,6 +60,14 @@ class WikiService:
                 when it cannot be found.
         """
         return await (await self._get_backend()).get_image(path)
+
+    async def warm(self) -> None:
+        """Load what the backend keeps in memory, ahead of the first request.
+
+        Calls the repository, so it is meant to run as a background task rather than
+        during startup.
+        """
+        await (await self._get_backend()).warm()
 
     async def close(self) -> None:
         """Release the resources held by the active backend."""
