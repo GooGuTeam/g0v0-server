@@ -395,6 +395,14 @@ class Repository:
             await self._client.aclose()
             self._client = None
 
+    @property
+    def _headers(self) -> dict[str, str]:
+        """Headers every request to the repository is sent with."""
+        headers = {"User-Agent": "g0v0-server-wiki"}
+        if self._token:
+            headers["Authorization"] = f"Bearer {self._token}"
+        return headers
+
     async def _http(self) -> httpx.AsyncClient:
         """Return the shared HTTP client, creating it on first use."""
         if self._client is None:
@@ -403,8 +411,9 @@ class Repository:
                     self._client = httpx.AsyncClient(
                         timeout=self._timeout,
                         follow_redirects=True,
-                        headers={"User-Agent": "g0v0-server-wiki"},
+                        headers=self._headers,
                     )
+        assert self._client is not None
         return self._client
 
     def url(self, file_path: str) -> str:
@@ -515,9 +524,8 @@ class Repository:
 
         client = await self._http()
         url = f"{self.listing_base_url}/repos/{self.repository}/contents/{quote_repo_path(directory)}"
-        headers = {"Authorization": f"Bearer {self._token}"} if self._token else {}
         try:
-            response = await client.get(url, params={"ref": self.branch}, headers=headers)
+            response = await client.get(url, params={"ref": self.branch})
         except httpx.HTTPError as e:
             logger.warning(f"Failed to list wiki directory {directory}: {e}")
             return None
