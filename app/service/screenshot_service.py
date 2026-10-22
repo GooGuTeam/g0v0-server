@@ -9,6 +9,7 @@ import hashlib
 
 from app.database import Screenshot
 from app.helpers import utcnow
+from app.helpers.http import check_image
 from app.log import service_logger
 from app.models.error import ErrorType, RequestError
 from app.storage import StorageService as OriginStorageService
@@ -87,6 +88,7 @@ class ScreenshotService:
         Returns:
             The SHA-256 hex digest of the stored image.
         """
+        check_image(content, size=10 * 1024 * 1024, allow_formats=["JPEG"])
         sha256_hash = hashlib.sha256(content).hexdigest()
         file_path = canonical_storage_path(user_id, sha256_hash)
         await storage.write_file(file_path, content, "image/jpeg")

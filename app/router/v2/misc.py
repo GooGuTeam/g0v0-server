@@ -10,7 +10,6 @@ from app.config import settings
 from app.dependencies.database import Database
 from app.dependencies.storage import StorageService
 from app.dependencies.user import ClientUser
-from app.helpers.http import check_image
 from app.service.screenshot_service import ScreenshotService
 
 from .router import router
@@ -80,6 +79,5 @@ async def submit_screenshot(
     storage_service: StorageService,
     screenshot: Annotated[bytes, File(..., description="The screenshot file to be submitted. Max size: 10MB")],
 ) -> ScreenshotResp:
-    check_image(screenshot, size=10 * 1024 * 1024, allow_formats=["JPEG"])
     sha256_hash = await ScreenshotService.record_upload(session, storage_service, current_user.id, screenshot)
     return ScreenshotResp(url=f"{settings.server_url}ss/{sha256_hash}")
