@@ -9,7 +9,7 @@ SQLite verifies application sequencing, not MySQL isolation or distributed locks
 
 from datetime import timedelta
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from app.database import Screenshot
 from app.helpers import utcnow
@@ -18,11 +18,17 @@ from app.service.screenshot_service import ScreenshotService, canonical_storage_
 from . import test_screenshot_service as fixtures
 from .test_screenshot_service import image_bytes
 
+from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 
 class LifecycleAudit(IsolatedAsyncioTestCase):
+    engine: AsyncEngine
+    db: AsyncSession
+    storage: MagicMock
+    objects: dict[str, bytes]
+
     asyncSetUp = fixtures.ScreenshotServiceTests.asyncSetUp
     asyncTearDown = fixtures.ScreenshotServiceTests.asyncTearDown
     rows = fixtures.ScreenshotServiceTests.rows
@@ -71,6 +77,7 @@ class LifecycleAudit(IsolatedAsyncioTestCase):
                 async with AsyncSession(self.engine) as other:
                     if accessed:
                         current = await other.get(Screenshot, record_id)
+                        assert current is not None
                         current.hits += 1
                         current.last_access = utcnow()
                         other.add(current)
