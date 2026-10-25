@@ -14,6 +14,7 @@ from app.models.room import (
     RoomCategory,
     RoomDifficultyRange,
     RoomPlaylistItemStats,
+    RoomSource,
     RoomStatus,
 )
 
@@ -24,6 +25,7 @@ from .room_participated_user import RoomParticipatedUser
 from .user import User, UserDict, UserModel
 
 from pydantic import field_validator
+from sqlalchemy import String
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import Mapped
 from sqlmodel import Column, DateTime, Field, ForeignKey, Integer, Relationship, SQLModel, col, select
@@ -215,6 +217,12 @@ class Room(AsyncAttrs, RoomModel, table=True):
     """Database table for multiplayer rooms."""
 
     __tablename__: str = "rooms"
+
+    # Internal ownership is not part of RoomModel/APIUploadedRoom or the osu! API response.
+    source: str = Field(
+        default=RoomSource.REALTIME.value,
+        sa_column=Column(String(32), nullable=False, server_default=RoomSource.REALTIME.value, index=True),
+    )
 
     host_id: int = Field(sa_column=Column(Integer, ForeignKey("lazer_users.id"), index=True))
     password: str | None = Field(default=None)

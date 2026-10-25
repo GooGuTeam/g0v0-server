@@ -18,7 +18,7 @@ from app.log import log
 from app.models.error import ErrorType, FieldMissingError, RequestError
 from app.models.events.score import ReplayUploadedEvent
 from app.models.playlist import PlaylistItem, WinCondition
-from app.models.room import MatchType, QueueMode, RoomCategory, RoomStatus
+from app.models.room import MatchType, QueueMode, RoomCategory, RoomSource, RoomStatus
 from app.models.score import RULESETS_VERSION_HASH, GameMode, VersionEntry
 from app.plugins import hub
 
@@ -196,6 +196,7 @@ async def _create_room(db: Database, room_data: dict[str, Any]) -> tuple[Room, i
     room = Room(
         name=room_name,
         category=RoomCategory.REALTIME,
+        source=RoomSource.REALTIME,
         host_id=host_user_id,
         password=password or None,
         type=match_type_enum,

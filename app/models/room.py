@@ -3,6 +3,14 @@ from enum import StrEnum
 from pydantic import BaseModel
 
 
+class RoomSource(StrEnum):
+    """Creating server, using the names persisted by the v2 server repositories."""
+
+    REALTIME = "Realtime"
+    STABLE = "Stable"
+    LAZER = "Lazer"
+
+
 class RoomCategory(StrEnum):
     NORMAL = "normal"
     SPOTLIGHT = "spotlight"

@@ -24,7 +24,7 @@ from app.dependencies.user import ClientUser, get_optional_user
 from app.helpers import api_doc, utcnow
 from app.models.error import ErrorType, RequestError
 from app.models.events.room import RoomCreatedEvent, RoomEndedEvent, RoomUserJoinedEvent, RoomUserLeftEvent
-from app.models.room import MatchType, RoomCategory, RoomStatus
+from app.models.room import MatchType, RoomCategory, RoomSource, RoomStatus
 from app.plugins import hub
 from app.service.room import create_playlist_room_from_api
 
@@ -90,6 +90,9 @@ async def get_all_rooms(
     resp_list = []
     where_clauses: list[ColumnElement[bool]] = [col(Room.category) == category, col(Room.type) != MatchType.MATCHMAKING]
     now = utcnow()
+
+    if category == RoomCategory.REALTIME:
+        where_clauses.append(col(Room.source) == RoomSource.REALTIME)
 
     if status is not None:
         where_clauses.append(col(Room.status) == status)

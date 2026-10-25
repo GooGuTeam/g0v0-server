@@ -11,7 +11,7 @@ from app.database.playlists import Playlist
 from app.database.room import APIUploadedRoom, Room
 from app.dependencies.fetcher import get_fetcher
 from app.helpers import utcnow
-from app.models.room import MatchType, QueueMode, RoomCategory, RoomStatus
+from app.models.room import MatchType, QueueMode, RoomCategory, RoomSource, RoomStatus
 
 from sqlalchemy import exists
 from sqlmodel import col, select
@@ -30,6 +30,7 @@ async def create_playlist_room_from_api(session: AsyncSession, room: APIUploaded
         The created Room object.
     """
     db_room = Room.model_validate({"host_id": host_id, **room.model_dump(exclude={"playlist"})})
+    db_room.source = RoomSource.LAZER
     db_room.starts_at = utcnow()
     db_room.ends_at = db_room.starts_at + timedelta(minutes=db_room.duration if db_room.duration is not None else 0)
     session.add(db_room)
@@ -76,6 +77,7 @@ async def create_playlist_room(
         The created Room object.
     """
     db_room = Room(
+        source=RoomSource.LAZER,
         name=name,
         category=category,
         duration=duration,
