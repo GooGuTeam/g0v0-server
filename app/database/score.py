@@ -484,7 +484,7 @@ class Score(ScoreModel, table=True):
 
     @property
     def replay_filename(self) -> str:
-        return f"replays/{self.id}_{self.beatmap_id}_{self.user_id}_lazer_replay.osr"
+        return f"replays/{self.id}_{self.beatmap_id}_{self.user_id}_{self.type}_replay.osr"
 
     def get_display_score(self, mode: ScoringMode | None = None) -> int:
         """
@@ -1169,7 +1169,7 @@ async def process_score(
         preserve=info.passed,
         map_md5=score_token.beatmap.checksum,
         has_replay=False,
-        type="solo",
+        type="lazer",
         n300=info.statistics.get(HitResult.GREAT, 0),
         n100=info.statistics.get(HitResult.OK, 0),
         n50=info.statistics.get(HitResult.MEH, 0),
