@@ -17,6 +17,7 @@ from . import (  # noqa: F401
     tags,
     team,
     user,
+    wiki,
 )
 from .router import router as api_v2_router
 

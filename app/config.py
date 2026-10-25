@@ -200,6 +200,23 @@ class Settings(BaseSettings):
     avatar_proxy_prefix: Annotated[str, Field(default="a-ppy"), "asset_proxy"]
     beatmap_proxy_prefix: Annotated[str, Field(default="b-ppy"), "asset_proxy"]
 
+    # wiki
+    enable_wiki: Annotated[bool, Field(default=True), "wiki"]
+    wiki_repository: Annotated[str, Field(default="ppy/osu-wiki"), "wiki"]
+    wiki_branch: Annotated[str, Field(default="master"), "wiki"]
+    # Directory holding the articles (`ppy/osu-wiki` keeps them under `wiki/`).
+    wiki_content_root: Annotated[str, Field(default="wiki"), "wiki"]
+    wiki_raw_base_url: Annotated[str, Field(default="https://raw.githubusercontent.com"), "wiki"]
+    # Only used to list the languages a page is translated into; empty disables the listing, and the
+    # response then reports the served locale alone.
+    wiki_listing_base_url: Annotated[str, Field(default="https://api.github.com"), "wiki"]
+    wiki_github_token: Annotated[str, Field(default=""), "wiki"]
+    wiki_fallback_locale: Annotated[str, Field(default="en"), "wiki"]
+    wiki_cache_expire_seconds: Annotated[int, Field(default=300), "wiki"]
+    # Including images, redirects and article listing cache
+    wiki_resource_cache_expire_seconds: Annotated[int, Field(default=3600), "wiki"]
+    wiki_request_timeout_seconds: Annotated[float, Field(default=10.0), "wiki"]
+
     # beatmap_sync
     enable_auto_beatmap_sync: Annotated[bool, Field(default=False), "beatmap_sync"]
     beatmap_sync_interval_minutes: Annotated[int, Field(default=60), "beatmap_sync"]
