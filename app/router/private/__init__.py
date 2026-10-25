@@ -18,6 +18,7 @@ from . import (  # noqa: F401
     password,
     relationship,
     score,
+    screenshot,
     team,
     user,
 )
