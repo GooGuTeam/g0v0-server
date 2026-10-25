@@ -12,10 +12,10 @@ from dataclasses import dataclass
 import json
 import posixpath
 import re
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 from urllib.parse import quote, unquote
 
-from app.dependencies.database import redis_client
+from app.dependencies.database import redis_binary_client, redis_client
 from app.log import log
 from app.models.error import ErrorType, RequestError
 from app.models.wiki import WikiPage, WikiPageLayout
@@ -26,8 +26,13 @@ logger = log("Wiki")
 
 # Bump when the served Markdown or the response shape changes, so old cache entries expire.
 CACHE_KEY_PREFIX = "g0v0:wiki:v2"
-
 LISTING_CACHE_KEY_PREFIX = "g0v0:wiki-listing:v1"
+IMAGE_CACHE_KEY_PREFIX = "g0v0:wiki-image:v1"
+
+# Stored in place of the media type when the repository has no such asset, so that a broken image
+# link is not looked up again on every request. Media types always contain a slash, so it cannot
+# collide with a real one.
+MISSING_MEDIA_TYPE = "missing"
 
 # Extensions the image route is willing to serve.
 IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico", ".avif", ".bmp"})
@@ -376,6 +381,7 @@ class Repository:
         token: str = "",
         timeout: float = 10.0,
         cache_expire: int = 300,
+        image_cache_expire: int = 604800,
         listing_cache_expire: int = 3600,
     ) -> None:
         self.repository = repository
@@ -383,6 +389,7 @@ class Repository:
         self.raw_url_base = f"{raw_base_url.rstrip('/')}/{repository}/{branch}"
         self.listing_base_url = listing_base_url.rstrip("/")
         self.cache_expire = cache_expire
+        self.image_cache_expire = image_cache_expire
         self.listing_cache_expire = listing_cache_expire
         self._token = token
         self._timeout = timeout
@@ -422,6 +429,10 @@ class Repository:
 
     def _cache_key(self, file_path: str) -> str:
         return f"{CACHE_KEY_PREFIX}:{self.repository}@{self.branch}:{file_path}"
+
+    def _image_cache_key(self, file_path: str) -> str:
+        """Build the cache key holding the bytes of an image."""
+        return f"{IMAGE_CACHE_KEY_PREFIX}:{self.repository}@{self.branch}:{file_path}"
 
     async def fetch_text(self, file_path: str) -> str | None:
         """Fetch a Markdown file, caching both hits and misses.
@@ -465,7 +476,7 @@ class Repository:
         return content
 
     async def fetch_binary(self, file_path: str) -> tuple[bytes, str] | None:
-        """Fetch a binary asset from the repository.
+        """Fetch a binary asset from the repository, caching it in Redis.
 
         Args:
             file_path: Repository relative path of the asset.
@@ -479,6 +490,22 @@ class Repository:
         if not is_safe_repo_path(file_path):
             return None
 
+        cache_key = self._image_cache_key(file_path)
+        media_type_key = f"{cache_key}:media-type"
+
+        # The text database is opened with response decoding, so this is a str at runtime.
+        media_type = cast(str | None, await redis_client.get(media_type_key))
+        if media_type is not None:
+            if media_type == MISSING_MEDIA_TYPE:
+                return None
+
+            # The binary database is opened without response decoding, so this is bytes at runtime.
+            content = cast(bytes | None, await redis_binary_client.get(cache_key))
+            # The two databases are evicted independently, so the media type surviving on its
+            # own only means the bytes are gone: fall through and fetch them again.
+            if content is not None:
+                return content, media_type
+
         client = await self._http()
         try:
             response = await client.get(self.url(file_path))
@@ -487,18 +514,26 @@ class Repository:
             raise RequestError(ErrorType.INTERNAL, status_code=503) from e
 
         if response.status_code == 404:
+            logger.debug(f"Wiki asset {file_path} does not exist")
+            await redis_client.set(media_type_key, MISSING_MEDIA_TYPE, ex=self.cache_expire)
             return None
 
         if response.status_code != 200:
             logger.warning(f"Unexpected status {response.status_code} when fetching wiki asset {file_path}")
             raise RequestError(ErrorType.INTERNAL, status_code=503)
 
-        content_type = response.headers.get("content-type", "").split(";", 1)[0].strip()
-        if not content_type.startswith("image/"):
-            logger.warning(f"Wiki asset {file_path} is not an image (content type {content_type!r})")
+        media_type = response.headers.get("content-type", "").split(";", 1)[0].strip()
+        if not media_type.startswith("image/"):
+            # The raw host answers with a Markdown file or an error page for paths the wiki
+            # links to but does not ship.
+            logger.warning(f"Wiki asset {file_path} is not an image (content type {media_type!r})")
+            await redis_client.set(media_type_key, MISSING_MEDIA_TYPE, ex=self.cache_expire)
             return None
 
-        return response.content, content_type
+        content = response.content
+        await redis_binary_client.set(cache_key, content, ex=self.image_cache_expire)
+        await redis_client.set(media_type_key, media_type, ex=self.image_cache_expire)
+        return content, media_type
 
     async def list_directory(self, directory: str) -> list[str] | None:
         """List the repository files in a directory, or `None` when listing is unavailable.

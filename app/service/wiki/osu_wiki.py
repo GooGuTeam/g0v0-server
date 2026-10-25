@@ -119,6 +119,7 @@ class OsuWikiBackend:
             token=settings.wiki_github_token,
             timeout=settings.wiki_request_timeout_seconds,
             cache_expire=settings.wiki_cache_expire_seconds,
+            image_cache_expire=settings.wiki_image_cache_expire_seconds,
             listing_cache_expire=settings.wiki_listing_cache_expire_seconds,
         )
         # The redirect map is small but read on every miss, so it is parsed once per process.
