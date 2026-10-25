@@ -83,7 +83,7 @@ class SessionState:
                     token_id,
                     self.session.ip_address,
                     extract_user_agent(self.session.user_agent),
-                    self.session.web_uuid,
+                    self.session.device_hash,
                 )
         except Exception as e:
             logger.error(f"Error marking verified: {e}")

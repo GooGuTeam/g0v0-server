@@ -348,7 +348,7 @@ class LoginSessionService:
             is_new_device=is_new_device,
             expires_at=utcnow() + timedelta(hours=24),  # 24-hour expiration
             is_verified=is_verified,
-            web_uuid=web_uuid,
+            device_hash=web_uuid,
         )
 
         db.add(session)
@@ -388,7 +388,7 @@ class LoginSessionService:
         if user_agent.is_client:
             query = select(exists()).where(
                 TrustedDevice.user_id == user_id,
-                TrustedDevice.client_type == "client",
+                TrustedDevice.client_type == "lazer",
                 TrustedDevice.ip_address == ip_address,
                 TrustedDevice.expires_at > utcnow(),
             )
@@ -398,7 +398,7 @@ class LoginSessionService:
             query = select(exists()).where(
                 TrustedDevice.user_id == user_id,
                 TrustedDevice.client_type == "web",
-                TrustedDevice.web_uuid == web_uuid,
+                TrustedDevice.device_hash == web_uuid,
                 TrustedDevice.expires_at > utcnow(),
             )
         return (await db.exec(query)).first() or False
@@ -415,8 +415,8 @@ class LoginSessionService:
             user_id=user_id,
             ip_address=ip_address,
             user_agent=user_agent.raw_ua,
-            client_type="client" if user_agent.is_client else "web",
-            web_uuid=web_uuid if not user_agent.is_client else None,
+            client_type="lazer" if user_agent.is_client else "web",
+            device_hash=web_uuid if not user_agent.is_client else None,
             expires_at=utcnow() + timedelta(days=settings.device_trust_duration_days),
         )
         db.add(device)
@@ -435,7 +435,7 @@ class LoginSessionService:
         if user_agent.is_client:
             query = select(TrustedDevice).where(
                 TrustedDevice.user_id == user_id,
-                TrustedDevice.client_type == "client",
+                TrustedDevice.client_type == "lazer",
                 TrustedDevice.ip_address == ip_address,
             )
         else:
@@ -444,7 +444,7 @@ class LoginSessionService:
             query = select(TrustedDevice).where(
                 TrustedDevice.user_id == user_id,
                 TrustedDevice.client_type == "web",
-                TrustedDevice.web_uuid == web_uuid,
+                TrustedDevice.device_hash == web_uuid,
             )
 
         device = (await db.exec(query)).first()

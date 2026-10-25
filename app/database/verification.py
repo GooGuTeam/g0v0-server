@@ -5,7 +5,7 @@ for user authentication and security.
 """
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Literal, Optional
+from typing import TYPE_CHECKING, Optional
 
 from app.helpers import GeoIPHelper, extract_user_agent, utcnow
 from app.models.model import UserAgentInfo, UTCBaseModel
@@ -70,7 +70,7 @@ class LoginSession(LoginSessionBase, table=True):
         exclude=True,
     )
     is_new_device: bool = Field(default=False, exclude=True)  # New device login
-    web_uuid: str | None = Field(sa_column=Column(VARCHAR(36), nullable=True), default=None, exclude=True)
+    device_hash: str | None = Field(sa_column=Column(VARCHAR(64), nullable=True), default=None, exclude=True)
     verification_method: str | None = Field(default=None, max_length=20, exclude=True)  # totp/mail
 
     device: Mapped[Optional["TrustedDevice"]] = Relationship(back_populates="sessions")
@@ -106,7 +106,7 @@ class TrustedDeviceBase(SQLModel):
     user_id: int = Field(sa_column=Column(Integer, ForeignKey("lazer_users.id"), nullable=False, index=True))
     ip_address: str = Field(sa_column=Column(VARCHAR(45), nullable=False), default="127.0.0.1", exclude=True)
     user_agent: str = Field(sa_column=Column(Text, nullable=False))
-    client_type: Literal["web", "client"] = Field(sa_column=Column(VARCHAR(10), nullable=False), default="web")
+    client_type: str = Field(sa_column=Column(VARCHAR(10), nullable=False), default="web")
     created_at: datetime = Field(default_factory=utcnow)
     last_used_at: datetime = Field(default_factory=utcnow)
     expires_at: datetime = Field(sa_column=Column(DateTime))
@@ -116,7 +116,7 @@ class TrustedDevice(TrustedDeviceBase, table=True):
     """Database table for trusted devices."""
 
     __tablename__: str = "trusted_devices"
-    web_uuid: str | None = Field(sa_column=Column(VARCHAR(36), nullable=True), default=None)
+    device_hash: str | None = Field(sa_column=Column(VARCHAR(64), nullable=True), default=None)
 
     sessions: Mapped[list["LoginSession"]] = Relationship(back_populates="device", passive_deletes=True)
 
