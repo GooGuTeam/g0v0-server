@@ -381,16 +381,14 @@ class Repository:
         token: str = "",
         timeout: float = 10.0,
         cache_expire: int = 300,
-        image_cache_expire: int = 604800,
-        listing_cache_expire: int = 3600,
+        resource_cache_expire: int = 3600,
     ) -> None:
         self.repository = repository
         self.branch = branch
         self.raw_url_base = f"{raw_base_url.rstrip('/')}/{repository}/{branch}"
         self.listing_base_url = listing_base_url.rstrip("/")
         self.cache_expire = cache_expire
-        self.image_cache_expire = image_cache_expire
-        self.listing_cache_expire = listing_cache_expire
+        self.resource_cache_expire = resource_cache_expire
         self._token = token
         self._timeout = timeout
         self._client: httpx.AsyncClient | None = None
@@ -531,8 +529,8 @@ class Repository:
             return None
 
         content = response.content
-        await redis_binary_client.set(cache_key, content, ex=self.image_cache_expire)
-        await redis_client.set(media_type_key, media_type, ex=self.image_cache_expire)
+        await redis_binary_client.set(cache_key, content, ex=self.resource_cache_expire)
+        await redis_client.set(media_type_key, media_type, ex=self.resource_cache_expire)
         return content, media_type
 
     async def list_directory(self, directory: str) -> list[str] | None:
@@ -583,5 +581,5 @@ class Repository:
             for entry in payload
             if isinstance(entry, dict) and entry.get("type") == "file" and isinstance(entry.get("name"), str)
         ]
-        await redis_client.set(cache_key, json.dumps(names), ex=self.listing_cache_expire)
+        await redis_client.set(cache_key, json.dumps(names), ex=self.resource_cache_expire)
         return names

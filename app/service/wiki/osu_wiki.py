@@ -119,8 +119,7 @@ class OsuWikiBackend:
             token=settings.wiki_github_token,
             timeout=settings.wiki_request_timeout_seconds,
             cache_expire=settings.wiki_cache_expire_seconds,
-            image_cache_expire=settings.wiki_image_cache_expire_seconds,
-            listing_cache_expire=settings.wiki_listing_cache_expire_seconds,
+            resource_cache_expire=settings.wiki_resource_cache_expire_seconds,
         )
         # The redirect map is small but read on every miss, so it is parsed once per process.
         self._redirects_map: dict[str, str] = {}
@@ -211,7 +210,7 @@ class OsuWikiBackend:
 
             self._redirects_map = parse_redirects(text) if text is not None else {}
             self._redirects_loaded = True
-            self._redirects_refresh_at = time.monotonic() + settings.wiki_redirect_cache_expire_seconds
+            self._redirects_refresh_at = time.monotonic() + settings.wiki_resource_cache_expire_seconds
 
     def _refresh_redirects_in_background(self) -> None:
         """Refresh an expired redirect map without making a request wait for it."""
