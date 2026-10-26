@@ -216,6 +216,15 @@ def downgrade() -> None:
     connection = _connection()
     _check_pending_replays()
     mapping = dict(connection.execute(sa.text("SELECT new_id, old_id FROM banchobot_id_migration")).all())
+    # A fresh installation has no bot to move during upgrade. Startup may create
+    # it at ID 3 later, so restore the ID expected by the old application too.
+    if (
+        3 not in mapping
+        and connection.execute(
+            sa.text("SELECT id FROM lazer_users WHERE id = 3 AND username = 'BanchoBot' AND is_bot = 1")
+        ).first()
+    ):
+        mapping[3] = 2
     for target in mapping.values():
         if (
             target not in mapping
