@@ -19,9 +19,9 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.execute("UPDATE score SET type='lazer' WHERE type='solo'")
+    op.execute("UPDATE scores SET type='lazer' WHERE type='solo'")
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.execute("UPDATE score SET type='solo' WHERE type='lazer'")
+    op.execute("UPDATE scores SET type='solo' WHERE type='lazer'")
