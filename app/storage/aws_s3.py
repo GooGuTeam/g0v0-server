@@ -119,7 +119,7 @@ class AWSS3StorageService(StorageService):
                 async with response["Body"] as stream:
                     return await stream.read()
             except ClientError as e:
-                if e.response.get("Error", {}).get("Code") == "404":
+                if e.response.get("Error", {}).get("Code") in {"404", "NoSuchKey", "NotFound"}:
                     logger.debug(f"Object {file_path} not found in bucket {self.bucket_name}")
                     raise FileNotFoundError(f"File not found: {file_path}")
                 logger.error(f"Failed to read object {file_path} from bucket {self.bucket_name}: {e}")
@@ -136,6 +136,33 @@ class AWSS3StorageService(StorageService):
                 logger.error(f"Failed to delete object {file_path} from bucket {self.bucket_name}: {e}")
                 raise RuntimeError(f"Failed to delete file from object storage: {e}")
 
+    async def rename_file(self, source: str, destination: str) -> None:
+        async with self._get_client() as client:
+            try:
+                source_info = await client.head_object(Bucket=self.bucket_name, Key=source)
+            except ClientError as error:
+                if error.response.get("Error", {}).get("Code") in {"404", "NoSuchKey", "NotFound"}:
+                    raise FileNotFoundError(f"File not found: {source}") from error
+                raise
+            if source == destination:
+                return
+            try:
+                await client.head_object(Bucket=self.bucket_name, Key=destination)
+            except ClientError as error:
+                if error.response.get("Error", {}).get("Code") not in {"404", "NoSuchKey", "NotFound"}:
+                    raise
+            else:
+                raise FileExistsError(f"File already exists: {destination}")
+            await client.copy_object(
+                Bucket=self.bucket_name,
+                Key=destination,
+                CopySource={"Bucket": self.bucket_name, "Key": source},
+                CopySourceIfMatch=source_info["ETag"],
+                MetadataDirective="COPY",
+            )
+            await client.delete_object(Bucket=self.bucket_name, Key=source)
+            logger.debug(f"Renamed object {source} to {destination} in bucket {self.bucket_name}")
+
     async def is_exists(self, file_path: str) -> bool:
         async with self._get_client() as client:
             try:
@@ -145,7 +172,7 @@ class AWSS3StorageService(StorageService):
                 )
                 return True
             except ClientError as e:
-                if e.response.get("Error", {}).get("Code") == "404":
+                if e.response.get("Error", {}).get("Code") in {"404", "NoSuchKey", "NotFound"}:
                     return False
                 logger.error(f"Failed to check object {file_path} in bucket {self.bucket_name}: {e}")
                 raise RuntimeError(f"Failed to check file existence in object storage: {e}")

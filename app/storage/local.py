@@ -117,6 +117,19 @@ class LocalStorageService(StorageService):
             logger.error(f"Failed to delete local file {file_path}: {e}")
             raise RuntimeError(f"Failed to delete file: {e}")
 
+    async def rename_file(self, source: str, destination: str) -> None:
+        source_path = self._get_file_path(source)
+        destination_path = self._get_file_path(destination)
+        if not source_path.is_file():
+            raise FileNotFoundError(f"File not found: {source}")
+        if source_path == destination_path:
+            return
+        if destination_path.exists() or destination_path.is_symlink():
+            raise FileExistsError(f"File already exists: {destination}")
+        destination_path.parent.mkdir(parents=True, exist_ok=True)
+        source_path.rename(destination_path)
+        logger.debug(f"Renamed local file {source} to {destination}")
+
     async def is_exists(self, file_path: str) -> bool:
         full_path = self._get_file_path(file_path)
         return full_path.exists() and full_path.is_file()
