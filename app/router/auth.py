@@ -24,7 +24,7 @@ from app.auth import (
     validate_username,
 )
 from app.config import settings
-from app.const import SUPPORT_TOTP_VERIFICATION_VER
+from app.const import BANCHOBOT_ID, SUPPORT_TOTP_VERIFICATION_VER
 from app.database import DailyChallengeStats, OAuthClient, User
 from app.database.auth import TotpKeys
 from app.database.statistics import UserStatistics
@@ -185,7 +185,7 @@ async def register_user(
             country_code = "CN"
 
         # Create new user
-        # Ensure AUTO_INCREMENT starts from 3 (ID=2 is BanchoBot)
+        # Reserve the system user IDs, including BanchoBot.
         result = await db.execute(
             text(
                 "SELECT AUTO_INCREMENT FROM information_schema.TABLES "
@@ -193,8 +193,8 @@ async def register_user(
             )
         )
         next_id = result.one()[0]
-        if next_id <= 2:
-            await db.execute(text("ALTER TABLE lazer_users AUTO_INCREMENT = 3"))
+        if next_id <= BANCHOBOT_ID:
+            await db.execute(text(f"ALTER TABLE lazer_users AUTO_INCREMENT = {BANCHOBOT_ID + 1}"))
             await db.commit()
 
         new_user = User(

@@ -64,6 +64,16 @@ class StorageService(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
+    async def rename_file(self, source: str, destination: str) -> None:
+        """Rename a file without overwriting an existing destination.
+
+        Object storage implementations copy the object before deleting its source.
+        Raise FileNotFoundError for a missing source and FileExistsError when the
+        destination exists. If deletion fails, both copies may remain for retry.
+        """
+        raise NotImplementedError
+
+    @abc.abstractmethod
     async def is_exists(self, file_path: str) -> bool:
         """Check if a file exists.
 
