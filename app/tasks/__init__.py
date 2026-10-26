@@ -20,6 +20,7 @@ from .create_banchobot import create_banchobot
 from .daily_challenge import daily_challenge_job, process_daily_challenge_top
 from .geoip import init_geoip
 from .load_achievements import load_achievements
+from .migrate_replays import migrate_replays
 from .special_statistics import create_custom_ruleset_statistics, create_rx_statistics
 
 __all__ = [
@@ -30,6 +31,7 @@ __all__ = [
     "daily_challenge_job",
     "init_geoip",
     "load_achievements",
+    "migrate_replays",
     "process_daily_challenge_top",
     "start_cache_tasks",
     "stop_cache_tasks",

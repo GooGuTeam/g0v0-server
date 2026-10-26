@@ -49,6 +49,7 @@ from app.tasks import (
     daily_challenge_job,
     init_geoip,
     load_achievements,
+    migrate_replays,
     process_daily_challenge_top,
     start_cache_tasks,
     stop_cache_tasks,
@@ -73,6 +74,7 @@ async def lifespan(app: FastAPI):
 
     # === on startup ===
     startup_logger.info("Starting g0v0-server")
+    await migrate_replays()
 
     # init mods, achievements and performance calculator
     startup_logger.info("Loading plugins")

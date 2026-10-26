@@ -12,7 +12,10 @@ The mapping table makes downgrade independent of configuration and later registr
 """
 
 from collections.abc import Sequence
+import json
 import os
+
+from app.path import CONFIG_DIR
 
 from alembic import context, op
 import sqlalchemy as sa
@@ -24,8 +27,11 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 MAPPING_TABLE = "banchobot_id_migration"
-# These local user references have no FK. Beatmap/beatmapset user_id values refer
-# to upstream osu! users and deliberately do not participate in this migration.
+PENDING_REPLAYS = CONFIG_DIR / "new_user_id"
+# These references are written by local voting, chat, notification, screenshot,
+# and login handlers. They lack FKs but refer to local lazer_users accounts.
+# beatmaps.user_id, beatmapsets.user_id, and user IDs inside fetched beatmapset
+# nomination/description JSON come from osu! API responses and must stay unchanged.
 LOCAL_REFERENCES = {
     ("beatmap_tags", "user_id"),
     ("chat_user_channels", "user_id"),
@@ -33,6 +39,25 @@ LOCAL_REFERENCES = {
     ("screenshots", "user_id"),
     ("user_login_log", "user_id"),
 }
+
+
+def _check_pending_replays() -> None:
+    if PENDING_REPLAYS.exists():
+        raise RuntimeError(
+            "Finish the pending replay migration by starting the application before changing user IDs again."
+        )
+
+
+def _queue_replays(mapping: dict[int, int]) -> None:
+    if not mapping:
+        return
+    PENDING_REPLAYS.parent.mkdir(parents=True, exist_ok=True)
+    temporary = PENDING_REPLAYS.with_name("new_user_id.tmp")
+    try:
+        temporary.write_text(json.dumps(mapping) + "\n", encoding="utf-8")
+        temporary.replace(PENDING_REPLAYS)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def _connection() -> Connection:
@@ -139,6 +164,7 @@ def _remap(connection: Connection, mapping: dict[int, int]) -> None:
 
 def upgrade() -> None:
     connection = _connection()
+    _check_pending_replays()
     strategy = (
         context.get_x_argument(as_dictionary=True)
         .get("banchobot_id_strategy", os.environ.get("BANCHOBOT_ID_STRATEGY", "move"))
@@ -174,13 +200,21 @@ def upgrade() -> None:
                     {"old": old, "new": new},
                 )
             _remap(connection, mapping)
+            _queue_replays(mapping)
     except Exception:
         op.drop_table(MAPPING_TABLE)
         raise
+    for old, new in sorted(mapping.items()):
+        context.config.print_stdout("User ID mapping: %s -> %s", old, new)
+    if 3 in mapping:
+        context.config.print_stdout("Original user ID 3 now has user ID %s.", mapping[3])
+    if mapping:
+        context.config.print_stdout("Replay migration queued in %s; start the application to finish.", PENDING_REPLAYS)
 
 
 def downgrade() -> None:
     connection = _connection()
+    _check_pending_replays()
     mapping = dict(connection.execute(sa.text("SELECT new_id, old_id FROM banchobot_id_migration")).all())
     for target in mapping.values():
         if (
@@ -188,5 +222,7 @@ def downgrade() -> None:
             and connection.execute(sa.text("SELECT id FROM lazer_users WHERE id = :id"), {"id": target}).first()
         ):
             raise RuntimeError(f"Cannot restore user {target}: that ID is now occupied.")
-    _remap(connection, mapping)
+    with connection.begin_nested():
+        _remap(connection, mapping)
+        _queue_replays(mapping)
     op.drop_table(MAPPING_TABLE)
