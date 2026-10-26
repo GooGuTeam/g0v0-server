@@ -8,11 +8,10 @@ Create Date: 2026-08-08 04:08:36.521347
 
 from collections.abc import Sequence
 
-from app.const import BANCHOBOT_ID
-
 from alembic import op
 import sqlalchemy as sa
 
+# BanchoBot was user 2 at this revision; do not use the current application constant.
 # revision identifiers, used by Alembic.
 revision: str = "2b1d99b84fbe"
 down_revision: str | Sequence[str] | None = "27eb30853d3d"
@@ -42,7 +41,7 @@ def upgrade() -> None:
         UPDATE oauth_tokens
         SET user_id = NULL
         WHERE user_id = :banchobot_id
-        """).bindparams(banchobot_id=BANCHOBOT_ID)
+        """).bindparams(banchobot_id=2)
     )
 
 
@@ -53,7 +52,7 @@ def downgrade() -> None:
         UPDATE oauth_tokens
         SET user_id = :banchobot_id
         WHERE user_id IS NULL
-        """).bindparams(banchobot_id=BANCHOBOT_ID)
+        """).bindparams(banchobot_id=2)
     )
     op.alter_column(
         "oauth_tokens",

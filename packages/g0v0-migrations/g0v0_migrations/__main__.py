@@ -1,3 +1,4 @@
+from argparse import Namespace
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -100,6 +101,12 @@ def _ensure_env(obj: ContextObject, autogenerate: bool = False):
     type=click.Path(exists=True, file_okay=False, path_type=Path),
     help="Path to the plugin directory.",
 )
+@click.option(
+    "-x",
+    "x_args",
+    multiple=True,
+    help="Additional Alembic environment arguments (key=value). May be repeated.",
+)
 @click.pass_context
 def g0v0_migrate(
     ctx: click.Context,
@@ -107,6 +114,7 @@ def g0v0_migrate(
     name: str,
     g0v0_server_path: Path | None,
     plugin_path: Path | None,
+    x_args: tuple[str, ...],
 ):
     config_path: Path | None = config
     if g0v0_server_path is None:
@@ -120,7 +128,7 @@ def g0v0_migrate(
             raise click.ClickException(
                 f"Could not find alembic.ini at {config_path}. Please provide it via --config option."
             )
-    alembic_config = AlembicConfig(config_path.as_posix())
+    alembic_config = AlembicConfig(config_path.as_posix(), cmd_opts=Namespace(x=list(x_args)))
     alembic_config.config_ini_section = name
 
     # detect cwd is a plugin.

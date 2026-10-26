@@ -34,7 +34,7 @@ target_metadata = SQLModel.metadata
 def include_object(object, name, type_, reflected, compare_to) -> bool:  # noqa: ARG001
     if type_ != "table":
         return True
-    return not name.endswith("alembic_version") and not name.startswith("plugin_")
+    return name != "banchobot_id_migration" and not name.endswith("alembic_version") and not name.startswith("plugin_")
 
 
 def run_migrations_offline() -> None:
