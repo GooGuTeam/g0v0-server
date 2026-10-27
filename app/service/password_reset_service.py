@@ -13,7 +13,7 @@ from app.database import LoginSession, OAuthToken, TrustedDevice, User
 from app.dependencies.database import with_db
 from app.helpers import run_in_threadpool, utcnow
 from app.log import logger
-from app.service.auth_security import check_verification_limit, release_email_send, reserve_email_send
+from app.service.auth_security import check_password_reset_limit, release_email_send, reserve_email_send
 from app.service.email_service import email_service
 from app.service.verification_service import lock_user
 
@@ -189,7 +189,7 @@ class PasswordResetService:
                 return False, "Verification code invalid or expired"
             user_id = user.id
             await lock_user(session, user_id)
-            await check_verification_limit(redis, user_id)
+            await check_password_reset_limit(redis, user_id, ip_address)
             key = self._get_reset_code_key(email)
             original = await redis.get(key)
             if not original:

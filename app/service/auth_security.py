@@ -32,6 +32,25 @@ async def check_verification_limit(redis: Redis, user_id: int) -> None:
         raise RequestError(ErrorType.TOO_MANY_FAILED_ATTEMPTS, status_code=429)
 
 
+async def check_password_reset_limit(redis: Redis, user_id: int, ip_address: str) -> None:
+    """Keep reset-code guesses separate from authenticated verification attempts."""
+    counts = await redis.eval(
+        """
+        local account_count = redis.call('INCR', KEYS[1])
+        if account_count == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
+        local source_count = redis.call('INCR', KEYS[2])
+        if source_count == 1 then redis.call('EXPIRE', KEYS[2], ARGV[1]) end
+        return {account_count, source_count}
+        """,
+        2,
+        f"auth:password-reset:account:{user_id}",
+        f"auth:password-reset:ip:{private_key(ip_address)}",
+        300,
+    )
+    if not counts or int(counts[0]) > 3 or int(counts[1]) > 30:
+        raise RequestError(ErrorType.TOO_MANY_FAILED_ATTEMPTS, status_code=429)
+
+
 async def acquire_setup_lock(redis: Redis, user_id: int) -> str | None:
     reservation = secrets.token_hex(16)
     return reservation if await redis.set(f"totp:setup-lock:{user_id}", reservation, nx=True, ex=60) else None
