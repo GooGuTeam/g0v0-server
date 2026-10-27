@@ -4,20 +4,23 @@ Provides endpoints for users to manage their login sessions and trusted devices
 including listing, viewing, and revoking them.
 """
 
+from datetime import timedelta
 from typing import Annotated
 
+from app.config import settings
 from app.database.auth import OAuthToken
 from app.database.verification import LoginSession, LoginSessionResp, TrustedDevice, TrustedDeviceResp
 from app.dependencies.database import Database
 from app.dependencies.geoip import GeoIPService
-from app.dependencies.user import UserAndToken, get_client_user_and_token
+from app.dependencies.user import ClientUser, UserAndToken, get_client_user_and_token
+from app.helpers import utcnow
 from app.log import log
 from app.models.error import ErrorType, RequestError
 from app.service.verification_service import LoginSessionService, lock_user
 
 from .router import router
 
-from fastapi import Security
+from fastapi import Body, Security
 from pydantic import BaseModel
 from sqlmodel import col, select
 
@@ -36,6 +39,71 @@ class SessionsResp(BaseModel):
     total: int
     current: int = 0
     sessions: list[LoginSessionResp]
+
+
+@router.post(
+    "/admin/stable-verification",
+    name="Verify a stable client session",
+    tags=["User Sessions", "g0v0 API", "Admin"],
+    status_code=204,
+    description=(
+        "Verify the active login session associated with a stable client device. "
+        "This route is protected by the private admin session-verification middleware."
+    ),
+)
+async def stable_verification(
+    session: Database,
+    device_hash: Annotated[str, Body(..., embed=True, min_length=1, description="Stable client device hash")],
+    current_user: ClientUser,
+):
+    """Verify the current user's pending stable-client session atomically."""
+    user_id = current_user.id
+    now = utcnow()
+
+    await lock_user(session, user_id)
+    device = (
+        await session.exec(
+            select(TrustedDevice)
+            .where(
+                TrustedDevice.user_id == user_id,
+                TrustedDevice.device_hash == device_hash,
+                TrustedDevice.client_type == "stable",
+            )
+            .order_by(col(TrustedDevice.id))
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).first()
+    if device is None:
+        raise RequestError(ErrorType.TRUSTED_DEVICE_NOT_FOUND)
+
+    login_session = (
+        await session.exec(
+            select(LoginSession)
+            .where(
+                LoginSession.user_id == user_id,
+                LoginSession.device_hash == device_hash,
+                LoginSession.expires_at > now,
+            )
+            .order_by(col(LoginSession.created_at).desc(), col(LoginSession.id).desc())
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).first()
+    if login_session is None:
+        raise RequestError(ErrorType.SESSION_NOT_FOUND)
+
+    if not login_session.is_verified:
+        login_session.is_verified = True
+        login_session.verified_at = now
+    login_session.verification_method = None
+    login_session.device_id = device.id
+    device.last_used_at = now
+    device.expires_at = now + timedelta(days=settings.device_trust_duration_days)
+    session.add(login_session)
+    session.add(device)
+    logger.info(f"User {user_id} verified stable client session {login_session.id} using device {device.id}")
+    await session.commit()
 
 
 @router.get(
