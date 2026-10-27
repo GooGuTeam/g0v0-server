@@ -18,6 +18,7 @@ services:
       - ENABLE_SUPPORTER_FOR_ALL_USERS=true
       - ENABLE_ALL_BEATMAP_LEADERBOARD=true
       - CALCULATOR_CONFIG={"server_url":"http://performance-server:8080"}
+      - FORWARDED_ALLOW_IPS=${FORWARDED_ALLOW_IPS:-172.30.0.10}
     env_file:
       - .env
     depends_on:
@@ -104,7 +105,8 @@ services:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
     restart: unless-stopped
     networks:
-      - osu-network
+      osu-network:
+        ipv4_address: 172.30.0.10
 
   performance-server:
     image: ghcr.io/googuteam/osu-performance-server-osurx
@@ -124,3 +126,6 @@ volumes:
 networks:
   osu-network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
