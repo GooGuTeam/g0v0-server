@@ -20,7 +20,7 @@ from app.dependencies.database import (
     redis_message_client,
     with_db,
 )
-from app.dependencies.user import get_current_user_and_token
+from app.dependencies.user import _validate_token
 from app.helpers import bg_tasks, safe_json_dumps
 from app.log import log
 from app.models.chat import ChatEvent
@@ -464,9 +464,7 @@ async def chat_websocket(
             return
 
         try:
-            user_and_token = await get_current_user_and_token(
-                session, SecurityScopes(scopes=["chat.read"]), token_pw=auth_token
-            )
+            user_and_token = await _validate_token(session, auth_token, SecurityScopes(scopes=["chat.read"]), websocket)
             user, oauth_token = user_and_token
             state = await LoginSessionService.get_state(session, get_redis(), user.id, oauth_token.id)
             state.require_valid()

@@ -373,9 +373,16 @@ class LoginSessionService:
 
     @staticmethod
     async def verification_method(
-        db: AsyncSession, redis: Redis, user_id: int, token_id: int, api_version: int = 0
+        db: AsyncSession,
+        redis: Redis,
+        user_id: int,
+        token_id: int,
+        api_version: int = 0,
+        *,
+        session: LoginSession | None = None,
     ) -> VerificationMethod | None:
-        session = await LoginSessionService.require_session(db, user_id, token_id)
+        if session is None:
+            session = await LoginSessionService.require_session(db, user_id, token_id)
         if session.is_verified or not (settings.enable_totp_verification or settings.enable_email_verification):
             return None
         method = session.verification_method
@@ -402,7 +409,9 @@ class LoginSessionService:
         status = LoginSessionService.status(session)
         method = None
         if status == SessionStatus.PENDING:
-            method = await LoginSessionService.verification_method(db, redis, user_id, token_id, api_version)
+            method = await LoginSessionService.verification_method(
+                db, redis, user_id, token_id, api_version, session=session
+            )
             if not (settings.enable_totp_verification or settings.enable_email_verification):
                 status = SessionStatus.VERIFIED
         return SessionState(user_id, token_id, session.id if session else None, status, method)

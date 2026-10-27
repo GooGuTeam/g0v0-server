@@ -6,13 +6,13 @@ from app.database import User
 from app.database.auth import OAuthToken, V1APIKeys
 from app.models.error import ErrorType, RequestError
 from app.models.oauth import OAuth2ClientCredentialsBearer, ScopeInfo
-from app.service.verification_service import LoginSessionService, SessionStatus
+from app.service.verification_service import LoginSessionService, SessionState, SessionStatus
 
 from .api_version import APIVersion
 from .database import Database, get_redis
 
 from fast_depends import Depends as FastDepends
-from fastapi import Depends, Security
+from fastapi import Depends, Request, Security
 from fastapi.security import (
     APIKeyQuery,
     HTTPBearer,
@@ -22,6 +22,7 @@ from fastapi.security import (
 )
 from redis.asyncio import Redis
 from sqlmodel import select
+from starlette.requests import HTTPConnection
 
 security = HTTPBearer()
 
@@ -104,15 +105,24 @@ async def v1_authorize(
         raise RequestError(ErrorType.INVALID_API_KEY)
 
 
+def request_session_state(connection: HTTPConnection | None, user: User, token: OAuthToken) -> SessionState | None:
+    """Return the session decision already made by VerifySessionMiddleware, if any."""
+    state = getattr(connection.state, "auth_context", None) if connection is not None else None
+    if isinstance(state, SessionState) and state.user_id == user.id and state.token_id == token.id:
+        return state
+    return None
+
+
 async def get_client_user_and_token(
     db: Database,
+    request: Request,
     security_scopes: SecurityScopes,
     token: Annotated[str | None, Depends(oauth2_password), FastDepends(oauth2_password)],
 ) -> tuple[User, OAuthToken]:
     if token is None:
         raise RequestError(ErrorType.NOT_AUTHENTICATED)
 
-    return await _validate_token(db, token, security_scopes)
+    return await _validate_token(db, token, security_scopes, request)
 
 
 UserAndToken = tuple[User, OAuthToken]
@@ -124,12 +134,15 @@ async def get_client_user_no_verified(user_and_token: UserAndToken = Depends(get
 
 async def get_client_user(
     db: Database,
+    request: Request,
     redis: Annotated[Redis, Depends(get_redis), FastDepends(get_redis)],
     api_version: APIVersion,
     user_and_token: UserAndToken = Depends(get_client_user_and_token),
 ):
     user, token = user_and_token
-    state = await LoginSessionService.get_state(db, redis, user.id, token.id, api_version)
+    state = request_session_state(request, user, token)
+    if state is None:
+        state = await LoginSessionService.get_state(db, redis, user.id, token.id, api_version)
     state.require_valid()
     if state.status == SessionStatus.PENDING:
         raise RequestError(ErrorType.USER_NOT_VERIFIED, {"method": state.method or "mail"})
@@ -140,6 +153,7 @@ async def _validate_token(
     db: Database,
     token: str,
     security_scopes: SecurityScopes,
+    connection: HTTPConnection | None = None,
 ) -> UserAndToken:
     token_record = await get_token_by_access_token(db, token)
     if not token_record:
@@ -158,12 +172,14 @@ async def _validate_token(
     user = (await db.exec(select(User).where(User.id == token_record.user_id))).first()
     if not user:
         raise RequestError(ErrorType.USER_NOT_FOUND)
-    await LoginSessionService.require_session(db, user.id, token_record.id)
+    if request_session_state(connection, user, token_record) is None:
+        await LoginSessionService.require_session(db, user.id, token_record.id)
     return user, token_record
 
 
 async def get_current_user_and_token(
     db: Database,
+    request: Request,
     security_scopes: SecurityScopes,
     token_pw: Annotated[str | None, Depends(oauth2_password), FastDepends(oauth2_password)] = None,
     token_code: Annotated[str | None, Depends(oauth2_code), FastDepends(oauth2_code)] = None,
@@ -176,7 +192,7 @@ async def get_current_user_and_token(
     if not token:
         raise RequestError(ErrorType.NOT_AUTHENTICATED)
 
-    return await _validate_token(db, token, security_scopes)
+    return await _validate_token(db, token, security_scopes, request)
 
 
 async def get_current_user(
@@ -187,6 +203,7 @@ async def get_current_user(
 
 async def get_optional_user(
     db: Database,
+    request: Request,
     security_scopes: SecurityScopes,
     token_pw: Annotated[str | None, Depends(oauth2_password), FastDepends(oauth2_password)] = None,
     token_code: Annotated[str | None, Depends(oauth2_code), FastDepends(oauth2_code)] = None,
@@ -218,7 +235,8 @@ async def get_optional_user(
     user = (await db.exec(select(User).where(User.id == token_record.user_id))).first()
     if not user:
         raise RequestError(ErrorType.USER_NOT_FOUND)
-    await LoginSessionService.require_session(db, user.id, token_record.id)
+    if request_session_state(request, user, token_record) is None:
+        await LoginSessionService.require_session(db, user.id, token_record.id)
     return user
 
 
