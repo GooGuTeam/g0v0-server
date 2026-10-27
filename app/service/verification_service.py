@@ -232,11 +232,17 @@ class LoginSessionService:
         return f"g0v0:{session_id}"
 
     @staticmethod
-    def initial_method(has_totp: bool, api_version: int, trusted: bool = False) -> VerificationMethod | None:
+    def initial_method(
+        has_totp: bool, api_version: int, trusted: bool = False, *, is_client: bool = False
+    ) -> VerificationMethod | None:
         if settings.enable_totp_verification and has_totp:
-            # Client versions select a supported factor, never whether MFA is required.
-            # Keep legacy email verification when available, including on trusted devices.
-            if api_version < SUPPORT_TOTP_VERIFICATION_VER and settings.enable_email_verification:
+            # The token request cannot report a trustworthy version: lazer adds
+            # x-api-version in APIRequest.Perform only, while OAuth.AccessTokenRequest
+            # extends OsuJsonWebRequest, so POST /oauth/token usually sends none.
+            # A missing version therefore never downgrades MFA. The legacy exception
+            # is limited to game clients that explicitly declare a pre-TOTP version;
+            # web and other non-client callers must always use TOTP.
+            if is_client and 0 < api_version < SUPPORT_TOTP_VERIFICATION_VER and settings.enable_email_verification:
                 return "mail"
             return "totp"
         if settings.enable_email_verification and not trusted:
@@ -385,7 +391,8 @@ class LoginSessionService:
                 return "totp"
             return "mail" if settings.enable_email_verification else None
         has_totp = await db.get(TotpKeys, user_id) is not None
-        return LoginSessionService.initial_method(has_totp, api_version)
+        is_client = extract_user_agent(session.user_agent).is_client if session.user_agent else False
+        return LoginSessionService.initial_method(has_totp, api_version, is_client=is_client)
 
     @staticmethod
     async def get_state(

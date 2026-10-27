@@ -413,7 +413,9 @@ async def oauth_token(
         totp_key = (await db.exec(select(TotpKeys).where(TotpKeys.user_id == user_id).with_for_update())).first()
         trusted_device = await LoginSessionService.check_trusted_device(db, user_id, ip_address, user_agent, web_uuid)
         trusted = trusted_device is not None
-        method = LoginSessionService.initial_method(totp_key is not None, api_version, trusted)
+        method = LoginSessionService.initial_method(
+            totp_key is not None, api_version, trusted, is_client=user_agent.is_client
+        )
         access_token = create_access_token(
             data={"sub": str(user_id)}, expires_delta=timedelta(minutes=settings.access_token_expire_minutes)
         )
