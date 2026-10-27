@@ -28,16 +28,60 @@ depends_on: str | Sequence[str] | None = None
 
 MAPPING_TABLE = "banchobot_id_migration"
 PENDING_REPLAYS = CONFIG_DIR / "new_user_id"
-# These references are written by local voting, chat, notification, screenshot,
-# and login handlers. They lack FKs but refer to local lazer_users accounts.
+# Every column that stores a local lazer_users ID. Fresh databases enforce most
+# of these with foreign keys, but imported/legacy databases frequently lack
+# them (a restored dump, a table created before the constraint existed), and
+# foreign key introspection alone then silently leaves rows on the old ID.
+# Keep this list authoritative; it is intersected with the columns that really
+# exist so databases at different migration states can still upgrade.
 # beatmaps.user_id, beatmapsets.user_id, and user IDs inside fetched beatmapset
 # nomination/description JSON come from osu! API responses and must stay unchanged.
-LOCAL_REFERENCES = {
+USER_REFERENCES = {
+    ("beatmap_playcounts", "user_id"),
+    ("beatmap_ratings", "user_id"),
     ("beatmap_tags", "user_id"),
+    ("best_scores", "user_id"),
+    ("chat_messages", "sender_id"),
+    ("chat_silence_users", "user_id"),
     ("chat_user_channels", "user_id"),
+    ("daily_challenge_stats", "user_id"),
+    ("email_verifications", "user_id"),
+    ("favourite_beatmapset", "user_id"),
+    ("item_attempts_count", "user_id"),
+    ("lazer_user_achievements", "user_id"),
+    ("lazer_user_statistics", "user_id"),
+    ("login_sessions", "user_id"),
+    ("matchmaking_user_stats", "user_id"),
+    ("monthly_playcounts", "user_id"),
+    ("multiplayer_events", "user_id"),
     ("notifications", "source_user_id"),
+    ("oauth_clients", "owner_id"),
+    ("oauth_tokens", "user_id"),
+    ("password_resets", "user_id"),
+    ("playlist_best_scores", "user_id"),
+    ("rank_history", "user_id"),
+    ("rank_top", "user_id"),
+    ("relationship", "target_id"),
+    ("relationship", "user_id"),
+    ("replays_watched_counts", "user_id"),
+    ("room_participated_users", "user_id"),
+    ("room_playlists", "owner_id"),
+    ("rooms", "host_id"),
+    ("score_tokens", "user_id"),
+    ("scores", "user_id"),
     ("screenshots", "user_id"),
+    ("team_members", "user_id"),
+    ("team_requests", "user_id"),
+    ("teams", "leader_id"),
+    ("total_score_best_scores", "user_id"),
+    ("totp_keys", "user_id"),
+    ("trusted_devices", "user_id"),
+    ("user_account_history", "user_id"),
+    ("user_events", "user_id"),
     ("user_login_log", "user_id"),
+    ("user_notifications", "user_id"),
+    ("userpreference", "user_id"),
+    ("v1_api_keys", "owner_id"),
 }
 
 
@@ -84,7 +128,9 @@ def _next_id(connection: Connection) -> int:
 
 
 def _references(connection: Connection) -> set[tuple[str, str]]:
-    # Inspect the live schema so installed plugins' foreign keys are covered too.
+    # Inspect the live schema so installed plugins' foreign keys are covered too,
+    # but never rely on them: many production databases are missing the
+    # constraints for user columns such as scores.user_id.
     references = set(
         connection.execute(
             sa.text("""
@@ -95,9 +141,16 @@ def _references(connection: Connection) -> set[tuple[str, str]]:
             """)
         ).all()
     )
-    inspector = sa.inspect(connection)
-    tables = set(inspector.get_table_names())
-    references.update((table, column) for table, column in LOCAL_REFERENCES if table in tables)
+    existing_columns = {
+        (table, column)
+        for table, column in connection.execute(
+            sa.text("""
+                SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE()
+            """)
+        ).all()
+    }
+    references.update(USER_REFERENCES & existing_columns)
     return references | {("lazer_users", "id")}
 
 
