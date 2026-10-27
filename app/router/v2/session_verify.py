@@ -190,9 +190,9 @@ async def verify_session(
             user_agent=user_agent.raw_ua,
             login_success=False,
             login_method=f"{method or 'password'}_verification",
-            notes=str(error),
+            notes=f"verification_failed: {error}",
         )
-        content = {"error": str(error), "method": failed_method}
+        content = {"error": "Verification failed", "method": failed_method}
         if error.reason:
             content["reason"] = error.reason
         return JSONResponse(status_code=401, content=content)
