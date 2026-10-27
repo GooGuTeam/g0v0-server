@@ -3,20 +3,22 @@
 Manages password reset requests using Redis for verification codes.
 """
 
-from datetime import datetime
+from datetime import timedelta
 import json
 import secrets
 import string
 
-from app.auth import get_password_hash, invalidate_user_tokens
-from app.database import User
+from app.auth import get_password_hash
+from app.database import LoginSession, OAuthToken, TrustedDevice, User
 from app.dependencies.database import with_db
-from app.helpers import utcnow
+from app.helpers import run_in_threadpool, utcnow
 from app.log import logger
+from app.service.auth_security import check_verification_limit, release_email_send, reserve_email_send
 from app.service.email_service import email_service
+from app.service.verification_service import lock_user
 
 from redis.asyncio import Redis
-from sqlmodel import select
+from sqlmodel import col, delete, select
 
 
 class PasswordResetService:
@@ -68,16 +70,15 @@ class PasswordResetService:
             if not user:
                 # For security, don't reveal if email exists, but still check rate limit
                 rate_limit_key = self._get_rate_limit_key(email)
-                if await redis.get(rate_limit_key):
+                if not await redis.set(rate_limit_key, "1", nx=True, ex=60):
                     return False, "Request too frequent, please try again later"
                 # Set a fake rate limit to prevent email enumeration
-                await redis.setex(rate_limit_key, 60, "1")
                 return True, "If this email exists, you will receive a password reset email"
 
-            # Check rate limit
-            rate_limit_key = self._get_rate_limit_key(email)
-            if await redis.get(rate_limit_key):
+            reservation = await reserve_email_send(redis, user.id)
+            if reservation is None:
                 return False, "Request too frequent, please try again later"
+            rate_limit_key = self._get_rate_limit_key(email)
 
             # Generate reset verification code
             reset_code = self.generate_reset_code()
@@ -96,9 +97,9 @@ class PasswordResetService:
 
             try:
                 # Set rate limit first
-                await redis.setex(rate_limit_key, 60, "1")
+                await redis.set(rate_limit_key, "1", ex=60)
                 # Store verification code, expires in 10 minutes
-                await redis.setex(reset_code_key, 600, json.dumps(reset_data))
+                await redis.set(reset_code_key, json.dumps(reset_data), ex=600)
 
                 # Send reset email
                 email_sent = await self.send_password_reset_email(
@@ -112,6 +113,7 @@ class PasswordResetService:
                     # Email send failed, clean up Redis data
                     await redis.delete(reset_code_key)
                     await redis.delete(rate_limit_key)
+                    await release_email_send(redis, user.id, reservation)
                     logger.warning(f"Email sending failed, cleaned up Redis data for {email}")
                     return False, "Email sending failed, please try again later"
 
@@ -120,6 +122,7 @@ class PasswordResetService:
                 try:
                     await redis.delete(reset_code_key)
                     await redis.delete(rate_limit_key)
+                    await release_email_send(redis, user.id, reservation)
                 except Exception:
                     logger.warning("Failed to clean up Redis data after error")
                 logger.exception("Redis operation failed")
@@ -135,7 +138,11 @@ class PasswordResetService:
                 code=code,
                 country_code=country_code,
             )
-            metadata = {"type": "password_reset", "email": email, "code": code}
+            metadata = {
+                "type": "password_reset",
+                "email": email,
+                "expires_at": (utcnow() + timedelta(minutes=10)).isoformat(),
+            }
 
             await email_service.enqueue_email(
                 to_email=email,
@@ -177,116 +184,46 @@ class PasswordResetService:
         reset_code = reset_code.strip()
 
         async with with_db() as session:
-            # Get verification code data from Redis
-            reset_code_key = self._get_reset_code_key(email)
-            reset_data_str = await redis.get(reset_code_key)
-
-            if not reset_data_str:
+            user = (await session.exec(select(User).where(User.email == email))).first()
+            if user is None:
                 return False, "Verification code invalid or expired"
-
+            user_id = user.id
+            await lock_user(session, user_id)
+            await check_verification_limit(redis, user_id)
+            key = self._get_reset_code_key(email)
+            original = await redis.get(key)
+            if not original:
+                return False, "Verification code invalid or expired"
             try:
-                reset_data = json.loads(reset_data_str)
+                data = json.loads(original)
             except json.JSONDecodeError:
                 return False, "Verification code data format error"
-
-            # Verify verification code
-            if reset_data.get("reset_code") != reset_code:
+            if data.get("used") or data.get("user_id") != user_id or data.get("email") != email:
+                return False, "Verification code invalid or expired"
+            if data.get("reset_code") != reset_code:
                 return False, "Verification code incorrect"
-
-            # Check if already used
-            if reset_data.get("used", False):
-                return False, "Verification code already used"
-
-            # Verify email matches
-            if reset_data.get("email") != email:
-                return False, "Email address mismatch"
-
-            # Find user
-            user_query = select(User).where(User.email == email)
-            user_result = await session.exec(user_query)
-            user = user_result.first()
-
-            if not user:
-                return False, "User not found"
-
-            if user.id is None:
-                return False, "Invalid user ID"
-
-            # Verify user ID matches
-            if reset_data.get("user_id") != user.id:
-                return False, "User information mismatch"
-
-            # Password strength check
             if len(new_password) < 6:
                 return False, "Password must be at least 6 characters"
-
+            consumed = await redis.eval(
+                "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end return 0",
+                1,
+                key,
+                original,
+            )
+            if not consumed:
+                return False, "Verification code invalid or expired"
             try:
-                # Mark verification code as used first (before database operation)
-                reset_data["used"] = True
-                reset_data["used_at"] = utcnow().isoformat()
-
-                # Save user ID for logging
-                user_id = user.id
-
-                # Update user password
-                password_hash = get_password_hash(new_password)
-                user.pw_bcrypt = password_hash  # Use correct field name pw_bcrypt instead of password_hash
-
-                # Commit database changes
+                user.pw_bcrypt = await run_in_threadpool(get_password_hash, new_password)
+                for model in (LoginSession, TrustedDevice, OAuthToken):
+                    await session.exec(delete(model).where(col(model.user_id) == user_id))
                 await session.commit()
-
-                # Invalidate all existing tokens for this user (log out other clients)
-                tokens_deleted = await invalidate_user_tokens(session, user_id)
-
-                # After successful database operation, update Redis state
-                await redis.setex(reset_code_key, 300, json.dumps(reset_data))  # Keep for 5 minutes for logging
-
-                logger.info(
-                    f"User {user_id} ({email}) successfully reset password from IP {ip_address},"
-                    f" invalidated {tokens_deleted} tokens"
-                )
-                return True, "Password reset successful, all devices logged out"
-
-            except Exception as e:
-                # Don't access user.id in exception handling, may trigger database operation
-                user_id = reset_data.get("user_id", "unknown")
-                logger.error(f"Failed to reset password for user {user_id}: {e}")
+            except Exception:
                 await session.rollback()
-
-                # When database rolled back, restore verification code state in Redis
-                try:
-                    # Restore verification code to unused state
-                    original_reset_data = {
-                        "user_id": reset_data.get("user_id"),
-                        "email": reset_data.get("email"),
-                        "reset_code": reset_data.get("reset_code"),
-                        "created_at": reset_data.get("created_at"),
-                        "ip_address": reset_data.get("ip_address"),
-                        "user_agent": reset_data.get("user_agent"),
-                        "used": False,  # Restore to unused state
-                    }
-
-                    # Calculate remaining TTL time
-                    created_at = datetime.fromisoformat(reset_data.get("created_at", ""))
-                    elapsed = (utcnow() - created_at).total_seconds()
-                    remaining_ttl = max(0, 600 - int(elapsed))  # 600 seconds total expiry
-
-                    if remaining_ttl > 0:
-                        await redis.setex(
-                            reset_code_key,
-                            remaining_ttl,
-                            json.dumps(original_reset_data),
-                        )
-                        logger.info(f"Restored Redis state after database rollback for {email}")
-                    else:
-                        # If already expired, delete directly
-                        await redis.delete(reset_code_key)
-                        logger.info(f"Removed expired reset code after database rollback for {email}")
-
-                except Exception as redis_error:
-                    logger.error(f"Failed to restore Redis state after rollback: {redis_error}")
-
+                # A failed/ambiguous COMMIT must not make an already consumed code reusable.
+                logger.exception("Password reset transaction failed for user {}", user_id)
                 return False, "Password reset failed, please try again later"
+            logger.info("Password reset completed and sessions revoked for user {} from {}", user_id, ip_address)
+            return True, "Password reset successful, all devices logged out"
 
     async def get_reset_attempts_count(self, email: str, redis: Redis) -> int:
         """Get reset attempts count for email (by checking rate limit key).
