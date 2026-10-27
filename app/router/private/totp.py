@@ -16,7 +16,7 @@ from app.dependencies.database import Database, Redis
 from app.dependencies.user import ClientUser
 from app.models.error import ErrorType, RequestError
 from app.models.totp import FinishStatus, StartCreateTotpKeyResp
-from app.service.auth_security import check_verification_limit
+from app.service.auth_security import check_verification_limit, release_verification_attempt
 from app.service.verification_service import lock_user
 
 from .router import router
@@ -149,8 +149,9 @@ async def disable_totp(
     ).first()
     if not totp:
         raise RequestError(ErrorType.TOTP_NOT_ENABLED)
-    await check_verification_limit(redis, user_id)
+    await check_verification_limit(redis, "totp", user_id)
     if not await verify_user_totp(session, redis, user_id, code):
         raise RequestError(ErrorType.INVALID_TOTP_OR_BACKUP_CODE)
     await session.delete(totp)
     await session.commit()
+    await release_verification_attempt(redis, "totp", user_id)

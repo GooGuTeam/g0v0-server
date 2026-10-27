@@ -606,13 +606,18 @@ async def finish_create_totp_key(
     user: User, code: str, redis: Redis, db: AsyncSession
 ) -> tuple[FinishStatus, list[str]]:
     from app.models.error import RequestError
-    from app.service.auth_security import acquire_setup_lock, check_verification_limit, release_setup_lock
+    from app.service.auth_security import (
+        acquire_setup_lock,
+        check_verification_limit,
+        release_setup_lock,
+        release_verification_attempt,
+    )
     from app.service.verification_service import lock_user
 
     user_id = user.id
     setup_key = totp_redis_key(user)
     try:
-        await check_verification_limit(redis, user_id)
+        await check_verification_limit(redis, "totp-setup", user_id)
     except RequestError:
         return FinishStatus.TOO_MANY_ATTEMPTS, []
     await lock_user(db, user_id)
@@ -637,6 +642,7 @@ async def finish_create_totp_key(
         backup_codes = await _store_totp_key(user, str(data["secret"]), db)
         await db.commit()
         await redis.delete(setup_key)
+        await release_verification_attempt(redis, "totp-setup", user_id)
         return FinishStatus.SUCCESS, backup_codes
     except Exception:
         await db.rollback()

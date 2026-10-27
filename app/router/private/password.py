@@ -20,7 +20,7 @@ from app.dependencies.user import ClientUser
 from app.helpers import run_in_threadpool
 from app.log import log
 from app.models.error import ErrorType, FieldMissingError, RequestError
-from app.service.auth_security import check_verification_limit
+from app.service.auth_security import check_verification_limit, release_verification_attempt
 from app.service.verification_service import lock_user
 
 from .router import router
@@ -55,7 +55,7 @@ async def change_password(
         raise RequestError(ErrorType.INVALID_PASSWORD, {"errors": errors}, status_code=400)
 
     await lock_user(session, current_user.id)
-    await check_verification_limit(redis, current_user.id)
+    await check_verification_limit(redis, "password", current_user.id)
     # Check if user has TOTP enabled
     totp_key = (
         await session.exec(
@@ -97,4 +97,5 @@ async def change_password(
     await session.execute(delete(OAuthToken).where(col(OAuthToken.user_id) == user_id))
 
     await session.commit()
+    await release_verification_attempt(redis, "password", user_id)
     logger.info(f"User {user_id} successfully changed password, all sessions revoked")

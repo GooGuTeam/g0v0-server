@@ -26,10 +26,33 @@ def private_key(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
 
 
-async def check_verification_limit(redis: Redis, user_id: int) -> None:
-    count = await redis.eval(_COUNTER_SCRIPT, 1, f"auth:verification:{user_id}", 300)
+async def check_verification_limit(redis: Redis, scope: str, user_id: int) -> None:
+    """Reserve one proof attempt in a per-scope bucket.
+
+    Successful proofs must hand the reservation back with
+    :func:`release_verification_attempt`, so normal use never exhausts the
+    budget and only failed proofs count towards the lockout.
+    """
+    count = await redis.eval(_COUNTER_SCRIPT, 1, f"auth:verification:{scope}:{user_id}", 300)
     if int(count) > 3:
         raise RequestError(ErrorType.TOO_MANY_FAILED_ATTEMPTS, status_code=429)
+
+
+async def release_verification_attempt(redis: Redis, scope: str, user_id: int) -> None:
+    """Return the attempt reserved by :func:`check_verification_limit` after success."""
+    await redis.eval(
+        """
+        local n = tonumber(redis.call('GET', KEYS[1]) or '0')
+        if n <= 1 then
+            redis.call('DEL', KEYS[1])
+        else
+            redis.call('DECR', KEYS[1])
+        end
+        return n
+        """,
+        1,
+        f"auth:verification:{scope}:{user_id}",
+    )
 
 
 async def check_password_reset_limit(redis: Redis, user_id: int, ip_address: str) -> None:

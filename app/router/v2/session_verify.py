@@ -22,7 +22,7 @@ from pyrate_limiter import Duration, Rate
 
 logger = log("Verification")
 from app.models.error import ErrorType, RequestError
-from app.service.auth_security import check_verification_limit
+from app.service.auth_security import check_verification_limit, release_verification_attempt
 from app.service.login_log_service import LoginLogService
 from app.service.verification_service import (
     EmailVerificationService,
@@ -132,7 +132,7 @@ async def verify_session(
     if login_session.is_verified or not (settings.enable_email_verification or settings.enable_totp_verification):
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-    await check_verification_limit(redis, user_id)
+    await check_verification_limit(redis, "session", user_id)
     method = await LoginSessionService.verification_method(db, redis, user_id, token_id, api_version)
     failed_method = method or login_session.verification_method or "mail"
     if method == "mail" and login_session.verification_method == "totp" and len(verification_key) != 8:
@@ -199,6 +199,7 @@ async def verify_session(
     except Exception:
         await db.rollback()
         raise
+    await release_verification_attempt(redis, "session", user_id)
     await LoginSessionService.clear_login_method(user_id, token_id, redis)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -243,7 +244,6 @@ async def reissue_verification_code(
     method = await LoginSessionService.verification_method(db, redis, user_id, token_id, api_version)
     if method != "mail":
         return SessionReissueResponse(success=False, message="Current session does not support code reissue")
-    await check_verification_limit(redis, user_id)
     success, message, _ = await EmailVerificationService.resend_verification_code(
         db,
         redis,
@@ -303,7 +303,6 @@ async def fallback_email(
         # Email is not a login factor: do not switch the pending challenge away
         # from TOTP. Report the method the session keeps using.
         return VerifyMethod(method="totp")
-    await check_verification_limit(redis, user_id)
     user_name, email, country = current_user.username, current_user.email, current_user.country_code
     await LoginSessionService.set_login_method(user_id, token_id, "mail", redis, db=db)
     await db.commit()
