@@ -51,38 +51,37 @@ class VerifySessionMiddleware(BaseHTTPMiddleware):
         try:
             async with with_db() as db:
                 token_record = await get_token_by_access_token(db, token)
-                if token_record is None or token_record.user_id is None:
-                    return await call_next(request)
-                user = await db.get(User, token_record.user_id)
-                if user is None:
-                    raise RequestError(ErrorType.USER_NOT_FOUND)
-                try:
-                    api_version = int(request.headers.get("x-api-version", "0"))
-                except ValueError:
-                    api_version = 0
-                state = await LoginSessionService.get_state(db, get_redis(), user.id, token_record.id, api_version)
-                state.require_valid()
-                request.state.auth_context = state
-                protected = (
-                    any(path.startswith(prefix) for prefix in self.ALWAYS_VERIFY_PATTERNS)
-                    or not user.is_active
-                    or request.method in {"POST", "PUT", "DELETE", "PATCH"}
-                )
-                if state.status == SessionStatus.PENDING and protected:
-                    if state.method == "mail":
-                        await EmailVerificationService.send_verification_email(
-                            db,
-                            get_redis(),
-                            user.id,
-                            user.username,
-                            user.email,
-                            user_agent=extract_user_agent(request.headers.get("User-Agent")),
-                            country_code=user.country_code,
-                        )
-                    return JSONResponse(
-                        status_code=401,
-                        content={"method": state.method or "mail", "message": "Session verification required"},
+                if token_record is not None and token_record.user_id is not None:
+                    user = await db.get(User, token_record.user_id)
+                    if user is None:
+                        raise RequestError(ErrorType.USER_NOT_FOUND)
+                    try:
+                        api_version = int(request.headers.get("x-api-version", "0"))
+                    except ValueError:
+                        api_version = 0
+                    state = await LoginSessionService.get_state(db, get_redis(), user.id, token_record.id, api_version)
+                    state.require_valid()
+                    request.state.auth_context = state
+                    protected = (
+                        any(path.startswith(prefix) for prefix in self.ALWAYS_VERIFY_PATTERNS)
+                        or not user.is_active
+                        or request.method in {"POST", "PUT", "DELETE", "PATCH"}
                     )
+                    if state.status == SessionStatus.PENDING and protected:
+                        if state.method == "mail":
+                            await EmailVerificationService.send_verification_email(
+                                db,
+                                get_redis(),
+                                user.id,
+                                user.username,
+                                user.email,
+                                user_agent=extract_user_agent(request.headers.get("User-Agent")),
+                                country_code=user.country_code,
+                            )
+                        return JSONResponse(
+                            status_code=401,
+                            content={"method": state.method or "mail", "message": "Session verification required"},
+                        )
         except RequestError as error:
             return JSONResponse(
                 status_code=error.status_code,
