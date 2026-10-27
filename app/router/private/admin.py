@@ -16,7 +16,7 @@ from app.dependencies.user import ClientUser, UserAndToken, get_client_user_and_
 from app.helpers import utcnow
 from app.log import log
 from app.models.error import ErrorType, RequestError
-from app.service.verification_service import LoginSessionService, lock_user
+from app.service.verification_service import LoginSessionService, SessionStatus, lock_user
 
 from .router import router
 
@@ -92,6 +92,8 @@ async def stable_verification(
     ).first()
     if login_session is None:
         raise RequestError(ErrorType.SESSION_NOT_FOUND)
+    if LoginSessionService.status(login_session) == SessionStatus.EXPIRED:
+        raise RequestError(ErrorType.INVALID_OR_EXPIRED_TOKEN)
 
     if not login_session.is_verified:
         login_session.is_verified = True
