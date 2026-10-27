@@ -260,7 +260,10 @@ async def reissue_verification_code(
 @router.post(
     "/session/verify/mail-fallback",
     name="Email verification fallback",
-    description="Fall back to email verification when TOTP verification is unavailable",
+    description=(
+        "Fall back to email verification when TOTP verification is unavailable. "
+        "If email verification is disabled, no switch happens and the session keeps TOTP."
+    ),
     response_model=VerifyMethod,
     tags=["Verification"],
     dependencies=[
@@ -284,17 +287,22 @@ async def fallback_email(
         user_and_token: Tuple of user and auth token.
 
     Returns:
-        VerifyMethod: The new verification method (mail).
+        VerifyMethod: The new verification method (mail), or ``totp`` when email
+        verification is disabled and the pending challenge must keep TOTP.
 
     Raises:
-        RequestError: If fallback is not needed.
+        RequestError: If the session is already verified or no verification is configured.
     """
     current_user, token = user_and_token
     user_id, token_id = current_user.id, token.id
     await lock_user(db, user_id)
     login_session = await LoginSessionService.require_session(db, user_id, token_id, for_update=True)
-    if login_session.is_verified or not settings.enable_email_verification:
+    if login_session.is_verified or not (settings.enable_email_verification or settings.enable_totp_verification):
         raise RequestError(ErrorType.SESSION_FALLBACK_UNNEEDED)
+    if not settings.enable_email_verification:
+        # Email is not a login factor: do not switch the pending challenge away
+        # from TOTP. Report the method the session keeps using.
+        return VerifyMethod(method="totp")
     await check_verification_limit(redis, user_id)
     user_name, email, country = current_user.username, current_user.email, current_user.country_code
     await LoginSessionService.set_login_method(user_id, token_id, "mail", redis, db=db)
