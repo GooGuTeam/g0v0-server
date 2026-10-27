@@ -62,3 +62,8 @@ def utcnow() -> datetime:
         The current datetime with UTC timezone.
     """
     return datetime.now(tz=UTC)
+
+
+def as_utc(value: datetime) -> datetime:
+    """Interpret MySQL's naive DATETIME values as UTC, preserving aware inputs."""
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
