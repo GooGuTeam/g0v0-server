@@ -428,7 +428,14 @@ class LoginSessionService:
         await lock_user(db, user_id)
         statement = select(TrustedDevice).where(TrustedDevice.user_id == user_id, TrustedDevice.expires_at > utcnow())
         if user_agent.is_client:
-            statement = statement.where(TrustedDevice.client_type == "lazer", TrustedDevice.ip_address == ip_address)
+            # Prefer the client-provided device id over the IP: shared NAT,
+            # proxies and Cloudflare edges otherwise collapse every client of
+            # the same address into one trusted device.
+            statement = statement.where(TrustedDevice.client_type == "lazer")
+            if web_uuid:
+                statement = statement.where(col(TrustedDevice.device_hash) == web_uuid)
+            else:
+                statement = statement.where(TrustedDevice.ip_address == ip_address)
         elif web_uuid:
             statement = statement.where(TrustedDevice.client_type == "web", TrustedDevice.device_hash == web_uuid)
         else:
@@ -450,7 +457,11 @@ class LoginSessionService:
         await lock_user(db, user_id)
         statement = select(TrustedDevice).where(TrustedDevice.user_id == user_id)
         if user_agent.is_client:
-            statement = statement.where(TrustedDevice.client_type == "lazer", TrustedDevice.ip_address == ip_address)
+            statement = statement.where(TrustedDevice.client_type == "lazer")
+            if web_uuid:
+                statement = statement.where(col(TrustedDevice.device_hash) == web_uuid)
+            else:
+                statement = statement.where(TrustedDevice.ip_address == ip_address)
         elif web_uuid:
             statement = statement.where(TrustedDevice.client_type == "web", TrustedDevice.device_hash == web_uuid)
         else:
@@ -466,7 +477,7 @@ class LoginSessionService:
                 ip_address=ip_address,
                 user_agent=user_agent.raw_ua,
                 client_type="lazer" if user_agent.is_client else "web",
-                device_hash=None if user_agent.is_client else web_uuid,
+                device_hash=web_uuid,
                 expires_at=utcnow() + timedelta(days=settings.device_trust_duration_days),
             )
         device.last_used_at = utcnow()

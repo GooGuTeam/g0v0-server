@@ -15,7 +15,6 @@ services:
       - MYSQL_PORT=3306
       - REDIS_URL=redis://redis:6379
       - CALCULATOR_CONFIG={"server_url":"http://performance-server:8080"}
-      - FORWARDED_ALLOW_IPS=${FORWARDED_ALLOW_IPS:-172.30.0.10}
     env_file:
       - .env
     depends_on:

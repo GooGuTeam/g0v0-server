@@ -18,7 +18,6 @@ services:
       - ENABLE_SUPPORTER_FOR_ALL_USERS=true
       - ENABLE_ALL_BEATMAP_LEADERBOARD=true
       - CALCULATOR_CONFIG={"server_url":"http://performance-server:8080"}
-      - FORWARDED_ALLOW_IPS=${FORWARDED_ALLOW_IPS:-172.30.0.10}
     env_file:
       - .env
     depends_on:
