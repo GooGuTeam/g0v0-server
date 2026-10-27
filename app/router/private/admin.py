@@ -13,6 +13,7 @@ from app.dependencies.geoip import GeoIPService
 from app.dependencies.user import UserAndToken, get_client_user_and_token
 from app.log import log
 from app.models.error import ErrorType, RequestError
+from app.service.verification_service import LoginSessionService, lock_user
 
 from .router import router
 
@@ -87,13 +88,16 @@ async def delete_session(
     user_and_token: Annotated[UserAndToken, Security(get_client_user_and_token)],
 ):
     current_user, token = user_and_token
-    if session_id == token.id:
-        raise RequestError(ErrorType.CANNOT_DELETE_CURRENT_SESSION)
-
-    db_session = await session.get(LoginSession, session_id)
+    user_id = current_user.id
+    await lock_user(session, user_id)
+    db_session = (
+        await session.exec(select(LoginSession).where(LoginSession.id == session_id).with_for_update())
+    ).first()
     if not db_session or db_session.user_id != current_user.id:
         raise RequestError(ErrorType.SESSION_NOT_FOUND)
 
+    if db_session.token_id == token.id:
+        raise RequestError(ErrorType.CANNOT_DELETE_CURRENT_SESSION)
     await session.delete(db_session)
 
     token = await session.get(OAuthToken, db_session.token_id or 0)
@@ -101,7 +105,7 @@ async def delete_session(
         await session.delete(token)
 
     await session.commit()
-    logger.info(f"User {current_user.id} revoked login session {session_id}")
+    logger.info(f"User {user_id} revoked login session {session_id}")
     return
 
 
@@ -172,7 +176,9 @@ async def delete_trusted_device(
     user_and_token: Annotated[UserAndToken, Security(get_client_user_and_token)],
 ):
     current_user, token = user_and_token
-    device = await session.get(TrustedDevice, device_id)
+    user_id = current_user.id
+    await lock_user(session, user_id)
+    device = (await session.exec(select(TrustedDevice).where(TrustedDevice.id == device_id).with_for_update())).first()
     current_device_id = (
         await session.exec(
             select(TrustedDevice.id)
@@ -190,7 +196,7 @@ async def delete_trusted_device(
     if not device or device.user_id != current_user.id:
         raise RequestError(ErrorType.TRUSTED_DEVICE_NOT_FOUND)
 
-    await session.delete(device)
+    await LoginSessionService.remove_trusted_device(session, device)
     await session.commit()
-    logger.info(f"User {current_user.id} removed trusted device {device_id}")
+    logger.info(f"User {user_id} removed trusted device {device_id}")
     return

@@ -7,10 +7,9 @@ two-factor authentication.
 
 from typing import Annotated, Literal
 
-from app.auth import verify_totp_key_with_replay_protection
+from app.auth import verify_user_totp
 from app.config import settings
-from app.const import SUPPORT_TOTP_VERIFICATION_VER
-from app.database.auth import TotpKeys
+from app.const import BACKUP_CODE_LENGTH
 from app.dependencies.api_version import APIVersion
 from app.dependencies.database import Database, Redis, get_redis
 from app.dependencies.geoip import IPAddress
@@ -23,10 +22,12 @@ from pyrate_limiter import Duration, Rate
 
 logger = log("Verification")
 from app.models.error import ErrorType, RequestError
+from app.service.auth_security import check_verification_limit
 from app.service.login_log_service import LoginLogService
 from app.service.verification_service import (
     EmailVerificationService,
     LoginSessionService,
+    lock_user,
 )
 
 from .router import router
@@ -124,123 +125,82 @@ async def verify_session(
     Raises:
         JSONResponse: 401 Unauthorized on verification failure.
     """
-    current_user = user_and_token[0]
-    token_id = user_and_token[1].id
-    user_id = current_user.id
-
-    if not await LoginSessionService.check_is_need_verification(db, user_id, token_id):
-        logger.debug(f"Session verification skipped for user {user_id}, token {token_id}: already verified")
+    current_user, token = user_and_token
+    user_id, token_id = current_user.id, token.id
+    await lock_user(db, user_id)
+    login_session = await LoginSessionService.require_session(db, user_id, token_id, for_update=True)
+    if login_session.is_verified or not (settings.enable_email_verification or settings.enable_totp_verification):
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-    verify_method: str | None = (
-        "mail"
-        if api_version < SUPPORT_TOTP_VERIFICATION_VER
-        else await LoginSessionService.get_login_method(user_id, token_id, redis)
-    )
-
-    login_method = "password"
-
-    try:
-        totp_key: TotpKeys | None = await current_user.awaitable_attrs.totp_key
-        if verify_method is None:
-            # Smart selection of verification method (ref: osu-web State.php:36)
-            # Force email verification for older API versions or users without TOTP
-            verify_method = "mail" if api_version < SUPPORT_TOTP_VERIFICATION_VER or totp_key is None else "totp"
-            await LoginSessionService.set_login_method(user_id, token_id, verify_method, redis)
-            logger.info(f"Selected {verify_method} verification for user {user_id}, token {token_id}")
-        login_method = verify_method
-
-        if verify_method == "totp":
-            if not totp_key:
-                # TOTP key was deleted between verification start and now (ref: osu-web fallback mechanism)
-                if settings.enable_email_verification:
-                    await LoginSessionService.set_login_method(user_id, token_id, "mail", redis)
-                    await EmailVerificationService.send_verification_email(
-                        db,
-                        redis,
-                        user_id,
-                        current_user.username,
-                        current_user.email,
-                        ip_address,
-                        user_agent,
-                        current_user.country_code,
-                    )
-                    verify_method = "mail"
-                    raise VerifyFailedError("User TOTP has been deleted, switched to email verification")
-            elif await verify_totp_key_with_replay_protection(user_id, totp_key.secret, verification_key, redis):
-                pass
-            else:
-                # Log detailed verification failure reason (ref: osu-web error handling)
-                if len(verification_key) != 6:
-                    raise VerifyFailedError("TOTP code length error, should be 6 digits", reason="incorrect_length")
-                elif not verification_key.isdigit():
-                    raise VerifyFailedError("TOTP code format error, should be digits only", reason="incorrect_format")
-                else:
-                    # Could be wrong key or replay attack
-                    raise VerifyFailedError(
-                        "TOTP verification failed, please check if code is correct and not expired",
-                        reason="incorrect_key",
-                    )
-        else:
-            totp_key = await current_user.awaitable_attrs.totp_key
-            success, message = await EmailVerificationService.verify_email_code(
-                db, redis, user_id, verification_key, totp_key is not None
-            )
-            if not success:
-                raise VerifyFailedError(f"Email verification failed: {message}")
-
-        await LoginLogService.record_login(
-            db=db,
-            user_id=user_id,
-            request=request,
-            login_method=login_method,
-            user_agent=user_agent.raw_ua,
-            login_success=True,
-            notes=f"{login_method} verification successful",
-        )
-        await LoginSessionService.mark_session_verified(db, redis, user_id, token_id, ip_address, user_agent, web_uuid)
+    await check_verification_limit(redis, user_id)
+    method = await LoginSessionService.verification_method(db, redis, user_id, token_id, api_version)
+    failed_method = method or login_session.verification_method or "mail"
+    if method == "mail" and login_session.verification_method == "totp" and len(verification_key) != 8:
+        user_name, email, country = current_user.username, current_user.email, current_user.country_code
+        await LoginSessionService.set_login_method(user_id, token_id, "mail", redis, db=db)
         await db.commit()
-        logger.info(f"Session verified for user {user_id}, token {token_id}, method {verify_method}")
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-    except VerifyFailedError as e:
-        logger.warning(f"Session verification failed for user {user_id}, token {token_id}, method {verify_method}: {e}")
-        await LoginLogService.record_failed_login(
-            db=db,
-            request=request,
-            attempted_username=current_user.username,
-            login_method=login_method,
-            notes=str(e),
+        await EmailVerificationService.send_verification_email(
+            db,
+            redis,
+            user_id,
+            user_name,
+            email,
+            ip_address,
+            user_agent,
+            country,
         )
-
-        # Build detailed error response (ref: osu-web error handling)
-        error_response = {
-            "error": str(e),
-            "method": verify_method,
-        }
-
-        # Add specific error reason if available
-        if hasattr(e, "reason") and e.reason:
-            error_response["reason"] = e.reason
-
-        # Resend email verification code if needed
-        if hasattr(e, "should_reissue") and e.should_reissue and verify_method == "mail":
-            try:
-                await EmailVerificationService.send_verification_email(
-                    db,
-                    redis,
-                    user_id,
-                    current_user.username,
-                    current_user.email,
-                    ip_address,
-                    user_agent,
-                    current_user.country_code,
-                )
-                error_response["reissued"] = True
-            except Exception:
-                logger.exception(f"Failed to resend verification email to user {current_user.id} (token: {token_id})")
-
-        return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content=error_response)
+        return JSONResponse(
+            status_code=401,
+            content={
+                "error": "User TOTP is unavailable, switched to email verification",
+                "method": "mail",
+            },
+        )
+    try:
+        if method == "totp":
+            if not await verify_user_totp(db, redis, user_id, verification_key):
+                if len(verification_key) not in (6, BACKUP_CODE_LENGTH):
+                    raise VerifyFailedError("TOTP code length error, should be 6 digits", reason="incorrect_length")
+                if not verification_key.isascii() or (len(verification_key) == 6 and not verification_key.isdigit()):
+                    raise VerifyFailedError("TOTP code format error, should be digits only", reason="incorrect_format")
+                raise VerifyFailedError("TOTP verification failed", reason="incorrect_key")
+        elif method == "mail":
+            valid, message = await EmailVerificationService.verify_email_code(db, redis, user_id, verification_key)
+            if not valid:
+                raise VerifyFailedError(message)
+        else:
+            # A disabled/unavailable factor cannot complete an outstanding challenge.
+            raise VerifyFailedError("Verification method is unavailable")
+        await LoginSessionService.mark_session_verified(db, redis, user_id, token_id, ip_address, user_agent, web_uuid)
+        await LoginLogService.record_login(
+            db,
+            user_id,
+            request,
+            user_agent=user_agent.raw_ua,
+            login_method=f"{method}_verification",
+            commit=False,
+        )
+        await db.commit()
+    except VerifyFailedError as error:
+        await db.rollback()
+        await LoginLogService.record_login(
+            db,
+            user_id,
+            request,
+            user_agent=user_agent.raw_ua,
+            login_success=False,
+            login_method=f"{method or 'password'}_verification",
+            notes=str(error),
+        )
+        content = {"error": str(error), "method": failed_method}
+        if error.reason:
+            content["reason"] = error.reason
+        return JSONResponse(status_code=401, content=content)
+    except Exception:
+        await db.rollback()
+        raise
+    await LoginSessionService.clear_login_method(user_id, token_id, redis)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(
@@ -276,48 +236,25 @@ async def reissue_verification_code(
     Returns:
         SessionReissueResponse: Result of the reissue operation.
     """
-    current_user = user_and_token[0]
-    token_id = user_and_token[1].id
-    user_id = current_user.id
-
+    current_user, token = user_and_token
+    user_id, token_id = current_user.id, token.id
     if not await LoginSessionService.check_is_need_verification(db, user_id, token_id):
-        logger.debug(f"Verification code reissue skipped for user {user_id}, token {token_id}: already verified")
         return SessionReissueResponse(success=False, message="Current session does not require verification")
-
-    verify_method: str | None = (
-        "mail"
-        if api_version < SUPPORT_TOTP_VERIFICATION_VER
-        else await LoginSessionService.get_login_method(user_id, token_id, redis)
-    )
-    if verify_method != "mail":
-        logger.debug(f"Verification code reissue skipped for user {user_id}, token {token_id}: method={verify_method}")
+    method = await LoginSessionService.verification_method(db, redis, user_id, token_id, api_version)
+    if method != "mail":
         return SessionReissueResponse(success=False, message="Current session does not support code reissue")
-
-    try:
-        user_id = current_user.id
-        success, message, _ = await EmailVerificationService.resend_verification_code(
-            db,
-            redis,
-            user_id,
-            current_user.username,
-            current_user.email,
-            ip_address,
-            user_agent,
-            current_user.country_code,
-        )
-
-        if success:
-            logger.info(f"Verification code reissued for user {user_id}, token {token_id}")
-        else:
-            logger.warning(f"Verification code reissue failed for user {user_id}, token {token_id}: {message}")
-        return SessionReissueResponse(success=success, message=message)
-
-    except ValueError:
-        logger.warning(f"Verification code reissue failed for user {user_id}, token {token_id}: invalid session")
-        return SessionReissueResponse(success=False, message="Invalid user session")
-    except Exception:
-        logger.exception(f"Unexpected error during verification code reissue for user {user_id}, token {token_id}")
-        return SessionReissueResponse(success=False, message="Error occurred during reissue process")
+    await check_verification_limit(redis, user_id)
+    success, message, _ = await EmailVerificationService.resend_verification_code(
+        db,
+        redis,
+        user_id,
+        current_user.username,
+        current_user.email,
+        ip_address,
+        user_agent,
+        current_user.country_code,
+    )
+    return SessionReissueResponse(success=success, message=message)
 
 
 @router.post(
@@ -352,23 +289,27 @@ async def fallback_email(
     Raises:
         RequestError: If fallback is not needed.
     """
-    current_user = user_and_token[0]
-    token_id = user_and_token[1].id
-    if not await LoginSessionService.get_login_method(current_user.id, token_id, redis):
+    current_user, token = user_and_token
+    user_id, token_id = current_user.id, token.id
+    await lock_user(db, user_id)
+    login_session = await LoginSessionService.require_session(db, user_id, token_id, for_update=True)
+    if login_session.is_verified or not settings.enable_email_verification:
         raise RequestError(ErrorType.SESSION_FALLBACK_UNNEEDED)
-
-    await LoginSessionService.set_login_method(current_user.id, token_id, "mail", redis)
-    logger.info(f"Session verification fallback switched to mail for user {current_user.id}, token {token_id}")
-    success, message, _ = await EmailVerificationService.resend_verification_code(
+    await check_verification_limit(redis, user_id)
+    user_name, email, country = current_user.username, current_user.email, current_user.country_code
+    await LoginSessionService.set_login_method(user_id, token_id, "mail", redis, db=db)
+    await db.commit()
+    success, message, response = await EmailVerificationService.resend_verification_code(
         db,
         redis,
-        current_user.id,
-        current_user.username,
-        current_user.email,
+        user_id,
+        user_name,
+        email,
         ip_address,
         user_agent,
-        current_user.country_code,
+        country,
     )
-    if not success:
-        logger.error(f"Failed to send fallback email to user {current_user.id} (token: {token_id}): {message}")
+    # An already queued email still makes this an effective fallback.
+    if not success and response.get("error") != "rate_limited":
+        raise RequestError(ErrorType.USER_NOT_VERIFIED, {"method": "mail", "error": message})
     return VerifyMethod()

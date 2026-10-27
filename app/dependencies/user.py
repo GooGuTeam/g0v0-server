@@ -2,11 +2,11 @@ from typing import Annotated
 
 from app.auth import get_token_by_access_token
 from app.config import settings
-from app.const import SUPPORT_TOTP_VERIFICATION_VER
 from app.database import User
 from app.database.auth import OAuthToken, V1APIKeys
 from app.models.error import ErrorType, RequestError
 from app.models.oauth import OAuth2ClientCredentialsBearer, ScopeInfo
+from app.service.verification_service import LoginSessionService, SessionStatus
 
 from .api_version import APIVersion
 from .database import Database, get_redis
@@ -128,27 +128,11 @@ async def get_client_user(
     api_version: APIVersion,
     user_and_token: UserAndToken = Depends(get_client_user_and_token),
 ):
-    from app.service.verification_service import LoginSessionService
-
     user, token = user_and_token
-
-    if await LoginSessionService.check_is_need_verification(db, user.id, token.id):
-        # 获取当前验证方式
-        verify_method = None
-        if api_version >= SUPPORT_TOTP_VERIFICATION_VER:
-            verify_method = await LoginSessionService.get_login_method(user.id, token.id, redis)
-
-        if verify_method is None:
-            # 智能选择验证方式（参考 osu-web State.php:36）
-            totp_key = await user.awaitable_attrs.totp_key
-            verify_method = "totp" if totp_key is not None and api_version >= SUPPORT_TOTP_VERIFICATION_VER else "mail"
-
-            # 设置选择的验证方法到Redis中，避免重复选择
-            if api_version >= SUPPORT_TOTP_VERIFICATION_VER:
-                await LoginSessionService.set_login_method(user.id, token.id, verify_method, redis)
-
-        # 返回符合 osu! API 标准的错误响应
-        raise RequestError(ErrorType.USER_NOT_VERIFIED, {"method": verify_method})
+    state = await LoginSessionService.get_state(db, redis, user.id, token.id, api_version)
+    state.require_valid()
+    if state.status == SessionStatus.PENDING:
+        raise RequestError(ErrorType.USER_NOT_VERIFIED, {"method": state.method or "mail"})
     return user
 
 
@@ -174,6 +158,7 @@ async def _validate_token(
     user = (await db.exec(select(User).where(User.id == token_record.user_id))).first()
     if not user:
         raise RequestError(ErrorType.USER_NOT_FOUND)
+    await LoginSessionService.require_session(db, user.id, token_record.id)
     return user, token_record
 
 
@@ -233,6 +218,7 @@ async def get_optional_user(
     user = (await db.exec(select(User).where(User.id == token_record.user_id))).first()
     if not user:
         raise RequestError(ErrorType.USER_NOT_FOUND)
+    await LoginSessionService.require_session(db, user.id, token_record.id)
     return user
 
 

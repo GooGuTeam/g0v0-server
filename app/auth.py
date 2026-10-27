@@ -15,13 +15,11 @@ Functions:
     verify_token: Verify and decode a JWT token.
 """
 
-import asyncio
 from datetime import timedelta
 import hashlib
 import re
 import secrets
 import string
-from typing import cast
 
 from app.config import settings
 from app.const import BACKUP_CODE_LENGTH
@@ -30,7 +28,7 @@ from app.database import (
     User,
 )
 from app.database.auth import TotpKeys
-from app.helpers import utcnow
+from app.helpers import as_utc, run_in_threadpool, utcnow
 from app.log import log
 from app.models.totp import FinishStatus, StartCreateTotpKeyResp
 
@@ -176,6 +174,15 @@ def get_password_hash(password: str) -> str:
     return pw_bcrypt.decode()
 
 
+async def find_login_user(db: AsyncSession, name: str) -> User | None:
+    user = (await db.exec(select(User).where(User.username == name))).first()
+    if user is None:
+        user = (await db.exec(select(User).where(User.email == name))).first()
+    if user is None and name.isascii() and name.isdigit() and len(name) <= 10 and int(name) <= 2**31 - 1:
+        user = (await db.exec(select(User).where(User.id == int(name)))).first()
+    return user
+
+
 async def authenticate_user_legacy(db: AsyncSession, name: str, password: str) -> User | None:
     """Authenticate a user using logic similar to from_login.
 
@@ -190,15 +197,13 @@ async def authenticate_user_legacy(db: AsyncSession, name: str, password: str) -
     # 1. Convert plain password to MD5
     pw_md5 = hashlib.md5(password.encode()).hexdigest()  # noqa: S324
 
-    # 2. Find user by name
-    user = None
-    user = (await db.exec(select(User).where(User.username == name))).first()
-    if user is None:
-        user = (await db.exec(select(User).where(User.email == name))).first()
-    if user is None and name.isdigit():
-        user = (await db.exec(select(User).where(User.id == int(name)))).first()
+    user = await find_login_user(db, name)
     if user is None:
         return None
+    # Serialize password proof with password changes and session revocation.
+    from app.service.verification_service import lock_user
+
+    await lock_user(db, user.id)
 
     # 3. Validate password
     if user.pw_bcrypt is None or user.pw_bcrypt == "":
@@ -213,7 +218,7 @@ async def authenticate_user_legacy(db: AsyncSession, name: str, password: str) -
 
     # 5. Verify bcrypt
     try:
-        is_valid = bcrypt.checkpw(pw_md5.encode(), user.pw_bcrypt.encode())
+        is_valid = await run_in_threadpool(bcrypt.checkpw, pw_md5.encode(), user.pw_bcrypt.encode())
         if is_valid:
             # Cache the verification result
             bcrypt_cache[user.pw_bcrypt] = pw_md5.encode()
@@ -286,7 +291,10 @@ async def invalidate_user_tokens(db: AsyncSession, user_id: int) -> int:
     Returns:
         The number of tokens deleted.
     """
-    stmt = select(OAuthToken).where(OAuthToken.user_id == user_id)
+    from app.service.verification_service import lock_user
+
+    await lock_user(db, user_id)
+    stmt = select(OAuthToken).where(OAuthToken.user_id == user_id).with_for_update()
     result = await db.exec(stmt)
     tokens = result.all()
 
@@ -325,79 +333,47 @@ async def store_token(
     expires_in: int,
     refresh_token_expires_in: int,
     allow_multiple_devices: bool = True,
+    *,
+    commit: bool = True,
 ) -> OAuthToken:
-    """Store OAuth tokens in the database with multi-device support.
+    """Issue a token; callers can atomically attach its login session."""
+    from app.service.verification_service import lock_user
 
-    Args:
-        db: The database session.
-        user_id: The user ID.
-        client_id: The OAuth client ID.
-        scopes: The permission scopes.
-        access_token: The access token string.
-        refresh_token: The refresh token string.
-        expires_in: Access token expiration time in seconds.
-        refresh_token_expires_in: Refresh token expiration time in seconds.
-        allow_multiple_devices: Whether to allow multiple devices.
-            Defaults to True.
-
-    Returns:
-        The created OAuthToken record.
-    """
-    expires_at = utcnow() + timedelta(seconds=expires_in)
-    refresh_token_expires_at = utcnow() + timedelta(seconds=refresh_token_expires_in)
-
-    if not allow_multiple_devices:
-        # Old behavior: delete old tokens for user (single device mode)
-        statement = select(OAuthToken).where(OAuthToken.user_id == user_id, OAuthToken.client_id == client_id)
-        old_tokens = (await db.exec(statement)).all()
-        for token in old_tokens:
-            await db.delete(token)
+    if user_id is not None:
+        await lock_user(db, user_id)
     else:
-        # New behavior: only delete expired tokens, keep valid tokens (multi-device mode)
-        statement = select(OAuthToken).where(
-            OAuthToken.user_id == user_id, OAuthToken.client_id == client_id, OAuthToken.expires_at <= utcnow()
-        )
-        expired_tokens = (await db.exec(statement)).all()
-        for token in expired_tokens:
-            await db.delete(token)
+        from app.database import OAuthClient
 
-        # Limit maximum tokens per user per client (prevent unlimited growth)
-        max_tokens_per_client = settings.max_tokens_per_client
-        statement = (
+        await db.exec(select(OAuthClient.client_id).where(OAuthClient.client_id == client_id).with_for_update())
+    existing = (
+        await db.exec(
             select(OAuthToken)
-            .where(OAuthToken.user_id == user_id, OAuthToken.client_id == client_id, OAuthToken.expires_at > utcnow())
-            .order_by(col(OAuthToken.created_at).desc())
+            .where(OAuthToken.user_id == user_id, OAuthToken.client_id == client_id)
+            .order_by(col(OAuthToken.created_at).desc(), col(OAuthToken.id).desc())
+            .with_for_update()
         )
-
-        active_tokens = (await db.exec(statement)).all()
-        if len(active_tokens) >= max_tokens_per_client:
-            # Delete oldest tokens
-            tokens_to_delete = active_tokens[max_tokens_per_client - 1 :]
-            for token in tokens_to_delete:
-                await db.delete(token)
-            logger.info(f"Cleaned up {len(tokens_to_delete)} old tokens for user {user_id}")
-
-    # Check for duplicate access_token
-    duplicate_token = (await db.exec(select(OAuthToken).where(OAuthToken.access_token == access_token))).first()
-    if duplicate_token:
-        await db.delete(duplicate_token)
-
-    # Create new token record
-    token_record = OAuthToken(
+    ).all()
+    active = [token for token in existing if as_utc(token.refresh_token_expires_at) > utcnow()]
+    keep = max(0, settings.max_tokens_per_client - 1) if allow_multiple_devices else 0
+    keep_ids = {token.id for token in active[:keep]}
+    for token in existing:
+        if token.id not in keep_ids:
+            await db.delete(token)
+    record = OAuthToken(
         user_id=user_id,
         client_id=client_id,
         access_token=access_token,
-        scope=",".join(scopes),
         refresh_token=refresh_token,
-        expires_at=expires_at,
-        refresh_token_expires_at=refresh_token_expires_at,
+        scope=",".join(scopes),
+        expires_at=utcnow() + timedelta(seconds=expires_in),
+        refresh_token_expires_at=utcnow() + timedelta(seconds=refresh_token_expires_in),
     )
-    db.add(token_record)
-    await db.commit()
-    await db.refresh(token_record)
-
-    logger.info(f"Created new token for user {user_id}, client {client_id} (multi-device: {allow_multiple_devices})")
-    return token_record
+    db.add(record)
+    await db.flush()
+    if commit:
+        await db.commit()
+        await db.refresh(record)
+    return record
 
 
 async def get_token_by_access_token(db: AsyncSession, access_token: str) -> OAuthToken | None:
@@ -417,7 +393,9 @@ async def get_token_by_access_token(db: AsyncSession, access_token: str) -> OAut
     return (await db.exec(statement)).first()
 
 
-async def get_token_by_refresh_token(db: AsyncSession, refresh_token: str) -> OAuthToken | None:
+async def get_token_by_refresh_token(
+    db: AsyncSession, refresh_token: str, *, for_update: bool = False
+) -> OAuthToken | None:
     """Get a token record by refresh token.
 
     Args:
@@ -431,6 +409,8 @@ async def get_token_by_refresh_token(db: AsyncSession, refresh_token: str) -> OA
         OAuthToken.refresh_token == refresh_token,
         OAuthToken.refresh_token_expires_at > utcnow(),
     )
+    if for_update:
+        statement = statement.with_for_update().execution_options(populate_existing=True)
     return (await db.exec(statement)).first()
 
 
@@ -448,12 +428,15 @@ async def get_user_by_authorization_code(
     Returns:
         A tuple of (User, scopes) if found, None otherwise.
     """
-    user_id = await redis.hget(f"oauth:code:{client_id}:{code}", "user_id")
-    scopes = cast(str, await redis.hget(f"oauth:code:{client_id}:{code}", "scopes"))
+    data = await redis.eval(
+        "local d = redis.call('HGETALL', KEYS[1]); redis.call('DEL', KEYS[1]); return d",
+        1,
+        f"oauth:code:{client_id}:{code}",
+    )
+    values = dict(zip(data[::2], data[1::2], strict=True))
+    user_id, scopes = values.get("user_id"), values.get("scopes")
     if not user_id or not scopes:
         return None
-
-    await redis.hdel(f"oauth:code:{client_id}:{code}", "user_id", "scopes")
 
     statement = select(User).where(User.id == int(user_id))
     user = (await db.exec(statement)).first()
@@ -525,9 +508,19 @@ async def start_create_totp_key(user: User, redis: Redis) -> StartCreateTotpKeyR
     Returns:
         StartCreateTotpKeyResp with secret and provisioning URI.
     """
-    secret = pyotp.random_base32()
-    await redis.hset(totp_redis_key(user), mapping={"secret": secret, "fails": 0})
-    await redis.expire(totp_redis_key(user), 300)
+    data = await redis.eval(
+        """
+        if redis.call('EXISTS', KEYS[1]) == 0 then
+            redis.call('HSET', KEYS[1], 'secret', ARGV[1], 'fails', 0)
+            redis.call('EXPIRE', KEYS[1], 300)
+        end
+        return redis.call('HGET', KEYS[1], 'secret')
+        """,
+        1,
+        totp_redis_key(user),
+        pyotp.random_base32(),
+    )
+    secret = str(data)
 
     # Generate complete account label and issuer info
     account_label = _generate_totp_account_label(user)
@@ -566,17 +559,11 @@ async def verify_totp_key_with_replay_protection(user_id: int, secret: str, code
     Returns:
         True if the code is valid and not replayed, False otherwise.
     """
+    if len(code) != 6 or not code.isascii() or not code.isdigit():
+        return False
     if not pyotp.TOTP(secret).verify(code, valid_window=1):
         return False
-
-    # Prevent reuse of same code within 120 seconds (following osu-web implementation)
-    cache_key = f"totp:{user_id}:{code}"
-    if await redis.exists(cache_key):
-        return False
-
-    # Set 120 second expiration
-    await redis.setex(cache_key, 120, "1")
-    return True
+    return bool(await redis.set(f"totp:{user_id}:{code}", "1", nx=True, ex=120))
 
 
 def _generate_backup_codes(count=10, length=BACKUP_CODE_LENGTH) -> list[str]:
@@ -605,53 +592,57 @@ async def _store_totp_key(user: User, secret: str, db: AsyncSession) -> list[str
         The list of generated backup codes.
     """
     backup_codes = _generate_backup_codes()
-    hashed_codes = [bcrypt.hashpw(code.encode(), bcrypt.gensalt()) for code in backup_codes]
-    totp_secret = TotpKeys(user_id=user.id, secret=secret, backup_keys=[code.decode() for code in hashed_codes])
-    db.add(totp_secret)
-    await db.commit()
+
+    def hash_codes() -> list[str]:
+        return [bcrypt.hashpw(code.encode(), bcrypt.gensalt()).decode() for code in backup_codes]
+
+    hashes = await run_in_threadpool(hash_codes)
+    db.add(TotpKeys(user_id=user.id, secret=secret, backup_keys=hashes))
+    await db.flush()
     return backup_codes
-
-
-totp_lock = asyncio.Lock()
 
 
 async def finish_create_totp_key(
     user: User, code: str, redis: Redis, db: AsyncSession
 ) -> tuple[FinishStatus, list[str]]:
-    """Finish the TOTP key creation process.
+    from app.models.error import RequestError
+    from app.service.auth_security import acquire_setup_lock, check_verification_limit, release_setup_lock
+    from app.service.verification_service import lock_user
 
-    Verifies the code and stores the TOTP key if successful.
-
-    Args:
-        user: The user object.
-        code: The verification code.
-        redis: The Redis client.
-        db: The database session.
-
-    Returns:
-        A tuple of (FinishStatus, backup_codes). Backup codes are only
-        returned on success.
-    """
-    async with totp_lock:
-        data = await redis.hgetall(totp_redis_key(user))
+    user_id = user.id
+    setup_key = totp_redis_key(user)
+    try:
+        await check_verification_limit(redis, user_id)
+    except RequestError:
+        return FinishStatus.TOO_MANY_ATTEMPTS, []
+    await lock_user(db, user_id)
+    if (await db.exec(select(TotpKeys).where(TotpKeys.user_id == user_id).with_for_update())).first() is not None:
+        return FinishStatus.INVALID, []
+    reservation = await acquire_setup_lock(redis, user_id)
+    if reservation is None:
+        return FinishStatus.INVALID, []
+    try:
+        data = await redis.hgetall(setup_key)
         if not data or "secret" not in data or "fails" not in data:
             return FinishStatus.INVALID, []
-
-        secret = cast(str, data["secret"])
-        fails = int(data["fails"])
-
-        if fails >= 3:
-            await redis.delete(totp_redis_key(user))
+        if int(data["fails"]) >= 3:
+            await redis.delete(setup_key)
             return FinishStatus.TOO_MANY_ATTEMPTS, []
-
-        if verify_totp_key(secret, code):
-            await redis.delete(totp_redis_key(user))
-            backup_codes = await _store_totp_key(user, secret, db)
-            return FinishStatus.SUCCESS, backup_codes
-        else:
-            fails += 1
-            await redis.hset(totp_redis_key(user), "fails", str(fails))
+        if not await verify_totp_key_with_replay_protection(user_id, str(data["secret"]), code, redis):
+            fails = await redis.hincrby(setup_key, "fails", 1)
+            if fails >= 3:
+                await redis.delete(setup_key)
+                return FinishStatus.TOO_MANY_ATTEMPTS, []
             return FinishStatus.FAILED, []
+        backup_codes = await _store_totp_key(user, str(data["secret"]), db)
+        await db.commit()
+        await redis.delete(setup_key)
+        return FinishStatus.SUCCESS, backup_codes
+    except Exception:
+        await db.rollback()
+        raise
+    finally:
+        await release_setup_lock(redis, user_id, reservation)
 
 
 async def disable_totp(user: User, db: AsyncSession) -> None:
@@ -661,13 +652,16 @@ async def disable_totp(user: User, db: AsyncSession) -> None:
         user: The user object.
         db: The database session.
     """
-    totp = await db.get(TotpKeys, user.id)
+    from app.service.verification_service import lock_user
+
+    await lock_user(db, user.id)
+    totp = (await db.exec(select(TotpKeys).where(TotpKeys.user_id == user.id).with_for_update())).first()
     if totp:
         await db.delete(totp)
         await db.commit()
 
 
-def check_totp_backup_code(totp: TotpKeys, code: str) -> bool:
+async def check_totp_backup_code(totp: TotpKeys, code: str) -> bool:
     """Check a TOTP backup code.
 
     If valid, removes the code from the list of available codes.
@@ -679,10 +673,43 @@ def check_totp_backup_code(totp: TotpKeys, code: str) -> bool:
     Returns:
         True if the code is valid, False otherwise.
     """
-    for hashed_code in totp.backup_keys:
-        if bcrypt.checkpw(code.encode(), hashed_code.encode()):
-            copy = totp.backup_keys[:]
-            copy.remove(hashed_code)
-            totp.backup_keys = copy
-            return True
+
+    hashes = list(totp.backup_keys)
+
+    def match() -> str | None:
+        for hashed_code in hashes:
+            if bcrypt.checkpw(code.encode(), hashed_code.encode()):
+                return hashed_code
+        return None
+
+    matched = await run_in_threadpool(match)
+    if matched is None:
+        return False
+    totp.backup_keys = [value for value in totp.backup_keys if value != matched]
+    return True
+
+
+async def verify_user_totp(db: AsyncSession, redis: Redis, user_id: int, code: str) -> bool:
+    """Consume a TOTP or backup code under the account and credential row locks."""
+    from app.service.verification_service import lock_user
+
+    await lock_user(db, user_id)
+    totp = (
+        await db.exec(
+            select(TotpKeys)
+            .where(TotpKeys.user_id == user_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).first()
+    if totp is None:
+        return False
+    if len(code) == 6:
+        return await verify_totp_key_with_replay_protection(user_id, totp.secret, code, redis)
+    if len(code) == BACKUP_CODE_LENGTH and code.isascii():
+        valid = await check_totp_backup_code(totp, code)
+        if valid:
+            db.add(totp)
+            await db.flush()
+        return valid
     return False

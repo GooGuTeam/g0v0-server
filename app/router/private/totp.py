@@ -6,24 +6,25 @@ Provides APIs for enabling, disabling, and managing two-factor authentication.
 from typing import Annotated, cast
 
 from app.auth import (
-    check_totp_backup_code,
     finish_create_totp_key,
     start_create_totp_key,
     totp_redis_key,
-    verify_totp_key_with_replay_protection,
+    verify_user_totp,
 )
-from app.const import BACKUP_CODE_LENGTH
 from app.database.auth import TotpKeys
 from app.dependencies.database import Database, Redis
 from app.dependencies.user import ClientUser
 from app.models.error import ErrorType, RequestError
 from app.models.totp import FinishStatus, StartCreateTotpKeyResp
+from app.service.auth_security import check_verification_limit
+from app.service.verification_service import lock_user
 
 from .router import router
 
 from fastapi import Body
 from pydantic import BaseModel
 import pyotp
+from sqlmodel import select
 
 
 class TotpStatusResp(BaseModel):
@@ -70,10 +71,12 @@ async def get_totp_status(
     status_code=201,
 )
 async def start_create_totp(
+    session: Database,
     redis: Redis,
     current_user: ClientUser,
 ):
-    if await current_user.awaitable_attrs.totp_key:
+    await lock_user(session, current_user.id)
+    if (await session.exec(select(TotpKeys).where(TotpKeys.user_id == current_user.id).with_for_update())).first():
         raise RequestError(ErrorType.TOTP_ALREADY_ENABLED)
 
     previous = cast(dict[str, str], await redis.hgetall(totp_redis_key(current_user)))
@@ -134,19 +137,20 @@ async def disable_totp(
     redis: Redis,
     current_user: ClientUser,
 ):
-    totp = await session.get(TotpKeys, current_user.id)
+    user_id = current_user.id
+    await lock_user(session, user_id)
+    totp = (
+        await session.exec(
+            select(TotpKeys)
+            .where(TotpKeys.user_id == user_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).first()
     if not totp:
         raise RequestError(ErrorType.TOTP_NOT_ENABLED)
-
-    # Verify TOTP with replay protection or backup code
-    is_totp_valid = False
-    if len(code) == 6 and code.isdigit():
-        is_totp_valid = await verify_totp_key_with_replay_protection(current_user.id, totp.secret, code, redis)
-    elif len(code) == BACKUP_CODE_LENGTH:
-        is_totp_valid = check_totp_backup_code(totp, code)
-
-    if is_totp_valid:
-        await session.delete(totp)
-        await session.commit()
-    else:
+    await check_verification_limit(redis, user_id)
+    if not await verify_user_totp(session, redis, user_id, code):
         raise RequestError(ErrorType.INVALID_TOTP_OR_BACKUP_CODE)
+    await session.delete(totp)
+    await session.commit()

@@ -28,6 +28,8 @@ class LoginLogService:
         login_success: bool = True,
         login_method: str = "password",
         notes: str | None = None,
+        *,
+        commit: bool = True,
     ) -> UserLoginLog:
         """
         Record a user login attempt.
@@ -92,8 +94,10 @@ class LoginLogService:
 
         # Save to database
         db.add(login_log)
-        await db.commit()
-        await db.refresh(login_log)
+        await db.flush()
+        if commit:
+            await db.commit()
+            await db.refresh(login_log)
 
         logger.info(f"Login recorded for user {user_id} from {ip_address} ({login_method})")
         return login_log

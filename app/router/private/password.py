@@ -7,10 +7,9 @@ from typing import Annotated
 
 from app.auth import (
     authenticate_user,
-    check_totp_backup_code,
     get_password_hash,
     validate_password,
-    verify_totp_key_with_replay_protection,
+    verify_user_totp,
 )
 from app.const import BACKUP_CODE_LENGTH
 from app.database.auth import OAuthToken, TotpKeys
@@ -18,14 +17,17 @@ from app.database.verification import LoginSession, TrustedDevice
 from app.dependencies.database import Database, Redis
 from app.dependencies.rate_limit import create_rate_limiter
 from app.dependencies.user import ClientUser
+from app.helpers import run_in_threadpool
 from app.log import log
 from app.models.error import ErrorType, FieldMissingError, RequestError
+from app.service.auth_security import check_verification_limit
+from app.service.verification_service import lock_user
 
 from .router import router
 
 from fastapi import Depends, Form
 from pyrate_limiter import Duration, Rate
-from sqlmodel import col, delete
+from sqlmodel import col, delete, select
 
 logger = log("Auth")
 
@@ -52,27 +54,26 @@ async def change_password(
     if errors := validate_password(new_password):
         raise RequestError(ErrorType.INVALID_PASSWORD, {"errors": errors}, status_code=400)
 
+    await lock_user(session, current_user.id)
+    await check_verification_limit(redis, current_user.id)
     # Check if user has TOTP enabled
-    totp_key = await session.get(TotpKeys, current_user.id)
+    totp_key = (
+        await session.exec(
+            select(TotpKeys)
+            .where(TotpKeys.user_id == current_user.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).first()
 
     if totp_key:
         # User has TOTP enabled, must verify TOTP
         if not totp_code:
             raise RequestError(ErrorType.TOTP_CODE_REQUIRED)
 
-        is_verified = False
-        if len(totp_code) == 6 and totp_code.isdigit():
-            is_verified = await verify_totp_key_with_replay_protection(
-                current_user.id, totp_key.secret, totp_code, redis
-            )
-        elif len(totp_code) == BACKUP_CODE_LENGTH:
-            is_verified = check_totp_backup_code(totp_key, totp_code)
-            if is_verified:
-                session.add(totp_key)
-        else:
+        if len(totp_code) not in (6, BACKUP_CODE_LENGTH):
             raise RequestError(ErrorType.INVALID_TOTP_FORMAT, {"args": BACKUP_CODE_LENGTH})
-
-        if not is_verified:
+        if not await verify_user_totp(session, redis, current_user.id, totp_code):
             raise RequestError(ErrorType.INVALID_TOTP_OR_BACKUP_CODE)
 
         logger.info(f"User {current_user.id} verified identity with TOTP for password change")
@@ -89,7 +90,7 @@ async def change_password(
 
     user_id = current_user.id
 
-    current_user.pw_bcrypt = get_password_hash(new_password)
+    current_user.pw_bcrypt = await run_in_threadpool(get_password_hash, new_password)
 
     await session.execute(delete(TrustedDevice).where(col(TrustedDevice.user_id) == user_id))
     await session.execute(delete(LoginSession).where(col(LoginSession.user_id) == user_id))
