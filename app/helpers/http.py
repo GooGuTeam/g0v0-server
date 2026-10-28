@@ -17,6 +17,11 @@ if TYPE_CHECKING:
     from app.models.model import UserAgentInfo
 
 
+# The stable client reports its own build string instead of a browser agent:
+# ``byyyymmdd``, optionally with a hotfix revision and/or the cutting-edge channel suffix.
+STABLE_USER_AGENT_PATTERN = re.compile(r"b\d{8}(?:\.\d+)?(?:cuttingedge)?", re.IGNORECASE)
+
+
 def extract_user_agent(user_agent: str | None) -> "UserAgentInfo":
     """Parse a User-Agent string to extract browser, OS, and device info.
 
@@ -40,6 +45,12 @@ def extract_user_agent(user_agent: str | None) -> "UserAgentInfo":
     client_identifiers = ("osu!", "osu!lazer", "osu-framework", "g0v0!")
     if any(identifier in lower_ua for identifier in client_identifiers):
         info.browser = "osu!"
+        info.is_client = True
+        return info
+
+    if STABLE_USER_AGENT_PATTERN.fullmatch(ua):
+        # Our stable server stores the build string as User-Agent.
+        info.browser = f"osu!stable {raw_ua}"
         info.is_client = True
         return info
 
