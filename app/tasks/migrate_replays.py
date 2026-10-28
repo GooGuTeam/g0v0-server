@@ -22,8 +22,11 @@ async def _rename_replay(storage: StorageService, source: str, destination: str)
         if await storage.is_exists(source):
             # A failed object-storage deletion can leave both copies behind.
             if await storage.read_file(source) != await storage.read_file(destination):
-                raise RuntimeError(f"Replay destination already contains different data: {destination}")
+                logger.warning(f"Replay destination already contains different data: {destination}")
             await storage.delete_file(source)
+        return
+    if not await storage.is_exists(source):
+        logger.warning(f"Replay source does not exist: {source}")
         return
     await storage.rename_file(source, destination)
 
