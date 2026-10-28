@@ -38,6 +38,7 @@ from app.router.redirect import redirect_router
 from app.service.beatmap_download_service import download_service
 from app.service.beatmapset_update_service import init_beatmapset_update_service
 from app.service.client_verification_service import init_client_verification_service
+from app.service.content import changelog_service, close_content_services, news_service
 from app.service.email_service import start_email_processor, stop_email_processor
 from app.service.redis_message_system import redis_message_system
 from app.service.subscribers.user_cache import user_online_subscriber
@@ -130,6 +131,12 @@ async def lifespan(app: FastAPI):
         # The remote repository might be slow or unreachable, making it a background task off the startup path.
         bg_tasks.add_task(wiki_service.warm)
 
+    if settings.enable_changelog:
+        bg_tasks.add_task(changelog_service.warm)
+
+    if settings.enable_news:
+        bg_tasks.add_task(news_service.warm)
+
     if not settings.enable_v2_ipc:
         startup_logger.info("Starting user online subscriber")
         await user_online_subscriber.start_subscribe()
@@ -155,6 +162,7 @@ async def lifespan(app: FastAPI):
     await download_service.stop_health_check()
     await stop_email_processor()
     await close_wiki_service()
+    await close_content_services()
 
     # close database & redis
     shutdown_logger.info("Closing database and Redis connections")

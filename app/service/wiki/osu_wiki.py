@@ -16,23 +16,25 @@ from app.config import settings
 from app.log import log
 from app.models.error import RequestError
 from app.models.wiki import WikiPage, WikiPageLayout
+from app.service.repository import Repository, join_repo_path, split_front_matter
 
 from .base import (
-    Repository,
     WikiSource,
-    join_repo_path,
     locale_candidates,
     normalize_asset_path,
     normalize_path,
     page_layout,
     page_tags,
     page_title,
-    split_front_matter,
     title_from_markdown,
     title_from_path,
 )
 
 logger = log("Wiki")
+
+# Prefix of everything the wiki caches, so that the news and changelog, which read their own
+# repository through the same client, never read a wiki entry by accident.
+WIKI_CACHE_PREFIX = "g0v0:wiki:v2"
 
 # Page the client asks for when it opens the wiki overlay without a path.
 DEFAULT_PAGE_PATH = "Main_page"
@@ -120,6 +122,8 @@ class OsuWikiBackend:
             timeout=settings.wiki_request_timeout_seconds,
             cache_expire=settings.wiki_cache_expire_seconds,
             resource_cache_expire=settings.wiki_resource_cache_expire_seconds,
+            cache_prefix=WIKI_CACHE_PREFIX,
+            user_agent="g0v0-server-wiki",
         )
         # The redirect map is small but read on every miss, so it is parsed once per process.
         self._redirects_map: dict[str, str] = {}

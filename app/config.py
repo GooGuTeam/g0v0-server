@@ -237,6 +237,29 @@ class Settings(BaseSettings):
     wiki_resource_cache_expire_seconds: Annotated[int, Field(default=3600), "wiki"]
     wiki_request_timeout_seconds: Annotated[float, Field(default=10.0), "wiki"]
 
+    # content - changelog & news
+    enable_changelog: Annotated[bool, Field(default=True), "content"]
+    enable_news: Annotated[bool, Field(default=True), "content"]
+    # Repository holding the changelog builds and the news posts, see `app.service.content`.
+    content_repository: Annotated[str, Field(default="GooGuTeam/g0v0-news"), "content"]
+    content_branch: Annotated[str, Field(default="main"), "content"]
+    changelog_content_root: Annotated[str, Field(default="changelog"), "content"]
+    news_content_root: Annotated[str, Field(default="news"), "content"]
+    content_raw_base_url: Annotated[str, Field(default="https://raw.githubusercontent.com"), "content"]
+    # Needed to enumerate the builds and posts; empty disables both listings.
+    content_listing_base_url: Annotated[str, Field(default="https://api.github.com"), "content"]
+    content_github_token: Annotated[str, Field(default=""), "content"]
+    # Where the source file of a post is edited, used for the `edit_url` of a news post.
+    content_web_base_url: Annotated[str, Field(default="https://github.com"), "content"]
+    content_cache_expire_seconds: Annotated[int, Field(default=300), "content"]
+    # How long a directory listing is cached before the contents API is asked again. Kept
+    # longer than `content_index_expire_seconds`, so that a background refresh reuses the
+    # listing instead of hitting the API every time; a new file shows up once it expires.
+    content_listing_cache_expire_seconds: Annotated[int, Field(default=1800), "content"]
+    # How long a parsed listing is reused before it is refreshed in the background.
+    content_index_expire_seconds: Annotated[int, Field(default=600), "content"]
+    content_request_timeout_seconds: Annotated[float, Field(default=10.0), "content"]
+
     # beatmap_sync
     enable_auto_beatmap_sync: Annotated[bool, Field(default=False), "beatmap_sync"]
     beatmap_sync_interval_minutes: Annotated[int, Field(default=60), "beatmap_sync"]
