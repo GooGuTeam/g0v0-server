@@ -29,7 +29,14 @@ from app.dependencies.fetcher import get_fetcher
 from app.fetcher import Fetcher
 from app.fetcher.beatmap_raw import NoBeatmapError
 from app.log import log
-from app.models.mods import get_mod_multiplier_calculator, init_mods, init_ranked_mods, mod_to_save, mods_can_get_pp
+from app.models.mods import (
+    APIMod,
+    get_mod_multiplier_calculator,
+    init_mods,
+    init_ranked_mods,
+    mod_to_save,
+    mods_can_get_pp,
+)
 from app.models.score import GameMode, Rank
 from app.plugins import manager
 
@@ -648,7 +655,7 @@ async def run_in_batches(coros: Sequence[Awaitable[None]], batch_size: int) -> N
         await asyncio.gather(*tasks[i : i + batch_size])
 
 
-def _score_has_required_mod(mods: list[dict] | None, required: set[str]) -> bool:
+def _score_has_required_mod(mods: Sequence[APIMod | str] | None, required: set[str]) -> bool:
     if not required:
         return True
     if not mods:
