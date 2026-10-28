@@ -7,8 +7,10 @@ All endpoints in this module must remain compatible with the official osu! API v
 from . import (  # noqa: F401
     beatmap,
     beatmapset,
+    changelog,
     me,
     misc,
+    news,
     ranking,
     relationship,
     room,
