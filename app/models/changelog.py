@@ -8,7 +8,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, Field, SerializerFunctionWrapHandler, model_serializer
+from pydantic import BaseModel, ConfigDict, Field, SerializerFunctionWrapHandler, model_serializer
 
 
 class ChangelogEntryType(StrEnum):
@@ -29,7 +29,12 @@ class GitHubUser(BaseModel):
     `user_id` and the osu! fields only carry a value when the account was matched
     with one on this server, which a content repository has no way to know, so they
     stay empty there.
+
+    A content file is validated against the schema of its repository, so the account
+    it names is read strictly: a user ID written as text is a typo, not a number.
     """
+
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     display_name: str | None = None
     github_url: str | None = None
