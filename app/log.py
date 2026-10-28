@@ -23,6 +23,16 @@ if TYPE_CHECKING:
 logger: "Logger" = loguru.logger
 
 
+def redact_auth_query(message: str) -> str:
+    """Legacy WebSocket query credentials must not enter access/error logs."""
+    return re.sub(
+        r"([?&](?:token|access_token|refresh_token|authorization|verification_key|reset_code|code)=)[^&\s\"]*",
+        r"\1[redacted]",
+        message,
+        flags=re.IGNORECASE,
+    )
+
+
 class InterceptHandler(logging.Handler):
     """Logging handler that intercepts standard logging and routes to Loguru.
 
@@ -56,7 +66,7 @@ class InterceptHandler(logging.Handler):
             frame = frame.f_back
             depth += 1
 
-        message = record.getMessage()
+        message = redact_auth_query(record.getMessage())
         _logger = logger.bind(real_name=record.name)
         if record.name == "uvicorn.access":
             message = self._format_uvicorn_access_log(message)
@@ -308,13 +318,14 @@ def dynamic_format(record):
     return format
 
 
+# Exception variable dumps can expose passwords, JWTs and verification codes even in debug mode.
 logger.remove()
 logger.add(
     stdout,
     colorize=True,
     format=dynamic_format,
     level=settings.log_level,
-    diagnose=settings.debug,
+    diagnose=False,
 )
 logging.basicConfig(handlers=[InterceptHandler()], level=settings.log_level, force=True)
 
@@ -346,6 +357,6 @@ def add_file_logger() -> None:
         colorize=False,
         format=dynamic_format,
         level=settings.log_level,
-        diagnose=settings.debug,
+        diagnose=False,
         encoding="utf8",
     )

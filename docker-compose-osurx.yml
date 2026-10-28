@@ -105,7 +105,6 @@ services:
     restart: unless-stopped
     networks:
       - osu-network
-
   performance-server:
     image: ghcr.io/googuteam/osu-performance-server-osurx
     container_name: performance_server_osurx

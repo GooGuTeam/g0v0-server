@@ -12,6 +12,7 @@ from . import (
     database_cleanup,
     recalculate_failed_score,
     screenshot_cleanup,
+    trusted_proxies,
     update_client_version,
 )
 from .cache import start_cache_tasks, stop_cache_tasks
@@ -22,6 +23,7 @@ from .geoip import init_geoip
 from .load_achievements import load_achievements
 from .migrate_replays import migrate_replays
 from .special_statistics import create_custom_ruleset_statistics, create_rx_statistics
+from .trusted_proxies import refresh_trusted_proxy_job
 
 __all__ = [
     "calculate_user_rank",
@@ -33,6 +35,7 @@ __all__ = [
     "load_achievements",
     "migrate_replays",
     "process_daily_challenge_top",
+    "refresh_trusted_proxy_job",
     "start_cache_tasks",
     "stop_cache_tasks",
 ]

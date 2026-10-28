@@ -70,7 +70,7 @@ class LoginSession(LoginSessionBase, table=True):
         exclude=True,
     )
     is_new_device: bool = Field(default=False, exclude=True)  # New device login
-    device_hash: str | None = Field(sa_column=Column(VARCHAR(64), nullable=True), default=None, exclude=True)
+    device_hash: str | None = Field(sa_column=Column(Text, nullable=True), default=None, exclude=True)
     verification_method: str | None = Field(default=None, max_length=20, exclude=True)  # totp/mail
 
     device: Mapped[Optional["TrustedDevice"]] = Relationship(back_populates="sessions")
@@ -116,7 +116,7 @@ class TrustedDevice(TrustedDeviceBase, table=True):
     """Database table for trusted devices."""
 
     __tablename__: str = "trusted_devices"
-    device_hash: str | None = Field(sa_column=Column(VARCHAR(64), nullable=True), default=None)
+    device_hash: str | None = Field(sa_column=Column(Text, nullable=True), default=None)
 
     sessions: Mapped[list["LoginSession"]] = Relationship(back_populates="device", passive_deletes=True)
 

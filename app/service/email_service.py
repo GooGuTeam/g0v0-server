@@ -8,6 +8,7 @@ Unified email service providing:
 
 import asyncio
 from collections.abc import Mapping
+from contextlib import suppress
 from datetime import datetime
 import json
 import secrets
@@ -17,9 +18,10 @@ import uuid
 
 from app.config import settings
 from app.dependencies.database import get_blocking_redis
-from app.helpers import bg_tasks
+from app.helpers import as_utc, utcnow
 from app.log import logger
 from app.path import STATIC_DIR
+from app.service.email_queue import EmailQueue
 from app.service.mail_providers import get_provider, init_provider
 
 from jinja2 import Environment, FileSystemLoader, Template
@@ -52,6 +54,7 @@ class EmailService:
         self.redis: Redis = get_blocking_redis()
         self._processing = False
         self._retry_limit = 3
+        self._worker: asyncio.Task | None = None
 
         # Jinja2 template setup
         template_dir = STATIC_DIR / "templates" / "email"
@@ -71,12 +74,17 @@ class EmailService:
         if not self._processing:
             await init_provider()
             self._processing = True
-            bg_tasks.add_task(self._process_email_queue)
+            self._worker = asyncio.create_task(self._process_email_queue())
             logger.info("Email queue processing started")
 
     async def stop_processing(self):
         """Stop email processing."""
         self._processing = False
+        if self._worker is not None:
+            self._worker.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._worker
+            self._worker = None
         logger.info("Email queue processing stopped")
 
     async def enqueue_email(
@@ -113,12 +121,11 @@ class EmailService:
             "retry_count": "0",
         }
 
-        await self.redis.hset(
-            f"email:{email_id}",
-            mapping=cast(Mapping[FieldT, EncodableT], email_data),
-        )
-        await self.redis.expire(f"email:{email_id}", 86400)
-        await self.redis.lpush("email_queue", email_id)
+        async with self.redis.pipeline(transaction=True) as pipe:
+            pipe.hset(f"email:{email_id}", mapping=cast(Mapping[FieldT, EncodableT], email_data))
+            pipe.expire(f"email:{email_id}", 86400)
+            pipe.lpush("email_queue", email_id)
+            await pipe.execute()
 
         logger.info(f"Email enqueued with id: {email_id} to {to_email}")
         return email_id
@@ -142,72 +149,55 @@ class EmailService:
 
         return {"status": "not_found"}
 
-    async def _process_email_queue(self):
-        """Process the email queue."""
-        logger.info("Starting email queue processor")
+    async def _renew_claim(self, queue: EmailQueue, email_id: str, owner: str) -> None:
+        while True:
+            await asyncio.sleep(10)
+            if not await queue.renew(email_id, owner):
+                raise RuntimeError("Email delivery claim was lost")
 
+    async def _process_claim(self, queue: EmailQueue, email_id: str, owner: str) -> None:
+        email_data = await self.get_email_status(email_id)
+        metadata = json.loads(email_data.get("metadata", "{}"))
+        expires_at = metadata.get("expires_at")
+        if expires_at and as_utc(datetime.fromisoformat(expires_at)) <= utcnow():
+            await queue.finish(email_id, owner, "expired")
+            return
+        heartbeat = asyncio.create_task(self._renew_claim(queue, email_id, owner))
+        delivery = asyncio.create_task(self._send_email(email_data))
+        try:
+            done, _ = await asyncio.wait({delivery, heartbeat}, return_when=asyncio.FIRST_COMPLETED)
+            if heartbeat in done:
+                await heartbeat  # Lost leases or Redis errors cannot acknowledge delivery.
+            success = await delivery
+            await queue.finish(email_id, owner, "sent" if success else "retry", self._retry_limit)
+        finally:
+            heartbeat.cancel()
+            delivery.cancel()
+            with suppress(asyncio.CancelledError):
+                await heartbeat
+            with suppress(asyncio.CancelledError):
+                await delivery
+
+    async def _process_email_queue(self):
+        """Recover abandoned claims and scheduled retries on every worker iteration."""
+        queue = EmailQueue(self.redis)
         while self._processing:
             try:
-                result = await self.redis.brpop(["email_queue"], timeout=5)
-
-                if not result:
-                    await asyncio.sleep(1)
+                await queue.recover()
+                owner = uuid.uuid4().hex
+                email_id = await queue.claim(owner)
+                if email_id is None:
+                    await asyncio.sleep(0.5)
                     continue
-
-                _, email_id = result
-                if isinstance(email_id, bytes):
-                    email_id = email_id.decode("utf-8")
-
-                email_data = await self.get_email_status(email_id)
-                if email_data.get("status") == "not_found":
-                    logger.warning(f"Email data not found for id: {email_id}")
-                    continue
-
-                await self.redis.hset(f"email:{email_id}", "status", "sending")
-
-                success = await self._send_email(email_data)
-
-                if success:
-                    await self.redis.hset(f"email:{email_id}", "status", "sent")
-                    await self.redis.hset(
-                        f"email:{email_id}",
-                        "sent_at",
-                        datetime.now().isoformat(),
-                    )
-                    logger.info(f"Email {email_id} sent successfully to {email_data.get('to_email')}")
-                else:
-                    retry_count = int(email_data.get("retry_count", "0")) + 1
-
-                    if retry_count <= self._retry_limit:
-                        await self.redis.hset(
-                            f"email:{email_id}",
-                            "retry_count",
-                            str(retry_count),
-                        )
-                        await self.redis.hset(f"email:{email_id}", "status", "pending")
-                        await self.redis.hset(
-                            f"email:{email_id}",
-                            "last_retry",
-                            datetime.now().isoformat(),
-                        )
-
-                        delay = 60 * (2 ** (retry_count - 1))
-                        bg_tasks.add_task(self._delayed_retry, email_id, delay)
-
-                        logger.warning(f"Email {email_id} will be retried in {delay} seconds (attempt {retry_count})")
-                    else:
-                        await self.redis.hset(f"email:{email_id}", "status", "failed")
-                        logger.error(f"Email {email_id} failed after {retry_count} attempts")
-
-            except Exception as e:
-                logger.error(f"Error processing email queue: {e}")
+                await self._process_claim(queue, email_id, owner)
+            except Exception:
+                logger.exception("Error processing email queue")
                 await asyncio.sleep(5)
 
     async def _delayed_retry(self, email_id: str, delay: int):
-        """Delayed retry for sending email."""
-        await asyncio.sleep(delay)
-        await self.redis.lpush("email_queue", email_id)
-        logger.info(f"Re-queued email {email_id} for retry after {delay} seconds")
+        """Keep the existing helper while persisting its deadline instead of sleeping."""
+        await self.redis.zadd("email_retries", {email_id: utcnow().timestamp() + delay})
+        await self.redis.hset(f"email:{email_id}", "status", "retry")
 
     async def _send_email(self, email_data: dict[str, Any]) -> bool:
         """Send email via configured provider."""
@@ -229,7 +219,7 @@ class EmailService:
                 metadata=metadata,
             )
 
-            if response:
+            if response and not response.get("error"):
                 message_id = response.get("id", "")
                 if message_id:
                     logger.info(f"Email sent successfully, message_id: {message_id}")

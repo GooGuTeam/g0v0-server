@@ -3,12 +3,13 @@
 Cleans up expired verification codes and sessions from the database.
 """
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 
-from app.database.auth import OAuthToken
+from app.database.auth import OAuthClient, OAuthToken
 from app.database.verification import EmailVerification, LoginSession, TrustedDevice
-from app.helpers import utcnow
+from app.helpers import as_utc, utcnow
 from app.log import logger
+from app.service.verification_service import LoginSessionService, lock_user
 
 from sqlmodel import col, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -69,33 +70,7 @@ class DatabaseCleanupService:
         Returns:
             int: Number of records cleaned up.
         """
-        try:
-            # Find expired login session records
-            current_time = utcnow()
-
-            stmt = select(LoginSession).where(
-                LoginSession.expires_at < current_time, col(LoginSession.is_verified).is_(False)
-            )
-            result = await db.exec(stmt)
-            expired_sessions = result.all()
-
-            # Delete expired records
-            deleted_count = 0
-            for session in expired_sessions:
-                await db.delete(session)
-                deleted_count += 1
-
-            await db.commit()
-
-            if deleted_count > 0:
-                logger.debug(f"Cleaned up {deleted_count} expired login sessions")
-
-            return deleted_count
-
-        except Exception as e:
-            await db.rollback()
-            logger.error(f"Error cleaning expired login sessions: {e!s}")
-            return 0
+        return await DatabaseCleanupService._revoke_stale_sessions(db)
 
     @staticmethod
     async def cleanup_old_used_verification_codes(db: AsyncSession, days_old: int = 7) -> int:
@@ -148,34 +123,48 @@ class DatabaseCleanupService:
         Returns:
             int: Number of records cleaned up.
         """
-        try:
-            # Calculate cutoff time
-            cutoff_time = utcnow() - timedelta(hours=hours_old)
+        cutoff = utcnow() - timedelta(hours=hours_old)
+        return await DatabaseCleanupService._revoke_stale_sessions(db, cutoff=cutoff)
 
-            # Find sessions created before the cutoff time that are still unverified
-            stmt = select(LoginSession).where(
-                col(LoginSession.is_verified).is_(False), LoginSession.created_at < cutoff_time
+    @staticmethod
+    async def _revoke_stale_sessions(db: AsyncSession, *, cutoff: datetime | None = None) -> int:
+        """Recheck under the account lock and remove session + token in one transaction."""
+        condition = LoginSession.created_at <= cutoff if cutoff else LoginSession.expires_at <= utcnow()
+        candidates = (
+            await db.exec(
+                select(LoginSession.user_id, LoginSession.id)
+                .where(col(LoginSession.is_verified).is_(False), condition)
+                .order_by(col(LoginSession.user_id), col(LoginSession.id))
             )
-            result = await db.exec(stmt)
-            unverified_sessions = result.all()
-
-            # Delete unverified session records
-            deleted_count = 0
-            for session in unverified_sessions:
+        ).all()
+        deleted = 0
+        try:
+            for user_id, session_id in candidates:
+                await lock_user(db, user_id)
+                session = (
+                    await db.exec(
+                        select(LoginSession)
+                        .where(LoginSession.id == session_id)
+                        .with_for_update()
+                        .execution_options(populate_existing=True)
+                    )
+                ).first()
+                if session is None or session.is_verified:
+                    continue
+                if (cutoff and as_utc(session.created_at) > cutoff) or (
+                    not cutoff and as_utc(session.expires_at) > utcnow()
+                ):
+                    continue
+                token = await db.get(OAuthToken, session.token_id) if session.token_id else None
                 await db.delete(session)
-                deleted_count += 1
-
+                if token is not None:
+                    await db.delete(token)
+                deleted += 1
             await db.commit()
-
-            if deleted_count > 0:
-                logger.debug(f"Cleaned up {deleted_count} unverified login sessions older than {hours_old} hour(s)")
-
-            return deleted_count
-
-        except Exception as e:
+            return deleted
+        except Exception:
             await db.rollback()
-            logger.error(f"Error cleaning unverified login sessions: {e!s}")
-            return 0
+            raise
 
     @staticmethod
     async def cleanup_outdated_verified_sessions(db: AsyncSession) -> int:
@@ -220,31 +209,7 @@ class DatabaseCleanupService:
         Returns:
             Number of deleted records.
         """
-        try:
-            # Find expired trusted device records
-            current_time = utcnow()
-
-            stmt = select(TrustedDevice).where(TrustedDevice.expires_at < current_time)
-            result = await db.exec(stmt)
-            expired_devices = result.all()
-
-            # Delete expired records
-            deleted_count = 0
-            for device in expired_devices:
-                await db.delete(device)
-                deleted_count += 1
-
-            await db.commit()
-
-            if deleted_count > 0:
-                logger.debug(f"Cleaned up {deleted_count} expired trusted devices")
-
-            return deleted_count
-
-        except Exception as e:
-            await db.rollback()
-            logger.error(f"Error cleaning expired trusted devices: {e!s}")
-            return 0
+        return await DatabaseCleanupService._cleanup_auth_records(db, devices=True)
 
     @staticmethod
     async def cleanup_outdated_tokens(db: AsyncSession) -> int:
@@ -256,28 +221,47 @@ class DatabaseCleanupService:
         Returns:
             Number of deleted records.
         """
+        return await DatabaseCleanupService._cleanup_auth_records(db, devices=False)
+
+    @staticmethod
+    async def _cleanup_auth_records(db: AsyncSession, *, devices: bool) -> int:
+        model = TrustedDevice if devices else OAuthToken
+        expiry_column = TrustedDevice.expires_at if devices else OAuthToken.refresh_token_expires_at
+        candidates = (
+            await db.exec(
+                select(model.user_id, model.id)
+                .where(expiry_column <= utcnow())
+                .order_by(col(model.user_id), col(model.id))
+            )
+        ).all()
+        deleted = 0
         try:
-            current_time = utcnow()
-
-            stmt = select(OAuthToken).where(OAuthToken.refresh_token_expires_at < current_time)
-            result = await db.exec(stmt)
-            expired_tokens = result.all()
-
-            deleted_count = 0
-            for token in expired_tokens:
-                await db.delete(token)
-                deleted_count += 1
-
+            for user_id, record_id in candidates:
+                if user_id is not None:
+                    await lock_user(db, user_id)
+                else:
+                    token = await db.get(OAuthToken, record_id)
+                    if token is None:
+                        continue
+                    await db.exec(
+                        select(OAuthClient.client_id).where(OAuthClient.client_id == token.client_id).with_for_update()
+                    )
+                record = await db.get(model, record_id, with_for_update=True, populate_existing=True)
+                if record is None:
+                    continue
+                expires_at = record.expires_at if isinstance(record, TrustedDevice) else record.refresh_token_expires_at
+                if as_utc(expires_at) > utcnow():
+                    continue
+                if isinstance(record, TrustedDevice):
+                    await LoginSessionService.remove_trusted_device(db, record)
+                else:
+                    await db.delete(record)
+                deleted += 1
             await db.commit()
-
-            if deleted_count > 0:
-                logger.debug(f"Cleaned up {deleted_count} expired OAuth tokens")
-
-            return deleted_count
-
-        except Exception as e:
+            return deleted
+        except Exception:
             await db.rollback()
-            logger.error(f"Error cleaning expired OAuth tokens: {e!s}")
+            logger.exception("Error cleaning expired authentication records")
             return 0
 
     @staticmethod

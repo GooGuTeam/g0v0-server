@@ -7,14 +7,19 @@ from uuid import uuid4
 
 from app.config import settings
 from app.dependencies.database import redis_limit_client
+from app.dependencies.geoip import get_client_ip
 
 from fastapi import Depends
 from fastapi_limiter.callback import default_callback
-from fastapi_limiter.identifier import default_identifier
 from pyrate_limiter import Duration, Rate
 from redis.exceptions import NoScriptError
 from starlette.requests import Request
 from starlette.responses import Response
+
+
+async def default_identifier(request: Request) -> str:
+    return f"{get_client_ip(request)}:{request.scope['path']}"
+
 
 REDIS_RATE_LIMIT_SCRIPT = """
 local bucket = KEYS[1]
