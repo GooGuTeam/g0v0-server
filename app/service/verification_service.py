@@ -452,20 +452,33 @@ class LoginSessionService:
 
     @staticmethod
     async def get_or_create_trusted_device(
-        db: AsyncSession, user_id: int, ip_address: str, user_agent: UserAgentInfo, web_uuid: str | None = None
+        db: AsyncSession,
+        user_id: int,
+        ip_address: str,
+        user_agent: UserAgentInfo | None = None,
+        web_uuid: str | None = None,
+        *,
+        client_type: str | None = None,
+        device_hash: str | None = None,
     ) -> TrustedDevice:
+        """Return the caller's trusted device, creating or extending it as needed.
+
+        ``client_type`` and ``device_hash`` identify clients that the request user agent does
+        not describe, such as a stable client approved from the web. They default to the
+        user-agent derived client type and ``web_uuid``.
+        """
         await lock_user(db, user_id)
-        statement = select(TrustedDevice).where(TrustedDevice.user_id == user_id)
-        if user_agent.is_client:
-            statement = statement.where(TrustedDevice.client_type == "lazer")
-            if web_uuid:
-                statement = statement.where(col(TrustedDevice.device_hash) == web_uuid)
-            else:
-                statement = statement.where(TrustedDevice.ip_address == ip_address)
-        elif web_uuid:
-            statement = statement.where(TrustedDevice.client_type == "web", TrustedDevice.device_hash == web_uuid)
-        else:
+        resolved_client_type = client_type or ("lazer" if user_agent and user_agent.is_client else "web")
+        resolved_device_hash = device_hash or web_uuid
+        if resolved_device_hash is None and resolved_client_type == "web":
             raise ValueError("web_uuid is required for web clients")
+        statement = select(TrustedDevice).where(
+            TrustedDevice.user_id == user_id, TrustedDevice.client_type == resolved_client_type
+        )
+        if resolved_device_hash is None:
+            statement = statement.where(TrustedDevice.ip_address == ip_address)
+        else:
+            statement = statement.where(col(TrustedDevice.device_hash) == resolved_device_hash)
         device = (
             await db.exec(
                 statement.order_by(col(TrustedDevice.id)).with_for_update().execution_options(populate_existing=True)
@@ -475,9 +488,9 @@ class LoginSessionService:
             device = TrustedDevice(
                 user_id=user_id,
                 ip_address=ip_address,
-                user_agent=user_agent.raw_ua,
-                client_type="lazer" if user_agent.is_client else "web",
-                device_hash=web_uuid,
+                user_agent=user_agent.raw_ua if user_agent is not None else "",
+                client_type=resolved_client_type,
+                device_hash=resolved_device_hash,
                 expires_at=utcnow() + timedelta(days=settings.device_trust_duration_days),
             )
         device.last_used_at = utcnow()
@@ -485,8 +498,6 @@ class LoginSessionService:
         db.add(device)
         await db.flush()
         return device
-
-    create_trusted_device = get_or_create_trusted_device
 
     @staticmethod
     async def remove_trusted_device(db: AsyncSession, device: TrustedDevice) -> None:

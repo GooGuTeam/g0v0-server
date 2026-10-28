@@ -4,16 +4,14 @@ Provides endpoints for users to manage their login sessions and trusted devices
 including listing, viewing, and revoking them.
 """
 
-from datetime import timedelta
 from typing import Annotated
 
-from app.config import settings
 from app.database.auth import OAuthToken
 from app.database.verification import LoginSession, LoginSessionResp, TrustedDevice, TrustedDeviceResp
 from app.dependencies.database import Database
 from app.dependencies.geoip import GeoIPService
 from app.dependencies.user import ClientUser, UserAndToken, get_client_user_and_token
-from app.helpers import utcnow
+from app.helpers import extract_user_agent, utcnow
 from app.log import log
 from app.models.error import ErrorType, RequestError
 from app.service.verification_service import LoginSessionService, SessionStatus, lock_user
@@ -61,22 +59,6 @@ async def stable_verification(
     now = utcnow()
 
     await lock_user(session, user_id)
-    device = (
-        await session.exec(
-            select(TrustedDevice)
-            .where(
-                TrustedDevice.user_id == user_id,
-                TrustedDevice.device_hash == device_hash,
-                TrustedDevice.client_type == "stable",
-            )
-            .order_by(col(TrustedDevice.id))
-            .with_for_update()
-            .execution_options(populate_existing=True)
-        )
-    ).first()
-    if device is None:
-        raise RequestError(ErrorType.TRUSTED_DEVICE_NOT_FOUND)
-
     login_session = (
         await session.exec(
             select(LoginSession)
@@ -95,15 +77,22 @@ async def stable_verification(
     if LoginSessionService.status(login_session) == SessionStatus.EXPIRED:
         raise RequestError(ErrorType.INVALID_OR_EXPIRED_TOKEN)
 
+    # A pending stable login carries no trusted device, so approving the client is what
+    # creates (or renews) it before the session is attached to it.
+    device = await LoginSessionService.get_or_create_trusted_device(
+        session,
+        user_id,
+        login_session.ip_address,
+        extract_user_agent(login_session.user_agent),
+        client_type="stable",
+        device_hash=device_hash,
+    )
     if not login_session.is_verified:
         login_session.is_verified = True
         login_session.verified_at = now
     login_session.verification_method = None
     login_session.device_id = device.id
-    device.last_used_at = now
-    device.expires_at = now + timedelta(days=settings.device_trust_duration_days)
     session.add(login_session)
-    session.add(device)
     logger.info(f"User {user_id} verified stable client session {login_session.id} using device {device.id}")
     await session.commit()
 
