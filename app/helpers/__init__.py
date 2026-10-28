@@ -37,6 +37,7 @@ from .strings import (
 from .time import (
     are_adjacent_weeks,
     are_same_weeks,
+    as_utc,
     unix_timestamp_to_windows,
     utcnow,
 )
@@ -49,6 +50,7 @@ __all__ = [
     "api_doc",
     "are_adjacent_weeks",
     "are_same_weeks",
+    "as_utc",
     "asset_proxy_response",
     "bg_tasks",
     "camel_to_snake",

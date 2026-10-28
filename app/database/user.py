@@ -697,7 +697,7 @@ class UserModel(DatabaseModel[UserDict]):
             redis = get_redis()
             if not await LoginSessionService.check_is_need_verification(session, user_id=obj.id, token_id=token_id):
                 return None
-            return await LoginSessionService.get_login_method(obj.id, token_id, redis)
+            return await LoginSessionService.verification_method(session, redis, obj.id, token_id)
         return None
 
 

@@ -10,13 +10,15 @@ from app.database.auth import OAuthToken
 from app.database.verification import LoginSession, LoginSessionResp, TrustedDevice, TrustedDeviceResp
 from app.dependencies.database import Database
 from app.dependencies.geoip import GeoIPService
-from app.dependencies.user import UserAndToken, get_client_user_and_token
+from app.dependencies.user import ClientUser, UserAndToken, get_client_user_and_token
+from app.helpers import extract_user_agent, utcnow
 from app.log import log
 from app.models.error import ErrorType, RequestError
+from app.service.verification_service import LoginSessionService, SessionStatus, lock_user
 
 from .router import router
 
-from fastapi import Security
+from fastapi import Body, Security
 from pydantic import BaseModel
 from sqlmodel import col, select
 
@@ -35,6 +37,64 @@ class SessionsResp(BaseModel):
     total: int
     current: int = 0
     sessions: list[LoginSessionResp]
+
+
+@router.post(
+    "/admin/stable-verification",
+    name="Verify a stable client session",
+    tags=["User Sessions", "g0v0 API", "Admin"],
+    status_code=204,
+    description=(
+        "Verify the active login session associated with a stable client device. "
+        "This route is protected by the private admin session-verification middleware."
+    ),
+)
+async def stable_verification(
+    session: Database,
+    device_hash: Annotated[str, Body(..., embed=True, min_length=1, description="Stable client device hash")],
+    current_user: ClientUser,
+):
+    """Verify the current user's pending stable-client session atomically."""
+    user_id = current_user.id
+    now = utcnow()
+
+    await lock_user(session, user_id)
+    login_session = (
+        await session.exec(
+            select(LoginSession)
+            .where(
+                LoginSession.user_id == user_id,
+                LoginSession.device_hash == device_hash,
+                LoginSession.expires_at > now,
+            )
+            .order_by(col(LoginSession.created_at).desc(), col(LoginSession.id).desc())
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).first()
+    if login_session is None:
+        raise RequestError(ErrorType.SESSION_NOT_FOUND)
+    if LoginSessionService.status(login_session) == SessionStatus.EXPIRED:
+        raise RequestError(ErrorType.INVALID_OR_EXPIRED_TOKEN)
+
+    # A pending stable login carries no trusted device, so approving the client is what
+    # creates (or renews) it before the session is attached to it.
+    device = await LoginSessionService.get_or_create_trusted_device(
+        session,
+        user_id,
+        login_session.ip_address,
+        extract_user_agent(login_session.user_agent),
+        client_type="stable",
+        device_hash=device_hash,
+    )
+    if not login_session.is_verified:
+        login_session.is_verified = True
+        login_session.verified_at = now
+    login_session.verification_method = None
+    login_session.device_id = device.id
+    session.add(login_session)
+    logger.info(f"User {user_id} verified stable client session {login_session.id} using device {device.id}")
+    await session.commit()
 
 
 @router.get(
@@ -87,13 +147,16 @@ async def delete_session(
     user_and_token: Annotated[UserAndToken, Security(get_client_user_and_token)],
 ):
     current_user, token = user_and_token
-    if session_id == token.id:
-        raise RequestError(ErrorType.CANNOT_DELETE_CURRENT_SESSION)
-
-    db_session = await session.get(LoginSession, session_id)
+    user_id = current_user.id
+    await lock_user(session, user_id)
+    db_session = (
+        await session.exec(select(LoginSession).where(LoginSession.id == session_id).with_for_update())
+    ).first()
     if not db_session or db_session.user_id != current_user.id:
         raise RequestError(ErrorType.SESSION_NOT_FOUND)
 
+    if db_session.token_id == token.id:
+        raise RequestError(ErrorType.CANNOT_DELETE_CURRENT_SESSION)
     await session.delete(db_session)
 
     token = await session.get(OAuthToken, db_session.token_id or 0)
@@ -101,7 +164,7 @@ async def delete_session(
         await session.delete(token)
 
     await session.commit()
-    logger.info(f"User {current_user.id} revoked login session {session_id}")
+    logger.info(f"User {user_id} revoked login session {session_id}")
     return
 
 
@@ -172,7 +235,9 @@ async def delete_trusted_device(
     user_and_token: Annotated[UserAndToken, Security(get_client_user_and_token)],
 ):
     current_user, token = user_and_token
-    device = await session.get(TrustedDevice, device_id)
+    user_id = current_user.id
+    await lock_user(session, user_id)
+    device = (await session.exec(select(TrustedDevice).where(TrustedDevice.id == device_id).with_for_update())).first()
     current_device_id = (
         await session.exec(
             select(TrustedDevice.id)
@@ -190,7 +255,7 @@ async def delete_trusted_device(
     if not device or device.user_id != current_user.id:
         raise RequestError(ErrorType.TRUSTED_DEVICE_NOT_FOUND)
 
-    await session.delete(device)
+    await LoginSessionService.remove_trusted_device(session, device)
     await session.commit()
-    logger.info(f"User {current_user.id} removed trusted device {device_id}")
+    logger.info(f"User {user_id} removed trusted device {device_id}")
     return

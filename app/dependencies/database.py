@@ -27,6 +27,7 @@ def json_serializer(value):
 engine = create_async_engine(
     settings.database_url,
     json_serializer=json_serializer,
+    hide_parameters=True,
     pool_size=30,
     max_overflow=50,
     pool_timeout=30.0,

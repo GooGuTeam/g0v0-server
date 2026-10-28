@@ -1,82 +1,70 @@
-"""Email verification management service.
+"""Email challenges, persistent login verification and trusted devices."""
 
-Handles email verification, login sessions, and trusted devices.
-"""
-
-from datetime import timedelta
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from enum import StrEnum
 import secrets
 import string
 from typing import Literal
 
 from app.config import settings
-from app.database.auth import OAuthToken
-from app.database.verification import EmailVerification, LoginSession, TrustedDevice
-from app.helpers import utcnow
-from app.log import logger
+from app.const import SUPPORT_TOTP_VERIFICATION_VER
+from app.database import EmailVerification, LoginSession, OAuthToken, TotpKeys, TrustedDevice, User
+from app.helpers import as_utc, extract_user_agent, utcnow
+from app.log import service_logger
+from app.models.error import ErrorType, RequestError
 from app.models.model import UserAgentInfo
+from app.service.auth_security import release_email_send, reserve_email_send
 from app.service.email_service import email_service
 
 from redis.asyncio import Redis
-from sqlmodel import col, exists, select
+from redis.exceptions import RedisError
+from sqlmodel import col, select, update
 from sqlmodel.ext.asyncio.session import AsyncSession
+
+logger = service_logger("Verification")
+VerificationMethod = Literal["totp", "mail"]
+PENDING_SESSION_LIFETIME = timedelta(hours=1)
+
+
+class SessionStatus(StrEnum):
+    MISSING = "missing"
+    EXPIRED = "expired"
+    PENDING = "pending"
+    VERIFIED = "verified"
+
+
+@dataclass(frozen=True)
+class SessionState:
+    """A request snapshot; never retains a session or a lazy ORM relationship."""
+
+    user_id: int
+    token_id: int
+    session_id: int | None
+    status: SessionStatus
+    method: VerificationMethod | None = None
+
+    def require_valid(self) -> None:
+        if self.status in (SessionStatus.MISSING, SessionStatus.EXPIRED):
+            raise RequestError(ErrorType.INVALID_OR_EXPIRED_TOKEN)
+
+
+async def lock_user(db: AsyncSession, user_id: int) -> None:
+    """Serialize account authentication writes without changing the schema."""
+    result = await db.exec(
+        select(User).where(User.id == user_id).with_for_update().execution_options(populate_existing=True)
+    )
+    if result.first() is None:
+        raise RequestError(ErrorType.USER_NOT_FOUND)
 
 
 class EmailVerificationService:
-    """Email verification service.
-
-    Manages email verification codes, login sessions,
-    and trusted device authentication.
-    """
-
     @staticmethod
     def generate_verification_code() -> str:
-        """Generate 8-digit verification code."""
         return "".join(secrets.choice(string.digits) for _ in range(8))
 
     @staticmethod
-    async def send_verification_email_via_queue(
-        email: str, code: str, username: str, user_id: int, country_code: str | None = None
-    ) -> dict[str, str]:
-        """Send verification email via email queue.
-
-        Args:
-            email: Email address to receive the verification code.
-            code: Verification code.
-            username: Username.
-            user_id: User ID.
-            country_code: Country code (used for email language selection).
-
-        Returns:
-            Dictionary in format {'id': 'message_id'}, returns email_id if using SMTP.
-        """
-        try:
-            # Use email service to generate email content and send
-            subject, html_content, plain_content = email_service.render_verification_email(
-                username=username,
-                code=code,
-                country_code=country_code,
-                expiry_minutes=10,
-            )
-            # Prepare metadata
-            metadata = {"type": "email_verification", "user_id": user_id, "code": code, "country": country_code}
-
-            # Use email queue to send (handles all providers including MailerSend via plugin)
-            email_id = await email_service.enqueue_email(
-                to_email=email,
-                subject=subject,
-                content=plain_content,
-                html_content=html_content,
-                metadata=metadata,
-            )
-            return {"id": email_id}
-
-        except Exception as e:
-            logger.error(f"Failed to enqueue email: {e}")
-            return {"id": ""}
-
-    @staticmethod
     def generate_session_token() -> str:
-        """Generate session token."""
         return secrets.token_urlsafe(32)
 
     @staticmethod
@@ -88,48 +76,67 @@ class EmailVerificationService:
         ip_address: str | None = None,
         user_agent: str | None = None,
     ) -> tuple[EmailVerification, str]:
-        """Create email verification record."""
-
-        # Check for unexpired verification code
-        existing_result = await db.exec(
-            select(EmailVerification).where(
-                EmailVerification.user_id == user_id,
-                EmailVerification.is_used == False,  # noqa: E712
-                EmailVerification.expires_at > utcnow(),
+        await lock_user(db, user_id)
+        existing = (
+            await db.exec(
+                select(EmailVerification)
+                .where(
+                    EmailVerification.user_id == user_id,
+                    EmailVerification.email == email,
+                    col(EmailVerification.is_used).is_(False),
+                    EmailVerification.expires_at > utcnow(),
+                )
+                .with_for_update()
             )
-        )
-        existing = existing_result.first()
-
-        if existing:
-            # If unexpired verification code exists, return it directly
-            return existing, existing.verification_code
-
-        # Generate new verification code
-        code = EmailVerificationService.generate_verification_code()
-
-        # Create verification record
-        verification = EmailVerification(
-            user_id=user_id,
-            email=email,
-            verification_code=code,
-            expires_at=utcnow() + timedelta(minutes=10),  # 10-minute expiration
-            ip_address=ip_address,
-            user_agent=user_agent,
-        )
-
-        db.add(verification)
+        ).first()
+        if existing is None:
+            existing = EmailVerification(
+                user_id=user_id,
+                email=email,
+                verification_code=EmailVerificationService.generate_verification_code(),
+                expires_at=utcnow() + timedelta(minutes=10),
+                ip_address=ip_address,
+                user_agent=user_agent,
+            )
+            db.add(existing)
+            await db.flush()
+        code, record_id, expires_at = existing.verification_code, existing.id, existing.expires_at
         await db.commit()
-        await db.refresh(verification)
-
-        # Store in Redis (for quick verification)
-        await redis.setex(
+        await db.refresh(existing)
+        await redis.set(
             f"email_verification:{user_id}:{code}",
-            600,  # 10-minute expiration
-            str(verification.id) if verification.id else "0",
+            str(record_id),
+            ex=max(1, int((as_utc(expires_at) - utcnow()).total_seconds())),
         )
+        return existing, code
 
-        logger.info(f"Created verification code for user {user_id}: {code}")
-        return verification, code
+    @staticmethod
+    async def send_verification_email_via_queue(
+        email: str,
+        code: str,
+        username: str,
+        user_id: int,
+        country_code: str | None = None,
+        *,
+        expires_at: datetime | None = None,
+    ) -> dict[str, str]:
+        expires_at = expires_at or utcnow() + timedelta(minutes=10)
+        subject, html, plain = email_service.render_verification_email(
+            username=username, code=code, country_code=country_code, expiry_minutes=10
+        )
+        email_id = await email_service.enqueue_email(
+            to_email=email,
+            subject=subject,
+            content=plain,
+            html_content=html,
+            metadata={
+                "type": "email_verification",
+                "user_id": user_id,
+                "country": country_code,
+                "expires_at": as_utc(expires_at).isoformat(),
+            },
+        )
+        return {"id": email_id}
 
     @staticmethod
     async def send_verification_email(
@@ -142,111 +149,59 @@ class EmailVerificationService:
         user_agent: UserAgentInfo | None = None,
         country_code: str | None = None,
     ) -> dict[str, str]:
-        """Send verification email.
-
-        Args:
-            db: Database session.
-            redis: Redis client.
-            user_id: User ID.
-            username: Username.
-            email: Email address.
-            ip_address: IP address.
-            user_agent: User agent information.
-            country_code: Country code (used for email language selection).
-
-        Returns:
-            Dictionary in format {'id': 'message_id'}.
-        """
+        if not settings.enable_email_verification:
+            return {"id": "", "error": "disabled"}
+        reservation = await reserve_email_send(redis, user_id)
+        if reservation is None:
+            return {"id": "", "error": "rate_limited"}
         try:
-            # Check if email verification feature is enabled
-            if not settings.enable_email_verification:
-                logger.debug(f"Email verification is disabled, skipping for user {user_id}")
-                return {"id": "disabled"}  # Return special ID indicating feature is disabled
-
-            # Detect client info
-            logger.info(f"Detected client for user {user_id}: {user_agent}")
-
-            # Create verification record
-            (
-                _,
-                code,
-            ) = await EmailVerificationService.create_verification_record(
+            record, code = await EmailVerificationService.create_verification_record(
                 db, redis, user_id, email, ip_address, user_agent.raw_ua if user_agent else None
             )
-
-            # Use email queue to send verification email
-            response = await EmailVerificationService.send_verification_email_via_queue(
-                email, code, username, user_id, country_code
+            return await EmailVerificationService.send_verification_email_via_queue(
+                email, code, username, user_id, country_code, expires_at=record.expires_at
             )
-
-            if response and response.get("id"):
-                logger.info(
-                    f"Successfully sent verification email to {email} (user: {username}), message_id: {response['id']}"
-                )
-                return response
-            else:
-                logger.error(f"Failed to send verification email: {email} (user: {username})")
-                return {"id": ""}
-
-        except Exception as e:
-            logger.error(f"Exception during sending verification email: {e}")
-            return {"id": ""}
+        except Exception:
+            await db.rollback()
+            await release_email_send(redis, user_id, reservation)
+            logger.exception("Failed to enqueue verification email for user {}", user_id)
+            return {"id": "", "error": "enqueue_failed"}
 
     @staticmethod
     async def verify_email_code(
-        db: AsyncSession,
-        redis: Redis,
-        user_id: int,
-        code: str,
-        user_has_totp: bool = False,
+        db: AsyncSession, redis: Redis, user_id: int, code: str, user_has_totp: bool = False
     ) -> tuple[bool, str]:
-        """Verify email verification code."""
-        try:
-            # Check if email verification feature is enabled
-            if not settings.enable_email_verification:
-                if not user_has_totp:
-                    logger.debug(f"Email verification is disabled, auto-approving for user {user_id}")
-                    return True, "Verification successful (email verification disabled)"
-                logger.warning(
-                    f"Email verification is disabled, but user {user_id} has TOTP enabled. Verification failed."
-                )
-                return False, "Verification failed (email verification disabled, TOTP enabled)"
-
-            # Check Redis first
-            verification_id = await redis.get(f"email_verification:{user_id}:{code}")
-            if not verification_id:
-                return False, "Verification code invalid or expired"
-
-            # Get verification record from database
-            result = await db.exec(
-                select(EmailVerification).where(
-                    EmailVerification.id == int(verification_id),
+        """Consume in the caller's transaction, together with the session update."""
+        _ = redis, user_has_totp  # Retain the service call signature; SQL is authoritative.
+        if not settings.enable_email_verification:
+            return False, "Email verification is disabled"
+        if len(code) != 8 or not code.isascii() or not code.isdigit():
+            return False, "Verification code invalid or expired"
+        await lock_user(db, user_id)
+        user = await db.get(User, user_id)
+        verifications = (
+            await db.exec(
+                select(EmailVerification)
+                .where(
                     EmailVerification.user_id == user_id,
+                    EmailVerification.email == user.email if user else False,
                     EmailVerification.verification_code == code,
-                    EmailVerification.is_used == False,  # noqa: E712
+                    col(EmailVerification.is_used).is_(False),
                     EmailVerification.expires_at > utcnow(),
                 )
+                .with_for_update()
+                .execution_options(populate_existing=True)
             )
-
-            verification = result.first()
-            if not verification:
-                return False, "Verification code invalid or expired"
-
-            # Mark as used
+        ).all()
+        if not verifications:
+            return False, "Verification code invalid or expired"
+        for verification in verifications:
             verification.is_used = True
             verification.used_at = utcnow()
-
-            await db.commit()
-
-            # Delete Redis record
-            await redis.delete(f"email_verification:{user_id}:{code}")
-
-            logger.info(f"User {user_id} verification code verified successfully")
-            return True, "Verification successful"
-
-        except Exception as e:
-            logger.error(f"Exception during verification code validation: {e}")
-            return False, "Error during verification process"
+            db.add(verification)
+        await db.flush()
+        # SQL is authoritative. A stale Redis index cannot authorize a used challenge.
+        return True, "Verification successful"
 
     @staticmethod
     async def resend_verification_code(
@@ -259,74 +214,83 @@ class EmailVerificationService:
         user_agent: UserAgentInfo | None = None,
         country_code: str | None = None,
     ) -> tuple[bool, str, dict[str, str]]:
-        """Resend verification code.
-
-        Args:
-            db: Database session.
-            redis: Redis client.
-            user_id: User ID.
-            username: Username.
-            email: Email address.
-            ip_address: IP address.
-            user_agent: User agent info.
-            country_code: Country code (for selecting email language).
-
-        Returns:
-            (success, message, {'id': 'message_id'})
-        """
-        try:
-            # Avoid unused parameter warning
-            _ = user_agent
-            # Check if email verification feature is enabled
-            if not settings.enable_email_verification:
-                logger.debug(f"Email verification is disabled, skipping resend for user {user_id}")
-                return True, "Verification code sent (email verification disabled)", {"id": "disabled"}
-
-            # Check resend rate limit (60 seconds between sends)
-            rate_limit_key = f"email_verification_rate_limit:{user_id}"
-            if await redis.get(rate_limit_key):
-                return False, "Please wait 60 seconds before resending", {"id": ""}
-
-            # Set rate limit
-            await redis.setex(rate_limit_key, 60, "1")
-
-            # Generate new verification code
-            response = await EmailVerificationService.send_verification_email(
-                db, redis, user_id, username, email, ip_address, user_agent, country_code
-            )
-
-            if response and response.get("id"):
-                return True, "Verification code resent", response
-            else:
-                return False, "Resend failed, please try again later", {"id": ""}
-
-        except Exception as e:
-            logger.error(f"Exception during resending verification code: {e}")
-            return False, "Error during resend process", {"id": ""}
+        response = await EmailVerificationService.send_verification_email(
+            db, redis, user_id, username, email, ip_address, user_agent, country_code
+        )
+        if response.get("id"):
+            return True, "Verification code resent", response
+        message = {
+            "rate_limited": "Please wait 60 seconds before resending",
+            "disabled": "Email verification is disabled",
+        }.get(response.get("error", ""), "Resend failed, please try again later")
+        return False, message, response
 
 
 class LoginSessionService:
-    """Login session service."""
-
-    # Session verification interface methods
-    @staticmethod
-    async def find_for_verification(db: AsyncSession, token: str) -> LoginSession | None:
-        """Find session by session ID for verification."""
-        try:
-            result = await db.exec(
-                select(LoginSession).where(
-                    col(LoginSession.token).has(col(OAuthToken.access_token) == token),
-                    LoginSession.expires_at > utcnow(),
-                )
-            )
-            return result.first()
-        except Exception:
-            return None
-
     @staticmethod
     def get_key_for_event(session_id: str) -> str:
-        """Get session key for event broadcasting."""
         return f"g0v0:{session_id}"
+
+    @staticmethod
+    def initial_method(
+        has_totp: bool, api_version: int, trusted: bool = False, *, is_client: bool = False
+    ) -> VerificationMethod | None:
+        if settings.enable_totp_verification and has_totp:
+            # The token request cannot report a trustworthy version: lazer adds
+            # x-api-version in APIRequest.Perform only, while OAuth.AccessTokenRequest
+            # extends OsuJsonWebRequest, so POST /oauth/token usually sends none.
+            # A missing version therefore never downgrades MFA. The legacy exception
+            # is limited to game clients that explicitly declare a pre-TOTP version;
+            # web and other non-client callers must always use TOTP.
+            if is_client and 0 < api_version < SUPPORT_TOTP_VERIFICATION_VER and settings.enable_email_verification:
+                return "mail"
+            return "totp"
+        if settings.enable_email_verification and not trusted:
+            return "mail"
+        return None
+
+    @staticmethod
+    async def find_session(
+        db: AsyncSession, user_id: int, token_id: int, *, for_update: bool = False
+    ) -> LoginSession | None:
+        # An old duplicate pending row must never be hidden by a verified row.
+        statement = (
+            select(LoginSession)
+            .where(LoginSession.user_id == user_id, LoginSession.token_id == token_id)
+            .order_by(col(LoginSession.is_verified), col(LoginSession.created_at))
+        )
+        if for_update:
+            statement = statement.with_for_update().execution_options(populate_existing=True)
+        return (await db.exec(statement)).first()
+
+    @staticmethod
+    def status(session: LoginSession | None) -> SessionStatus:
+        if session is None:
+            return SessionStatus.MISSING
+        now = utcnow()
+        if as_utc(session.expires_at) <= now or (
+            not session.is_verified and as_utc(session.created_at) + PENDING_SESSION_LIFETIME <= now
+        ):
+            return SessionStatus.EXPIRED
+        return SessionStatus.VERIFIED if session.is_verified else SessionStatus.PENDING
+
+    @staticmethod
+    async def require_session(
+        db: AsyncSession, user_id: int, token_id: int, *, for_update: bool = False
+    ) -> LoginSession:
+        session = await LoginSessionService.find_session(db, user_id, token_id, for_update=for_update)
+        if session is None or LoginSessionService.status(session) in (SessionStatus.MISSING, SessionStatus.EXPIRED):
+            raise RequestError(ErrorType.INVALID_OR_EXPIRED_TOKEN)
+        return session
+
+    @staticmethod
+    async def find_for_verification(db: AsyncSession, token: str) -> LoginSession | None:
+        from app.auth import get_token_by_access_token
+
+        record = await get_token_by_access_token(db, token)
+        if record is None or record.user_id is None:
+            return None
+        return await LoginSessionService.require_session(db, record.user_id, record.id)
 
     @staticmethod
     async def create_session(
@@ -338,90 +302,152 @@ class LoginSessionService:
         is_new_device: bool = False,
         web_uuid: str | None = None,
         is_verified: bool = False,
+        *,
+        verification_method: VerificationMethod | None = None,
+        device_id: int | None = None,
+        expires_at: datetime | None = None,
+        commit: bool = True,
     ) -> LoginSession:
-        """Create login session."""
+        await lock_user(db, user_id)
+        token = await db.get(OAuthToken, token_id)
+        if token is None or token.user_id != user_id:
+            raise RequestError(ErrorType.INVALID_OR_EXPIRED_TOKEN)
         session = LoginSession(
             user_id=user_id,
             token_id=token_id,
             ip_address=ip_address,
             user_agent=user_agent,
             is_new_device=is_new_device,
-            expires_at=utcnow() + timedelta(hours=24),  # 24-hour expiration
-            is_verified=is_verified,
             device_hash=web_uuid,
+            is_verified=is_verified,
+            verified_at=utcnow() if is_verified else None,
+            verification_method=verification_method,
+            device_id=device_id,
+            expires_at=expires_at or token.refresh_token_expires_at,
         )
-
         db.add(session)
-        await db.commit()
-        await db.refresh(session)
-
-        logger.info(f"Created session for user {user_id} (new device: {is_new_device})")
+        await db.flush()
+        if commit:
+            await db.commit()
+            await db.refresh(session)
         return session
 
-    @classmethod
-    def _session_verify_redis_key(cls, user_id: int, token_id: int) -> str:
+    @staticmethod
+    def _session_verify_redis_key(user_id: int, token_id: int) -> str:
         return f"session_verification_method:{user_id}:{token_id}"
 
-    @classmethod
-    async def get_login_method(cls, user_id: int, token_id: int, redis: Redis) -> Literal["totp", "mail"] | None:
-        method = await redis.get(cls._session_verify_redis_key(user_id, token_id))
-        if method is None:
-            return None
+    @staticmethod
+    async def get_login_method(user_id: int, token_id: int, redis: Redis) -> VerificationMethod | None:
+        method = await redis.get(LoginSessionService._session_verify_redis_key(user_id, token_id))
         if isinstance(method, bytes):
-            method = method.decode("utf-8")
-        if method in ("totp", "mail"):
-            return method
-        return None
+            method = method.decode()
+        return method if method in ("totp", "mail") else None
 
-    @classmethod
-    async def set_login_method(cls, user_id: int, token_id: int, method: Literal["totp", "mail"], redis: Redis) -> None:
-        await redis.set(cls._session_verify_redis_key(user_id, token_id), method)
+    @staticmethod
+    async def set_login_method(
+        user_id: int,
+        token_id: int,
+        method: VerificationMethod,
+        redis: Redis,
+        *,
+        db: AsyncSession | None = None,
+    ) -> None:
+        if db is not None:
+            session = await LoginSessionService.require_session(db, user_id, token_id, for_update=True)
+            session.verification_method = method
+            db.add(session)
+            await db.flush()
+        try:
+            await redis.set(LoginSessionService._session_verify_redis_key(user_id, token_id), method, ex=3600)
+        except RedisError:
+            if db is None:
+                raise
+            logger.warning("Verification method cache unavailable for token {}", token_id)
 
-    @classmethod
-    async def clear_login_method(cls, user_id: int, token_id: int, redis: Redis) -> None:
-        await redis.delete(cls._session_verify_redis_key(user_id, token_id))
+    @staticmethod
+    async def clear_login_method(user_id: int, token_id: int, redis: Redis) -> None:
+        try:
+            await redis.delete(LoginSessionService._session_verify_redis_key(user_id, token_id))
+        except RedisError:
+            logger.warning("Verification method cache unavailable for token {}", token_id)
+
+    @staticmethod
+    async def verification_method(
+        db: AsyncSession,
+        redis: Redis,
+        user_id: int,
+        token_id: int,
+        api_version: int = 0,
+        *,
+        session: LoginSession | None = None,
+    ) -> VerificationMethod | None:
+        if session is None:
+            session = await LoginSessionService.require_session(db, user_id, token_id)
+        if session.is_verified or not (settings.enable_totp_verification or settings.enable_email_verification):
+            return None
+        method = session.verification_method
+        if method is None:
+            try:
+                method = await LoginSessionService.get_login_method(user_id, token_id, redis)
+            except RedisError:
+                method = None
+        if method == "mail" and settings.enable_email_verification:
+            return "mail"
+        if method == "totp" and settings.enable_totp_verification:
+            if await db.get(TotpKeys, user_id) is not None:
+                return "totp"
+            return "mail" if settings.enable_email_verification else None
+        has_totp = await db.get(TotpKeys, user_id) is not None
+        is_client = extract_user_agent(session.user_agent).is_client if session.user_agent else False
+        return LoginSessionService.initial_method(has_totp, api_version, is_client=is_client)
+
+    @staticmethod
+    async def get_state(
+        db: AsyncSession, redis: Redis, user_id: int, token_id: int, api_version: int = 0
+    ) -> SessionState:
+        session = await LoginSessionService.find_session(db, user_id, token_id)
+        status = LoginSessionService.status(session)
+        method = None
+        if status == SessionStatus.PENDING:
+            method = await LoginSessionService.verification_method(
+                db, redis, user_id, token_id, api_version, session=session
+            )
+            if not (settings.enable_totp_verification or settings.enable_email_verification):
+                status = SessionStatus.VERIFIED
+        return SessionState(user_id, token_id, session.id if session else None, status, method)
+
+    @staticmethod
+    async def check_is_need_verification(db: AsyncSession, user_id: int, token_id: int) -> bool:
+        session = await LoginSessionService.require_session(db, user_id, token_id)
+        return not session.is_verified and (settings.enable_totp_verification or settings.enable_email_verification)
 
     @staticmethod
     async def check_trusted_device(
         db: AsyncSession, user_id: int, ip_address: str, user_agent: UserAgentInfo, web_uuid: str | None = None
-    ) -> bool:
+    ) -> TrustedDevice | None:
+        await lock_user(db, user_id)
+        statement = select(TrustedDevice).where(TrustedDevice.user_id == user_id, TrustedDevice.expires_at > utcnow())
         if user_agent.is_client:
-            query = select(exists()).where(
-                TrustedDevice.user_id == user_id,
-                TrustedDevice.client_type == "lazer",
-                TrustedDevice.ip_address == ip_address,
-                TrustedDevice.expires_at > utcnow(),
-            )
+            # Prefer the client-provided device id over the IP: shared NAT,
+            # proxies and Cloudflare edges otherwise collapse every client of
+            # the same address into one trusted device.
+            statement = statement.where(TrustedDevice.client_type == "lazer")
+            if web_uuid:
+                statement = statement.where(col(TrustedDevice.device_hash) == web_uuid)
+            else:
+                statement = statement.where(TrustedDevice.ip_address == ip_address)
+        elif web_uuid:
+            statement = statement.where(TrustedDevice.client_type == "web", TrustedDevice.device_hash == web_uuid)
         else:
-            if web_uuid is None:
-                return False
-            query = select(exists()).where(
-                TrustedDevice.user_id == user_id,
-                TrustedDevice.client_type == "web",
-                TrustedDevice.device_hash == web_uuid,
-                TrustedDevice.expires_at > utcnow(),
+            return None
+        device = (
+            await db.exec(
+                statement.order_by(col(TrustedDevice.id)).with_for_update().execution_options(populate_existing=True)
             )
-        return (await db.exec(query)).first() or False
-
-    @staticmethod
-    async def create_trusted_device(
-        db: AsyncSession,
-        user_id: int,
-        ip_address: str,
-        user_agent: UserAgentInfo,
-        web_uuid: str | None = None,
-    ) -> TrustedDevice:
-        device = TrustedDevice(
-            user_id=user_id,
-            ip_address=ip_address,
-            user_agent=user_agent.raw_ua,
-            client_type="lazer" if user_agent.is_client else "web",
-            device_hash=web_uuid if not user_agent.is_client else None,
-            expires_at=utcnow() + timedelta(days=settings.device_trust_duration_days),
-        )
-        db.add(device)
-        await db.commit()
-        await db.refresh(device)
+        ).first()
+        if device:
+            device.last_used_at = utcnow()
+            db.add(device)
         return device
 
     @staticmethod
@@ -429,33 +455,60 @@ class LoginSessionService:
         db: AsyncSession,
         user_id: int,
         ip_address: str,
-        user_agent: UserAgentInfo,
+        user_agent: UserAgentInfo | None = None,
         web_uuid: str | None = None,
+        *,
+        client_type: str | None = None,
+        device_hash: str | None = None,
     ) -> TrustedDevice:
-        if user_agent.is_client:
-            query = select(TrustedDevice).where(
-                TrustedDevice.user_id == user_id,
-                TrustedDevice.client_type == "lazer",
-                TrustedDevice.ip_address == ip_address,
-            )
-        else:
-            if web_uuid is None:
-                raise ValueError("web_uuid is required for web clients")
-            query = select(TrustedDevice).where(
-                TrustedDevice.user_id == user_id,
-                TrustedDevice.client_type == "web",
-                TrustedDevice.device_hash == web_uuid,
-            )
+        """Return the caller's trusted device, creating or extending it as needed.
 
-        device = (await db.exec(query)).first()
-        if device is None:
-            device = await LoginSessionService.create_trusted_device(db, user_id, ip_address, user_agent, web_uuid)
+        ``client_type`` and ``device_hash`` identify clients that the request user agent does
+        not describe, such as a stable client approved from the web. They default to the
+        user-agent derived client type and ``web_uuid``.
+        """
+        await lock_user(db, user_id)
+        resolved_client_type = client_type or ("lazer" if user_agent and user_agent.is_client else "web")
+        resolved_device_hash = device_hash or web_uuid
+        if resolved_device_hash is None and resolved_client_type == "web":
+            raise ValueError("web_uuid is required for web clients")
+        statement = select(TrustedDevice).where(
+            TrustedDevice.user_id == user_id, TrustedDevice.client_type == resolved_client_type
+        )
+        if resolved_device_hash is None:
+            statement = statement.where(TrustedDevice.ip_address == ip_address)
         else:
-            device.last_used_at = utcnow()
-            device.expires_at = utcnow() + timedelta(days=settings.device_trust_duration_days)
-            await db.commit()
-            await db.refresh(device)
+            statement = statement.where(col(TrustedDevice.device_hash) == resolved_device_hash)
+        device = (
+            await db.exec(
+                statement.order_by(col(TrustedDevice.id)).with_for_update().execution_options(populate_existing=True)
+            )
+        ).first()
+        if device is None:
+            device = TrustedDevice(
+                user_id=user_id,
+                ip_address=ip_address,
+                user_agent=user_agent.raw_ua if user_agent is not None else "",
+                client_type=resolved_client_type,
+                device_hash=resolved_device_hash,
+                expires_at=utcnow() + timedelta(days=settings.device_trust_duration_days),
+            )
+        device.last_used_at = utcnow()
+        device.expires_at = utcnow() + timedelta(days=settings.device_trust_duration_days)
+        db.add(device)
+        await db.flush()
         return device
+
+    @staticmethod
+    async def remove_trusted_device(db: AsyncSession, device: TrustedDevice) -> None:
+        """Detach existing sessions even on historical databases without the device FK."""
+        await lock_user(db, device.user_id)
+        await db.exec(
+            update(LoginSession)
+            .where(col(LoginSession.user_id) == device.user_id, col(LoginSession.device_id) == device.id)
+            .values(device_id=None)
+        )
+        await db.delete(device)
 
     @staticmethod
     async def mark_session_verified(
@@ -467,57 +520,20 @@ class LoginSessionService:
         user_agent: UserAgentInfo,
         web_uuid: str | None = None,
     ) -> bool:
-        """Mark user's unverified sessions as verified."""
-        device_info: TrustedDevice | None = None
-        if user_agent.is_client or web_uuid:
-            device_info = await LoginSessionService.get_or_create_trusted_device(
-                db, user_id, ip_address, user_agent, web_uuid
+        _ = redis, ip_address, user_agent, web_uuid  # Trust the identity captured at login.
+        await lock_user(db, user_id)
+        session = await LoginSessionService.require_session(db, user_id, token_id, for_update=True)
+        if session.is_verified:
+            return True
+        agent = extract_user_agent(session.user_agent)
+        if agent.is_client or session.device_hash:
+            device = await LoginSessionService.get_or_create_trusted_device(
+                db, user_id, session.ip_address, agent, session.device_hash
             )
-
-        try:
-            # Find all unverified and unexpired sessions for user
-            result = await db.exec(
-                select(LoginSession).where(
-                    LoginSession.user_id == user_id,
-                    LoginSession.is_verified == False,  # noqa: E712
-                    LoginSession.expires_at > utcnow(),
-                    LoginSession.token_id == token_id,
-                )
-            )
-            sessions = result.all()
-
-            # Mark all sessions as verified
-            for session in sessions:
-                session.is_verified = True
-                session.verified_at = utcnow()
-                if device_info:
-                    session.device_id = device_info.id
-
-            if sessions:
-                logger.info(f"Marked {len(sessions)} session(s) as verified for user {user_id}")
-
-            await LoginSessionService.clear_login_method(user_id, token_id, redis)
-            await db.commit()
-
-            return len(sessions) > 0
-
-        except Exception as e:
-            logger.error(f"Exception during marking sessions as verified: {e}")
-            return False
-
-    @staticmethod
-    async def check_is_need_verification(db: AsyncSession, user_id: int, token_id: int) -> bool:
-        """Check if user needs verification (has unverified sessions)."""
-        if settings.enable_totp_verification or settings.enable_email_verification:
-            unverified_session = (
-                await db.exec(
-                    select(exists()).where(
-                        LoginSession.user_id == user_id,
-                        col(LoginSession.is_verified).is_(False),  # pyright: ignore[reportAttributeAccessIssue]
-                        LoginSession.expires_at > utcnow(),
-                        LoginSession.token_id == token_id,
-                    )
-                )
-            ).first()
-            return unverified_session or False
-        return False
+            session.device_id = device.id
+        session.is_verified = True
+        session.verified_at = utcnow()
+        session.verification_method = None
+        db.add(session)
+        await db.flush()
+        return True

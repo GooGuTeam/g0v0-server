@@ -16,17 +16,21 @@ from app.dependencies.database import (
     DBFactory,
     Redis,
     get_db_factory,
+    get_redis,
     redis_message_client,
     with_db,
 )
-from app.dependencies.user import get_current_user_and_token
+from app.dependencies.user import _validate_token
 from app.helpers import bg_tasks, safe_json_dumps
 from app.log import log
 from app.models.chat import ChatEvent
+from app.models.error import RequestError
 from app.models.events.chat import JoinChannelEvent, LeaveChannelEvent, MessageSentEvent
 from app.models.notification import NotificationDetail
 from app.plugins import hub
+from app.service.auth_security import bearer_token
 from app.service.subscribers.chat import ChatSubscriber
+from app.service.verification_service import LoginSessionService, SessionStatus
 
 from fastapi import APIRouter, Depends, Header, Query, WebSocket, WebSocketDisconnect
 from fastapi.security import SecurityScopes
@@ -453,17 +457,21 @@ async def chat_websocket(
         # Prioritize token from query parameters, supports both token and access_token parameter names
         auth_token = token or access_token
         if not auth_token and authorization:
-            auth_token = authorization.removeprefix("Bearer ")
+            auth_token = bearer_token(authorization)
 
         if not auth_token:
             await websocket.close(code=1008, reason="Missing authentication token")
             return
 
-        if (
-            user_and_token := await get_current_user_and_token(
-                session, SecurityScopes(scopes=["chat.read"]), token_pw=auth_token
-            )
-        ) is None:
+        try:
+            user_and_token = await _validate_token(session, auth_token, SecurityScopes(scopes=["chat.read"]), websocket)
+            user, oauth_token = user_and_token
+            state = await LoginSessionService.get_state(session, get_redis(), user.id, oauth_token.id)
+            state.require_valid()
+            if state.status == SessionStatus.PENDING:
+                await websocket.close(code=1008, reason="Session verification required")
+                return
+        except RequestError:
             await websocket.close(code=1008, reason="Invalid or expired token")
             return
 

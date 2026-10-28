@@ -15,6 +15,7 @@ from typing import Annotated, Literal
 from app.auth import (
     authenticate_user,
     create_access_token,
+    find_login_user,
     generate_refresh_token,
     get_password_hash,
     get_token_by_refresh_token,
@@ -24,7 +25,7 @@ from app.auth import (
     validate_username,
 )
 from app.config import settings
-from app.const import BANCHOBOT_ID, SUPPORT_TOTP_VERIFICATION_VER
+from app.const import BANCHOBOT_ID
 from app.database import DailyChallengeStats, OAuthClient, User
 from app.database.auth import TotpKeys
 from app.database.statistics import UserStatistics
@@ -33,7 +34,7 @@ from app.dependencies.database import Database, Redis
 from app.dependencies.geoip import GeoIPService, IPAddress
 from app.dependencies.user import CLIENT_CREDENTIALS_SCOPES
 from app.dependencies.user_agent import UserAgentInfo
-from app.helpers import utcnow
+from app.helpers import run_in_threadpool, utcnow
 from app.log import log
 from app.models.error import ErrorType, RequestError
 from app.models.events.user import UserLoginEvent, UserRegisteredEvent
@@ -46,12 +47,14 @@ from app.models.oauth import (
 )
 from app.models.score import GameMode
 from app.plugins import hub
+from app.service.auth_security import release_password_attempt, reserve_password_attempt
 from app.service.login_log_service import LoginLogService
 from app.service.password_reset_service import password_reset_service
 from app.service.turnstile_service import turnstile_service
 from app.service.verification_service import (
     EmailVerificationService,
     LoginSessionService,
+    lock_user,
 )
 
 from fastapi import APIRouter, Form, Header, Request
@@ -200,7 +203,7 @@ async def register_user(
         new_user = User(
             username=user_username,
             email=user_email,
-            pw_bcrypt=get_password_hash(user_password),
+            pw_bcrypt=await run_in_threadpool(get_password_hash, user_password),
             priv=1,  # Normal user privileges
             country_code=country_code,
             join_date=utcnow(),
@@ -315,7 +318,7 @@ async def oauth_token(
     # Turnstile verification (only for non-osu! client password grant)
     if grant_type == "password" and settings.enable_turnstile_verification and not user_agent.is_client:
         logger.debug(
-            f"Turnstile check: grant_type={grant_type}, token={cf_turnstile_response[:20]}..., "
+            f"Turnstile check: grant_type={grant_type}, token_present={bool(cf_turnstile_response)}, "
             f"enabled={settings.enable_turnstile_verification}, is_client={user_agent.is_client}"
         )
         success, error_msg = await turnstile_service.verify_token(cf_turnstile_response, ip_address)
@@ -327,7 +330,7 @@ async def oauth_token(
                 hint=f"Verification failed: {error_msg}",
             )
 
-    scopes = scope.split(" ")
+    scopes = scope.replace(",", " ").split()
 
     client = (
         await db.exec(
@@ -371,8 +374,18 @@ async def oauth_token(
                 hint="Only '*' scope is allowed for password grant type",
             )
 
-        # Authenticate user
-        user = await authenticate_user(db, username, password)
+        account = await find_login_user(db, username)
+        rate_account = f"user:{account.id}" if account else f"name:{username.casefold()}"
+        reservation = await reserve_password_attempt(redis, rate_account, ip_address)
+        if reservation is None:
+            raise RequestError(ErrorType.TOO_MANY_FAILED_ATTEMPTS, status_code=429)
+        try:
+            user = await authenticate_user(db, username, password)
+        except Exception:
+            await release_password_attempt(redis, reservation)
+            raise
+        if user is not None:
+            await release_password_attempt(redis, reservation)
         if not user:
             # Record failed login attempt
             await LoginLogService.record_failed_login(
@@ -395,15 +408,17 @@ async def oauth_token(
                 ),
             )
 
-        # Ensure user object is associated with current session
-        await db.refresh(user)
-
-        user_id = user.id
-        totp_key: TotpKeys | None = await user.awaitable_attrs.totp_key
-
-        # Generate tokens
-        access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
-        access_token = create_access_token(data={"sub": str(user_id)}, expires_delta=access_token_expires)
+        user_id, user_name, user_email, user_country = user.id, user.username, user.email, user.country_code
+        await lock_user(db, user_id)
+        totp_key = (await db.exec(select(TotpKeys).where(TotpKeys.user_id == user_id).with_for_update())).first()
+        trusted_device = await LoginSessionService.check_trusted_device(db, user_id, ip_address, user_agent, web_uuid)
+        trusted = trusted_device is not None
+        method = LoginSessionService.initial_method(
+            totp_key is not None, api_version, trusted, is_client=user_agent.is_client
+        )
+        access_token = create_access_token(
+            data={"sub": str(user_id)}, expires_delta=timedelta(minutes=settings.access_token_expire_minutes)
+        )
         refresh_token_str = generate_refresh_token()
         token = await store_token(
             db,
@@ -414,93 +429,48 @@ async def oauth_token(
             refresh_token_str,
             settings.access_token_expire_minutes * 60,
             settings.refresh_token_expire_minutes * 60,
-            allow_multiple_devices=settings.enable_multi_device_login,  # Use config to determine multi-device support
+            allow_multiple_devices=settings.enable_multi_device_login,
+            commit=False,
         )
         token_id = token.id
-
-        # Get country code
-        geo_info = geoip.lookup(ip_address)
-        country_code = geo_info.get("country_iso", "XX")
-
-        # Check if this is a new location login
-        trusted_device = await LoginSessionService.check_trusted_device(db, user_id, ip_address, user_agent, web_uuid)
-
-        # Determine verification method based on osu-web logic:
-        # 1. If API version supports TOTP and user has TOTP enabled, always require TOTP (regardless of device trust)
-        # 2. Otherwise, if new device and email verification is enabled, require email verification
-        # 3. Otherwise, no verification needed or auto-verify
-        session_verification_method = None
-        if api_version >= SUPPORT_TOTP_VERIFICATION_VER and settings.enable_totp_verification and totp_key is not None:
-            # TOTP verification takes priority (ref: osu-web State.php:36)
-            session_verification_method = "totp"
-            await LoginLogService.record_login(
-                db=db,
-                user_id=user_id,
-                request=request,
-                login_success=True,
-                login_method="password_pending_verification",
-                notes="TOTP verification required",
-            )
-        elif not trusted_device and settings.enable_email_verification:
-            # New device login, email verification required
-            # Refresh user object to ensure attributes are loaded
-            await db.refresh(user)
-            session_verification_method = "mail"
-            await EmailVerificationService.send_verification_email(
-                db,
-                redis,
-                user_id,
-                user.username,
-                user.email,
-                ip_address,
-                user_agent,
-                user.country_code,
-            )
-
-            # Record login attempt requiring secondary verification
-            await LoginLogService.record_login(
-                db=db,
-                user_id=user_id,
-                request=request,
-                login_success=True,
-                login_method="password_pending_verification",
-                notes=(
-                    f"Email verification: User-Agent: {user_agent.raw_ua}, Client: {user_agent.displayed_name} "
-                    f"IP: {ip_address}, Country: {country_code}"
-                ),
-            )
-        elif not trusted_device:
-            # New device login but email verification disabled, auto-verify the session
-            await LoginSessionService.mark_session_verified(
-                db, redis, user_id, token_id, ip_address, user_agent, web_uuid
-            )
-            logger.debug(f"New location login detected but email verification disabled, auto-verifying user {user_id}")
-        else:
-            # Not a new device, normal login
-            await LoginLogService.record_login(
-                db=db,
-                user_id=user_id,
-                request=request,
-                login_success=True,
-                login_method="password",
-                notes=f"Normal login - IP: {ip_address}, Country: {country_code}",
-            )
-
-        session_verified = not session_verification_method
         login_session = await LoginSessionService.create_session(
             db,
             user_id,
             token_id,
             ip_address,
             user_agent.raw_ua,
-            not trusted_device,
+            not trusted,
             web_uuid,
-            session_verified,
+            method is None,
+            verification_method=method,
+            device_id=trusted_device.id if trusted_device else None,
+            commit=False,
         )
-        if session_verification_method:
-            await LoginSessionService.set_login_method(user_id, token_id, session_verification_method, redis)
         session_id = login_session.id
-        user_agent_raw = user_agent.raw_ua
+        await LoginLogService.record_login(
+            db,
+            user_id,
+            request,
+            user_agent=user_agent.raw_ua,
+            login_method="password_pending_verification" if method else "password",
+            notes=f"{method} verification required" if method else "Normal login",
+            commit=False,
+        )
+        if method:
+            await LoginSessionService.set_login_method(user_id, token_id, method, redis, db=db)
+        await db.commit()
+        if method == "mail":
+            await EmailVerificationService.send_verification_email(
+                db,
+                redis,
+                user_id,
+                user_name,
+                user_email,
+                ip_address,
+                user_agent,
+                user_country,
+            )
+        country_code = geoip.lookup(ip_address).get("country_iso", "XX")
         hub.emit(
             UserLoginEvent(
                 user_id=user_id,
@@ -508,12 +478,12 @@ async def oauth_token(
                 client_id=client_id,
                 scopes=scopes,
                 ip_address=ip_address,
-                user_agent=user_agent_raw,
+                user_agent=user_agent.raw_ua,
                 country_code=country_code,
-                trusted_device=trusted_device,
-                verification_method=session_verification_method,
+                trusted_device=trusted,
+                verification_method=method,
                 session_id=session_id,
-                session_verified=session_verified,
+                session_verified=method is None,
             )
         )
 
@@ -533,49 +503,51 @@ async def oauth_token(
                 error_type=ErrorType.REFRESH_TOKEN_REQUIRED,
             )
 
-        # Validate refresh token
-        token_record = await get_token_by_refresh_token(db, refresh_token)
-        if not token_record:
-            return raise_oauth_error(
-                error="invalid_grant",
-                error_type=ErrorType.INVALID_REFRESH_TOKEN,
-            )
+        # Lock in the same order as verification/revocation: account, then token/session.
+        candidate = await get_token_by_refresh_token(db, refresh_token)
+        if candidate is None:
+            return raise_oauth_error("invalid_grant", ErrorType.INVALID_REFRESH_TOKEN)
+        if candidate.user_id is not None:
+            await lock_user(db, candidate.user_id)
+        token_record = await get_token_by_refresh_token(db, refresh_token, for_update=True)
+        if token_record is None:
+            return raise_oauth_error("invalid_grant", ErrorType.INVALID_REFRESH_TOKEN)
         if token_record.client_id != client_id:
+            return raise_oauth_error("invalid_client", ErrorType.INVALID_AUTH_CLIENT)
+        scopes = token_record.scope.replace(",", " ").split()
+        if "scope" in await request.form() and set(scope.replace(",", " ").split()) != set(scopes):
             return raise_oauth_error(
-                error="invalid_client",
-                error_type=ErrorType.INVALID_AUTH_CLIENT,
-                hint="Refresh token does not belong to the provided client",
-            )
-        if token_record.scope != scope:
-            return raise_oauth_error(
-                error="invalid_scope",
-                error_type=ErrorType.MISMATCH_SCOPE,
+                "invalid_scope",
+                ErrorType.MISMATCH_SCOPE,
                 hint="Requested scope does not match the original token's scope",
             )
-
-        # Generate new access token
-        access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
-        access_token = create_access_token(data={"sub": str(token_record.user_id)}, expires_delta=access_token_expires)
-        new_refresh_token = generate_refresh_token()
-
-        # Update token
-        await store_token(
-            db,
-            token_record.user_id,
-            client_id,
-            scopes,
-            access_token,
-            new_refresh_token,
-            settings.access_token_expire_minutes * 60,
-            settings.refresh_token_expire_minutes * 60,
-            allow_multiple_devices=settings.enable_multi_device_login,  # Use config to determine multi-device support
+        session = None
+        if token_record.user_id is not None:
+            session = await LoginSessionService.require_session(
+                db, token_record.user_id, token_record.id, for_update=True
+            )
+        now = utcnow()
+        access_token = create_access_token(
+            data={"sub": str(token_record.user_id)},
+            expires_delta=timedelta(minutes=settings.access_token_expire_minutes),
         )
+        new_refresh_token = generate_refresh_token()
+        token_record.access_token = access_token
+        token_record.refresh_token = new_refresh_token
+        token_record.expires_at = now + timedelta(minutes=settings.access_token_expire_minutes)
+        token_record.refresh_token_expires_at = now + timedelta(minutes=settings.refresh_token_expire_minutes)
+        token_record.scope = ",".join(scopes)
+        db.add(token_record)
+        if session is not None and session.is_verified:
+            session.expires_at = token_record.refresh_token_expires_at
+            db.add(session)
+        await db.commit()
         return TokenResponse(
             access_token=access_token,
             token_type="Bearer",  # noqa: S106
             expires_in=settings.access_token_expire_minutes * 60,
             refresh_token=new_refresh_token,
-            scope=scope,
+            scope=" ".join(scopes),
         )
     elif grant_type == "authorization_code":
         if client is None:
@@ -618,8 +590,7 @@ async def oauth_token(
         access_token = create_access_token(data={"sub": str(user_id)}, expires_delta=access_token_expires)
         refresh_token_str = generate_refresh_token()
 
-        # Store token
-        await store_token(
+        token = await store_token(
             db,
             user_id,
             client_id,
@@ -628,11 +599,19 @@ async def oauth_token(
             refresh_token_str,
             settings.access_token_expire_minutes * 60,
             settings.refresh_token_expire_minutes * 60,
-            allow_multiple_devices=settings.enable_multi_device_login,  # Use config to determine multi-device support
+            allow_multiple_devices=settings.enable_multi_device_login,
+            commit=False,
         )
-
-        # Log generated JWT
-        logger.info(f"Generated JWT for user {user_id}: {access_token}")
+        await LoginSessionService.create_session(
+            db,
+            user_id,
+            token.id,
+            ip_address,
+            user_agent.raw_ua,
+            is_verified=True,
+            commit=False,
+        )
+        await db.commit()
 
         return TokenResponse(
             access_token=access_token,
@@ -665,18 +644,30 @@ async def oauth_token(
         access_token = create_access_token(data={"sub": "3"}, expires_delta=access_token_expires)
         refresh_token_str = generate_refresh_token()
 
-        # Store token
-        await store_token(
+        user_id = client.owner_id if "delegate" in scopes_set else None
+        token = await store_token(
             db,
-            client.owner_id if "delegate" in scopes_set else None,
+            user_id,
             client_id,
             scopes,
             access_token,
             refresh_token_str,
             settings.access_token_expire_minutes * 60,
             settings.refresh_token_expire_minutes * 60,
-            allow_multiple_devices=settings.enable_multi_device_login,  # Use config to determine multi-device support
+            allow_multiple_devices=settings.enable_multi_device_login,
+            commit=False,
         )
+        if user_id is not None:
+            await LoginSessionService.create_session(
+                db,
+                user_id,
+                token.id,
+                ip_address,
+                user_agent.raw_ua,
+                is_verified=True,
+                commit=False,
+            )
+        await db.commit()
 
         return TokenResponse(
             access_token=access_token,

@@ -86,6 +86,26 @@ class Settings(BaseSettings):
     server_url: Annotated[HttpUrl, Field(default=HttpUrl("http://localhost:8000")), "server"]
     frontend_url: Annotated[HttpUrl | None, Field(default=None), "server"]
     enable_rate_limit: Annotated[bool, Field(default=True), "server"]
+    # Peers inside these ranges may supply X-Forwarded-For / X-Real-IP / CF-Connecting-IP.
+    # Keep them limited to proxy addresses: a trusted peer can rewrite its own identity.
+    trusted_proxies: Annotated[
+        list[str],
+        Field(
+            default=[
+                "127.0.0.0/8",
+                "::1/128",
+                "10.0.0.0/8",
+                "172.16.0.0/12",
+                "192.168.0.0/16",
+                "fc00::/7",
+            ]
+        ),
+        "server",
+    ]
+    # URLs publishing the edge ranges of a CDN (plain text, JSON or CSV; every
+    # CIDR-shaped token is used). Fetched ranges are merged into trusted_proxies.
+    trusted_proxy_sources: Annotated[list[str], Field(default=[]), "server"]
+    trusted_proxy_refresh_minutes: Annotated[int, Field(default=60), "server"]
 
     @property
     def web_url(self):

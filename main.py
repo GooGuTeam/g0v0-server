@@ -13,6 +13,7 @@ from app.dependencies.database import (
     redis_clients,
 )
 from app.dependencies.fetcher import get_fetcher
+from app.dependencies.geoip import log_client_identity_configuration, refresh_trusted_proxies
 from app.dependencies.scheduler import start_scheduler, stop_scheduler
 from app.helpers import bg_tasks, utcnow
 from app.log import add_file_logger, system_logger
@@ -75,6 +76,10 @@ async def lifespan(app: FastAPI):
 
     # === on startup ===
     startup_logger.info("Starting g0v0-server")
+    if settings.trusted_proxy_sources:
+        startup_logger.info("Loading trusted proxy ranges from published sources")
+        await refresh_trusted_proxies()
+    log_client_identity_configuration()
     await migrate_replays()
 
     # init mods, achievements and performance calculator
@@ -395,6 +400,7 @@ if __name__ == "__main__":
         host=settings.host,
         port=settings.port,
         reload=settings.debug,
+        proxy_headers=False,
         log_config=None,
         access_log=True,
     )
