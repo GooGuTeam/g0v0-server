@@ -83,8 +83,7 @@ services:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
     restart: unless-stopped
     networks:
-      osu-network:
-        ipv4_address: 172.30.0.10
+      - osu-network
 
   redis:
     image: redis:7-alpine
@@ -120,6 +119,3 @@ volumes:
 networks:
   osu-network:
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.30.0.0/24
