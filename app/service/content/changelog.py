@@ -33,6 +33,7 @@ from typing import Annotated, Any
 import zlib
 
 from app.config import settings
+from app.helpers.tasks import gather_limited
 from app.log import log
 from app.models.changelog import (
     BuildVersionNavigation,
@@ -52,7 +53,6 @@ from app.service.content.base import (
     Timestamp,
     content_repository,
     describe_errors,
-    gather_limited,
     list_content_directory,
     read_metadata,
     write_metadata,

@@ -62,3 +62,15 @@ def utcnow() -> datetime:
         The current datetime with UTC timezone.
     """
     return datetime.now(tz=UTC)
+
+
+def timestamp_to_iso(timestamp: datetime) -> str:
+    """Format a timestamp for the metadata cache.
+
+    Args:
+        timestamp: The timestamp to format.
+
+    Returns:
+        str: The timestamp as an ISO 8601 string, in UTC.
+    """
+    return timestamp.astimezone(UTC).isoformat()

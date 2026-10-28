@@ -176,18 +176,6 @@ OptionalTimestamp = Annotated[datetime | None, BeforeValidator(_optional_timesta
 NonEmptyText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 
-def timestamp_to_iso(timestamp: datetime) -> str:
-    """Format a timestamp for the metadata cache.
-
-    Args:
-        timestamp: The timestamp to format.
-
-    Returns:
-        str: The timestamp as an ISO 8601 string, in UTC.
-    """
-    return timestamp.astimezone(UTC).isoformat()
-
-
 def describe_errors(error: ValueError) -> str:
     """Render the reasons a content file was refused, on one line each.
 
@@ -342,22 +330,3 @@ class ContentIndex[T]:
             self._value = value
             self._error = None
             self._refresh_at = time.monotonic() + self._expire
-
-
-async def gather_limited[T](coroutines: list[Awaitable[T]], limit: int = 8) -> list[T]:
-    """Run awaits concurrently, with a bound on how many are in flight.
-
-    Args:
-        coroutines: The awaits to run.
-        limit: Maximum number of awaits running at the same time.
-
-    Returns:
-        list[T]: The results, in the order of `coroutines`.
-    """
-    semaphore = asyncio.Semaphore(limit)
-
-    async def run(coroutine: Awaitable[T]) -> T:
-        async with semaphore:
-            return await coroutine
-
-    return list(await asyncio.gather(*(run(coroutine) for coroutine in coroutines)))
