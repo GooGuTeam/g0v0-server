@@ -240,6 +240,8 @@ class Settings(BaseSettings):
     # content - changelog & news
     enable_changelog: Annotated[bool, Field(default=True), "content"]
     enable_news: Annotated[bool, Field(default=True), "content"]
+    # Serve the images the changelog entries and the news posts link (`/content/images/...`).
+    enable_content_images: Annotated[bool, Field(default=True), "content"]
     # Repository holding the changelog builds and the news posts, see `app.service.content`.
     content_repository: Annotated[str, Field(default="GooGuTeam/g0v0-news"), "content"]
     content_branch: Annotated[str, Field(default="main"), "content"]

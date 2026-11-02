@@ -28,6 +28,7 @@ from app.router import (
     api_v2_router,
     auth_router,
     chat_router,
+    content_asset_router,
     file_router,
     lio_router,
     media_url_router,
@@ -266,6 +267,7 @@ app.include_router(file_router)
 app.include_router(auth_router)
 app.include_router(private_router)
 app.include_router(wiki_asset_router)
+app.include_router(content_asset_router)
 app.include_router(media_url_router)
 
 # 会话验证中间件

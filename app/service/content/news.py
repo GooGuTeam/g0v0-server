@@ -197,6 +197,11 @@ def resolve_image(reference: str | None, directory: str, repository: Repository)
         # The wiki serves its own images, and the client loads them from this server.
         return f"{str(settings.server_url).rstrip('/')}/wiki/images/{reference[len('/wiki/') :]}"
 
+    if reference.startswith("/content/images/"):
+        # The image route of this server, which reads the file from the `assets` directory of the
+        # repository. The banner of a post is loaded directly rather than through `media-url`.
+        return f"{str(settings.server_url).rstrip('/')}{reference}"
+
     if reference.startswith("/"):
         # A rooted path addresses the repository itself.
         path = posixpath.normpath(reference.split("#", 1)[0].split("?", 1)[0].strip("/"))
