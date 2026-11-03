@@ -5,7 +5,8 @@ import time
 
 from app.calculating import init_calculator
 from app.config import settings
-from app.database import Screenshot, User
+from app.const import BANCHOBOT_ID
+from app.database import Beatmap, Score, Screenshot, Team, User
 from app.dependencies.database import (
     Database,
     engine,
@@ -65,7 +66,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 import sentry_sdk
-from sqlmodel import select
+from sqlmodel import func, select
 
 add_file_logger()
 
@@ -221,6 +222,8 @@ Additionally, the download replay API (`/api/v1/get_replay`, `/api/v2/scores/{sc
 - v1 API Documentation: [osu-api](https://github.com/ppy/osu-api/wiki)
 """  # noqa: E501
 
+START_TIME = time.time()
+
 # 检查 New Relic 配置文件是否存在，如果存在则初始化 New Relic
 newrelic_config_path = Path("newrelic.ini")
 if newrelic_config_path.is_file():
@@ -344,8 +347,19 @@ async def root():
 
 
 @app.get("/health", include_in_schema=False)
-async def health_check():
-    return {"status": "ok", "timestamp": utcnow().isoformat()}
+async def health_check(database: Database):
+    total_users = await database.exec(select(func.count()).select_from(User).where(User.id != BANCHOBOT_ID))
+    total_scores = await database.exec(select(func.count()).select_from(Score))
+    total_teams = await database.exec(select(func.count()).select_from(Team))
+    total_beatmaps = await database.exec(select(func.count()).select_from(Beatmap))
+    return {
+        "identify": "lazer",
+        "total_users": total_users.one(),
+        "total_scores": total_scores.one(),
+        "total_teams": total_teams.one(),
+        "total_beatmaps": total_beatmaps.one(),
+        "uptime": int(time.time() - START_TIME),
+    }
 
 
 @app.exception_handler(RequestValidationError)
