@@ -24,7 +24,7 @@ pre-commit run --all-files        # runs both ruff-check & ruff-format
 
 ## Router Rules
 
-- **`app/router/v1/`**, **`app/router/v2/`**, **`app/router/notification/`** — must match official osu! API. No custom endpoints here.
+- **`app/router/v1/`**, **`app/router/v2/`**, **`app/router/notification/`** — must match the official upstream API. No custom endpoints here.
 - **`app/router/private/`** — custom/experimental endpoints go here.
 - V1 API serializes all values as strings (`AllStrModel` in `app/router/v1/router.py`).
 - Rate limiting is applied at the v1/v2 router level via `LIMITERS` from `app.dependencies.rate_limit`.

@@ -10,19 +10,19 @@
 
 English | [简体中文](./README.zh-cn.md)
 
-g0v0-server is an osu!(lazer) server written in Python that supports the latest osu!(lazer) client and provides additional features (such as Relax/Autopilot Mod statistics and custom ruleset support).
+g0v0-server is a server written in Python for the upstream (lazer) client; it supports the latest upstream client and provides additional features (such as Relax/Autopilot Mod statistics and custom ruleset support).
 
-g0v0-server is implemented based on osu! API v2 and is largely compatible with both osu! API v1 and v2. This means you can easily integrate existing osu! applications with g0v0-server.
+g0v0-server is implemented based on the upstream API v2 and is largely compatible with both upstream API v1 and v2. This means you can easily integrate existing upstream-compatible applications with g0v0-server.
 
-Additionally, g0v0-server provides a set of g0v0! APIs to enable operations beyond the osu! API.
+Additionally, g0v0-server provides a set of g0v0! APIs to enable operations beyond the upstream API.
 
-g0v0-server is not just a score server. It implements most of the features of the osu! website (such as chat, user settings, etc.).
+g0v0-server is not just a score server. It implements most of the features of the official website (such as chat, user settings, etc.).
 
 We provide a demo server at <https://lazer-api.g0v0.top> (frontend at <https://lazer.g0v0.top>). You can experience g0v0-server's features through our demo server.
 
 ## Features
 
-- Supports the latest osu!(lazer) client
+- Supports the latest upstream (lazer) client
 - Supports Relax/Autopilot Mod statistics
 - Supports [custom rulesets](#supported-rulesets)
 - Supports [plugins](#plugins), allowing developers to add new features to the server
@@ -32,14 +32,14 @@ We provide a demo server at <https://lazer-api.g0v0.top> (frontend at <https://l
 
 **Ruleset**|**ID**|**ShortName**|**PP Algorithm (rosu)**|**PP Algorithm (performance-server)**
 :-----:|:-----:|:-----:|:-----:|:-----:
-osu!|`0`|`osu`|✅|✅
-osu!taiko|`1`|`taiko`|✅|✅
-osu!catch|`2`|`fruits`|✅|✅
-osu!mania|`3`|`mania`|✅|✅
-osu! (RX)|`4`|`osurx`|✅|✅
-osu! (AP)|`5`|`osuap`|✅|✅
-osu!taiko (RX)|`6`|`taikorx`|✅|✅
-osu!catch (RX)|`7`|`fruitsrx`|✅|✅
+standard|`0`|`osu`|✅|✅
+taiko|`1`|`taiko`|✅|✅
+catch|`2`|`fruits`|✅|✅
+mania|`3`|`mania`|✅|✅
+standard (RX)|`4`|`osurx`|✅|✅
+standard (AP)|`5`|`osuap`|✅|✅
+taiko (RX)|`6`|`taikorx`|✅|✅
+catch (RX)|`7`|`fruitsrx`|✅|✅
 [Sentakki](https://github.com/LumpBloom7/sentakki)|`10`|`Sentakki`|❌|❌
 [tau](https://github.com/taulazer/tau)|`11`|`tau`|❌|✅
 [Rush!](https://github.com/Beamographic/rush)|`12`|`rush`|❌|❌
