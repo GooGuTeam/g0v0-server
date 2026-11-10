@@ -20,6 +20,17 @@ g0v0-server is not just a score server. It implements most of the features of th
 
 We provide a demo server at <https://lazer-api.g0v0.top> (frontend at <https://lazer.g0v0.top>). You can experience g0v0-server's features through our demo server.
 
+> [!IMPORTANT]
+> **g0v0-server is an unofficial, community-run server for the upstream client.**
+>
+> - We are **not affiliated with, endorsed by, or supported by ppy Pty Ltd**, or the upstream development team.
+> - The upstream name, the "lazer" codename, and all related branding are trademarks of **ppy Pty Ltd**. g0v0-server is a separate project; it only implements compatibility with the upstream client's APIs and protocols.
+> - **Please support the original project.** The upstream game is free, lovingly maintained, and the only reason this server can exist. If you enjoy rhythm games, the best thing you can do is:
+>   - Play on the [official servers](https://osu.ppy.sh) — your scores there count for the real leaderboards.
+>   - Become a [supporter](https://osu.ppy.sh/home/support) — it directly funds upstream development.
+>   - File issues about the game itself on the [upstream repo](https://github.com/ppy/osu) instead of pinging the upstream team about this server.
+> - Accounts, scores, and rankings on servers running g0v0-server are **completely separate from the official servers** and never count towards the official leaderboards. If you are new to the game, please start with the [official client](https://osu.ppy.sh/home/download).
+
 ## Features
 
 - Supports the latest upstream (lazer) client
