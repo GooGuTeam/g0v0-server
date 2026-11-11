@@ -1,5 +1,14 @@
 # g0v0-server
 
+> [!IMPORTANT]
+> **g0v0-server is an unofficial osu! server emulation project providing client-compatible and website services.**
+>
+> - We (GooGuTeam) are not affiliated with ppy Pty Ltd, peppy, or team osu!. This project is neither supported nor endorsed by them.
+> - **osu!** and **ppy** are registered trademarks of **ppy Pty Ltd**.
+> - Please support the original project: play on the [official servers](https://osu.ppy.sh) and consider becoming a [supporter](https://osu.ppy.sh/home/support) to help fund upstream development.
+> - For upstream issues and improvements, file issues / PRs on [upstream client repository](https://github.com/ppy/osu) or the [upstream website repository](https://github.com/ppy/osu-web) or use the [upstream feedback forum](https://osu.ppy.sh/community/forums/5), rather than contacting the upstream team about g0v0-server-specific problems. Report those to the relevant GooGuTeam repository instead.
+> - If you have not played the original game, please [download and play the official client](https://osu.ppy.sh/home/download) first. This project is not a replacement for the original.
+
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://docs.astral.sh/ruff/)
 [![CodeFactor](https://www.codefactor.io/repository/github/GooGuTeam/g0v0-server/badge)](https://www.codefactor.io/repository/github/GooGuTeam/g0v0-server)
@@ -10,19 +19,19 @@
 
 English | [简体中文](./README.zh-cn.md)
 
-g0v0-server is an osu!(lazer) server written in Python that supports the latest osu!(lazer) client and provides additional features (such as Relax/Autopilot Mod statistics and custom ruleset support).
+g0v0-server is an lazer server written in Python that supports the latest lazer client and provides additional features (such as Relax/Autopilot Mod statistics and custom ruleset support).
 
-g0v0-server is implemented based on osu! API v2 and is largely compatible with both osu! API v1 and v2. This means you can easily integrate existing osu! applications with g0v0-server.
+g0v0-server is implemented based on upstream API v2 and is largely compatible with both upstream API v1 and v2. This means you can easily integrate existing upstream-compatible applications with g0v0-server.
 
-Additionally, g0v0-server provides a set of g0v0! APIs to enable operations beyond the osu! API.
+Additionally, g0v0-server provides a set of g0v0! APIs to enable operations beyond the upstream API.
 
-g0v0-server is not just a score server. It implements most of the features of the osu! website (such as chat, user settings, etc.).
+g0v0-server is not just a score server. It implements most of the features of the upstream website (such as chat, user settings, etc.).
 
 We provide a demo server at <https://lazer-api.g0v0.top> (frontend at <https://lazer.g0v0.top>). You can experience g0v0-server's features through our demo server.
 
 ## Features
 
-- Supports the latest osu!(lazer) client
+- Supports the latest lazer client
 - Supports Relax/Autopilot Mod statistics
 - Supports [custom rulesets](#supported-rulesets)
 - Supports [plugins](#plugins), allowing developers to add new features to the server
@@ -30,21 +39,21 @@ We provide a demo server at <https://lazer-api.g0v0.top> (frontend at <https://l
 
 ## Supported Rulesets
 
-**Ruleset**|**ID**|**ShortName**|**PP Algorithm (rosu)**|**PP Algorithm (performance-server)**
-:-----:|:-----:|:-----:|:-----:|:-----:
-osu!|`0`|`osu`|✅|✅
-osu!taiko|`1`|`taiko`|✅|✅
-osu!catch|`2`|`fruits`|✅|✅
-osu!mania|`3`|`mania`|✅|✅
-osu! (RX)|`4`|`osurx`|✅|✅
-osu! (AP)|`5`|`osuap`|✅|✅
-osu!taiko (RX)|`6`|`taikorx`|✅|✅
-osu!catch (RX)|`7`|`fruitsrx`|✅|✅
-[Sentakki](https://github.com/LumpBloom7/sentakki)|`10`|`Sentakki`|❌|❌
-[tau](https://github.com/taulazer/tau)|`11`|`tau`|❌|✅
-[Rush!](https://github.com/Beamographic/rush)|`12`|`rush`|❌|❌
-[hishigata](https://github.com/LumpBloom7/hishigata)|`13`|`hishigata`|❌|❌
-[soyokaze!](https://github.com/goodtrailer/soyokaze)|`14`|`soyokaze`|❌|✅
+|                     **Ruleset**                      | **ID** | **ShortName** | **PP Algorithm (rosu)** | **PP Algorithm (performance-server)** |
+| :--------------------------------------------------: | :----: | :-----------: | :---------------------: | :-----------------------------------: |
+|                       standard                       |  `0`   |     `osu`     |           ✅            |                  ✅                   |
+|                        taiko                         |  `1`   |    `taiko`    |           ✅            |                  ✅                   |
+|                        catch                         |  `2`   |   `fruits`    |           ✅            |                  ✅                   |
+|                        mania                         |  `3`   |    `mania`    |           ✅            |                  ✅                   |
+|                    standard (RX)                     |  `4`   |    `osurx`    |           ✅            |                  ✅                   |
+|                    standard (AP)                     |  `5`   |    `osuap`    |           ✅            |                  ✅                   |
+|                      taiko (RX)                      |  `6`   |   `taikorx`   |           ✅            |                  ✅                   |
+|                      catch (RX)                      |  `7`   |  `fruitsrx`   |           ✅            |                  ✅                   |
+|  [Sentakki](https://github.com/LumpBloom7/sentakki)  |  `10`  |  `Sentakki`   |           ❌            |                  ❌                   |
+|        [tau](https://github.com/taulazer/tau)        |  `11`  |     `tau`     |           ❌            |                  ✅                   |
+|    [Rush!](https://github.com/Beamographic/rush)     |  `12`  |    `rush`     |           ❌            |                  ❌                   |
+| [hishigata](https://github.com/LumpBloom7/hishigata) |  `13`  |  `hishigata`  |           ❌            |                  ❌                   |
+| [soyokaze!](https://github.com/goodtrailer/soyokaze) |  `14`  |  `soyokaze`   |           ❌            |                  ✅                   |
 
 Visit [custom-rulesets](https://github.com/GooGuTeam/custom-rulesets/releases/latest) to download custom rulesets modified for g0v0-server.
 
@@ -67,7 +76,8 @@ Use `openssl rand -hex 40` to generate the frontend secret key.
 ## License
 
 This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0-only)**.  
-Any derivative work, modification, or deployment **MUST clearly and prominently attribute** the original authors:  
+Any derivative work, modification, or deployment **MUST clearly and prominently attribute** the original authors:
+
 > **GooGuTeam - https://github.com/GooGuTeam/g0v0-server**
 
 ## Contributing
@@ -79,7 +89,9 @@ See [Contributing Guide](./CONTRIBUTING.md) for more information.
 ## Contributors
 
 <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
+
 [![All Contributors](https://img.shields.io/badge/all_contributors-8-orange.svg?style=flat-square)](#contributors-)
+
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
 
 Thanks to all the contributors to this project! ([emoji key](https://allcontributors.org/docs/en/emoji-key))
