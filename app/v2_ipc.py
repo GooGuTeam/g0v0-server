@@ -17,19 +17,19 @@ g0v0 v2 IPC specification:
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import StrEnum
 from typing import Any, NoReturn
 import uuid
 
 from app.database import ChannelType, ChatChannel, Room, User
 from app.dependencies.database import get_redis_pubsub, with_db
-from app.helpers import utcnow
 from app.helpers.background_task import bg_tasks
 from app.log import log
 from app.models.score import RULESETS_VERSION_HASH
 from app.router.notification.server import server
 from app.service.user_cache_service import get_user_cache_service
+from app.service.user_presence_mailbox import enqueue_user_presence, is_stale_presence, parse_presence_event_time
 
 from pydantic import BaseModel, Field
 from redis.asyncio import Redis
@@ -39,79 +39,6 @@ CHANNEL_NAME = "g0v0:ipc:{server}"
 SERVER_IDENTIFIER = "lazer"
 
 logger = log("V2 IPC")
-
-# Per-user presence mailbox. Notices are handled via background tasks, so two
-# notices for the same user can otherwise reach the database out of receive order.
-_presence_queues: dict[int, asyncio.Queue[tuple[bool | None, datetime]]] = {}
-_presence_workers: dict[int, asyncio.Task[None]] = {}
-_presence_worker_lock = asyncio.Lock()
-
-
-def _parse_presence_event_time(raw: object) -> datetime:
-    if isinstance(raw, datetime):
-        if raw.tzinfo is None:
-            return raw.replace(tzinfo=UTC)
-        return raw.astimezone(UTC)
-    if isinstance(raw, int | float):
-        return datetime.fromtimestamp(float(raw), tz=UTC)
-    if isinstance(raw, str):
-        try:
-            parsed = datetime.fromisoformat(raw)
-        except ValueError:
-            return utcnow()
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=UTC)
-        return parsed.astimezone(UTC)
-    return utcnow()
-
-
-def _is_stale_presence(existing_last_visit: datetime | None, event_time: datetime) -> bool:
-    if existing_last_visit is None:
-        return False
-    existing = (
-        existing_last_visit if existing_last_visit.tzinfo is not None else existing_last_visit.replace(tzinfo=UTC)
-    )
-    return event_time < existing
-
-
-async def _enqueue_user_presence(
-    user_id: int,
-    is_online: bool | None,
-    event_time: datetime,
-    redis_client: Redis,
-) -> None:
-    async with _presence_worker_lock:
-        queue = _presence_queues.get(user_id)
-        if queue is None:
-            queue = asyncio.Queue()
-            _presence_queues[user_id] = queue
-        queue.put_nowait((is_online, event_time))
-        worker = _presence_workers.get(user_id)
-        if worker is None or worker.done():
-            _presence_workers[user_id] = asyncio.create_task(_run_presence_worker(user_id, redis_client))
-
-
-async def _run_presence_worker(user_id: int, redis_client: Redis) -> None:
-    try:
-        while True:
-            async with _presence_worker_lock:
-                queue = _presence_queues.get(user_id)
-                if queue is None or queue.empty():
-                    _presence_workers.pop(user_id, None)
-                    _presence_queues.pop(user_id, None)
-                    return
-                is_online, event_time = queue.get_nowait()
-            try:
-                await _apply_user_presence(user_id, is_online, event_time, redis_client)
-            except Exception:
-                logger.exception("Error applying presence update for user_id: {}", user_id)
-    except Exception:
-        logger.exception("Presence worker failed for user_id: {}", user_id)
-        async with _presence_worker_lock:
-            _presence_workers.pop(user_id, None)
-            queue = _presence_queues.get(user_id)
-            if queue is not None and not queue.empty():
-                _presence_workers[user_id] = asyncio.create_task(_run_presence_worker(user_id, redis_client))
 
 
 async def _apply_user_presence(
@@ -132,7 +59,7 @@ async def _apply_user_presence(
             ).first()
             if user is None:
                 logger.warning("Received user_online_status_changed notice for unknown user_id: {}", user_id)
-            elif _is_stale_presence(user.last_visit, event_time):
+            elif is_stale_presence(user.last_visit, event_time):
                 logger.info(
                     "Skipped stale presence update for user {}: is_online={}, event_time={}, last_visit={}",
                     user_id,
@@ -396,10 +323,14 @@ async def init_ipc(redis_client: Redis):
 
         is_online_raw = message.data.get("is_online")
         is_online = None if is_online_raw is None else bool(is_online_raw)
-        event_time = _parse_presence_event_time(message.data.get("event_time"))
+        event_time = parse_presence_event_time(message.data.get("event_time"))
+
         # Enqueue before any I/O so same-user notices stay in receive order even
         # though each IPC notice runs in its own background task.
-        await _enqueue_user_presence(user_id, is_online, event_time, redis_client)
+        async def apply(uid: int, online: bool | None, at: datetime) -> None:
+            await _apply_user_presence(uid, online, at, redis_client)
+
+        await enqueue_user_presence(user_id, is_online, event_time, apply)
 
     @ipc_client.handle_request("get_ruleset_hashes")
     async def handle_get_ruleset_hashes(message: IPCMessage):
