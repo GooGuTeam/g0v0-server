@@ -23,20 +23,20 @@ class PresenceMailboxTests(unittest.IsolatedAsyncioTestCase):
     def test_is_stale_presence_rejects_older_event(self) -> None:
         older = datetime(2026, 11, 25, 11, 0, tzinfo=UTC)
         newer = datetime(2026, 11, 25, 11, 1, tzinfo=UTC)
-        self.assertTrue(is_stale_presence(newer, older))
-        self.assertFalse(is_stale_presence(older, newer))
-        self.assertFalse(is_stale_presence(None, older))
+        assert is_stale_presence(newer, older)
+        assert not is_stale_presence(older, newer)
+        assert not is_stale_presence(None, older)
 
     def test_parse_presence_event_time_accepts_iso_strings(self) -> None:
         parsed = parse_presence_event_time("2026-11-25T19:00:00+00:00")
-        self.assertEqual(parsed, datetime(2026, 11, 25, 19, 0, tzinfo=UTC))
+        assert parsed == datetime(2026, 11, 25, 19, 0, tzinfo=UTC)
 
     async def test_worker_applies_online_last_when_offline_apply_is_delayed(self) -> None:
         applied: list[bool | None] = []
         offline_started = asyncio.Event()
         release_offline = asyncio.Event()
 
-        async def fake_apply(user_id: int, is_online: bool | None, event_time: datetime) -> None:
+        async def fake_apply(_user_id: int, is_online: bool | None, _event_time: datetime) -> None:
             if is_online is False:
                 offline_started.set()
                 await release_offline.wait()
@@ -54,7 +54,7 @@ class PresenceMailboxTests(unittest.IsolatedAsyncioTestCase):
             async with asyncio.timeout(2):
                 await worker
 
-        self.assertEqual(applied, [False, True])
+        assert applied == [False, True]
 
 
 if __name__ == "__main__":
