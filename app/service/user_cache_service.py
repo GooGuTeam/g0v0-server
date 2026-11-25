@@ -12,7 +12,7 @@ from app.database import User
 from app.database.score import LegacyScoreResp
 from app.database.user import UserDict, UserModel
 from app.dependencies.database import with_db
-from app.helpers import replace_asset_urls, safe_json_dumps, utcnow
+from app.helpers import replace_asset_urls, safe_json_dumps
 from app.log import logger
 from app.models.score import GameMode
 
@@ -85,20 +85,8 @@ class UserCacheService:
         except Exception as e:
             logger.error(f"Error invalidating V1 user cache: {e}")
 
-    def _get_user_cache_key(
-        self,
-        user_id: int,
-        ruleset: GameMode | None = None,
-        *,
-        compact: bool = False,
-    ) -> str:
-        """Generate user cache key.
-
-        Compact (CARD_INCLUDES) payloads use a separate key so they cannot
-        overwrite a full profile cache entry.
-        """
-        if compact:
-            return f"user:{user_id}:card"
+    def _get_user_cache_key(self, user_id: int, ruleset: GameMode | None = None) -> str:
+        """Generate user cache key."""
         if ruleset:
             return f"user:{user_id}:ruleset:{ruleset}"
         return f"user:{user_id}"
@@ -126,16 +114,10 @@ class UserCacheService:
         """Generate user beatmapsets cache key."""
         return f"user:{user_id}:beatmapsets:{beatmapset_type}:limit:{limit}:offset:{offset}"
 
-    async def get_user_from_cache(
-        self,
-        user_id: int,
-        ruleset: GameMode | None = None,
-        *,
-        compact: bool = False,
-    ) -> UserDict | None:
+    async def get_user_from_cache(self, user_id: int, ruleset: GameMode | None = None) -> UserDict | None:
         """Get user info from cache."""
         try:
-            cache_key = self._get_user_cache_key(user_id, ruleset, compact=compact)
+            cache_key = self._get_user_cache_key(user_id, ruleset)
             cached_data = await self.redis.get(cache_key)
             if cached_data:
                 logger.debug(f"User cache hit for user {user_id}")
@@ -151,14 +133,12 @@ class UserCacheService:
         user_resp: UserDict,
         ruleset: GameMode | None = None,
         expire_seconds: int | None = None,
-        *,
-        compact: bool = False,
     ):
         """Cache user info."""
         try:
             if expire_seconds is None:
                 expire_seconds = settings.user_cache_expire_seconds
-            cache_key = self._get_user_cache_key(user_resp["id"], ruleset, compact=compact)
+            cache_key = self._get_user_cache_key(user_resp["id"], ruleset)
             cached_data = safe_json_dumps(user_resp)
             await self.redis.setex(cache_key, expire_seconds, cached_data)
             logger.debug(f"Cached user {user_resp['id']} for {expire_seconds}s")
@@ -264,19 +244,14 @@ class UserCacheService:
             logger.error(f"Error caching user beatmapsets: {e}")
 
     async def invalidate_user_cache(self, user_id: int):
-        """Invalidate user profile cache.
-
-        Deletes the full profile, compact card, and ruleset-specific entries.
-        Score and beatmapset caches are left in place.
-        """
+        """Invalidate user cache."""
         try:
-            keys_to_delete = [f"user:{user_id}", f"user:{user_id}:card"]
+            # Delete user info cache
             pattern = f"user:{user_id}:ruleset:*"
             keys = await self.redis.keys(pattern)
             if keys:
-                keys_to_delete.extend(key.decode() if isinstance(key, bytes) else key for key in keys)
-            deleted = await self.redis.delete(*keys_to_delete)
-            logger.info(f"Invalidated {deleted} cache entries for user {user_id}")
+                await self.redis.delete(*keys)
+                logger.info(f"Invalidated {len(keys)} cache entries for user {user_id}")
         except Exception as e:
             logger.error(f"Error invalidating user cache: {e}")
 
@@ -373,11 +348,6 @@ class UserCacheService:
             # Immediately reload user info
             user = await session.get(User, user_id)
             if user and user.id != BANCHOBOT_ID:
-                # Score submission is a last-seen activity, same as official osu!.
-                user.last_visit = utcnow()
-                session.add(user)
-                await session.commit()
-                await session.refresh(user)
                 await self._cache_single_user(user)
                 logger.info(f"Refreshed cache for user {user_id} after score submit")
         except Exception as e:

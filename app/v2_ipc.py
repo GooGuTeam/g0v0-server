@@ -17,7 +17,6 @@ g0v0 v2 IPC specification:
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from datetime import datetime
 from enum import StrEnum
 from typing import Any, NoReturn
 import uuid
@@ -29,59 +28,14 @@ from app.log import log
 from app.models.score import RULESETS_VERSION_HASH
 from app.router.notification.server import server
 from app.service.user_cache_service import get_user_cache_service
-from app.service.user_presence_mailbox import enqueue_user_presence, is_stale_presence, parse_presence_event_time
 
 from pydantic import BaseModel, Field
 from redis.asyncio import Redis
-from sqlmodel import select
 
 CHANNEL_NAME = "g0v0:ipc:{server}"
 SERVER_IDENTIFIER = "lazer"
 
 logger = log("V2 IPC")
-
-
-async def _apply_user_presence(
-    user_id: int,
-    is_online: bool | None,
-    event_time: datetime,
-    redis_client: Redis,
-) -> None:
-    if is_online is None:
-        # Older realtime builds only sent user_id; do not guess the new state.
-        logger.warning("Received user_online_status_changed notice without is_online for user_id: {}", user_id)
-    else:
-        async with with_db() as db:
-            user = (
-                await db.exec(
-                    select(User).where(User.id == user_id).with_for_update().execution_options(populate_existing=True)
-                )
-            ).first()
-            if user is None:
-                logger.warning("Received user_online_status_changed notice for unknown user_id: {}", user_id)
-            elif is_stale_presence(user.last_visit, event_time):
-                logger.info(
-                    "Skipped stale presence update for user {}: is_online={}, event_time={}, last_visit={}",
-                    user_id,
-                    is_online,
-                    event_time,
-                    user.last_visit,
-                )
-            else:
-                # last_visit is last-seen, updated on both connect and disconnect.
-                user.last_visit = event_time
-                user.is_online = is_online
-                db.add(user)
-                await db.commit()
-                logger.info(
-                    "Updated user {} presence: is_online={}, last_visit={}",
-                    user_id,
-                    is_online,
-                    event_time,
-                )
-
-    logger.info(f"Received user online status update for user_id: {user_id}")
-    await get_user_cache_service(redis_client).invalidate_user_cache(user_id)
 
 
 class IPCMessageType(StrEnum):
@@ -315,22 +269,8 @@ async def init_ipc(redis_client: Redis):
         if user_id is None:
             logger.warning("Received user_online_status_changed notice without user_id")
             return
-        try:
-            user_id = int(user_id)
-        except (TypeError, ValueError):
-            logger.warning("Received user_online_status_changed notice with invalid user_id: {}", user_id)
-            return
-
-        is_online_raw = message.data.get("is_online")
-        is_online = None if is_online_raw is None else bool(is_online_raw)
-        event_time = parse_presence_event_time(message.data.get("event_time"))
-
-        # Enqueue before any I/O so same-user notices stay in receive order even
-        # though each IPC notice runs in its own background task.
-        async def apply(uid: int, online: bool | None, at: datetime) -> None:
-            await _apply_user_presence(uid, online, at, redis_client)
-
-        await enqueue_user_presence(user_id, is_online, event_time, apply)
+        logger.info(f"Received user online status update for user_id: {user_id}")
+        await get_user_cache_service(redis_client).invalidate_user_cache(user_id)
 
     @ipc_client.handle_request("get_ruleset_hashes")
     async def handle_get_ruleset_hashes(message: IPCMessage):
