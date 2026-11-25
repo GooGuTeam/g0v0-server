@@ -122,7 +122,10 @@ async def get_users(
         uncached_user_ids = []
 
         for user_id in user_ids[:50]:  # Limit to 50
+            # Prefer a full profile cache entry (superset of a card).
             cached_user = await cache_service.get_user_from_cache(user_id)
+            if not cached_user:
+                cached_user = await cache_service.get_user_from_cache(user_id, compact=True)
             if cached_user:
                 cached_users.append(cached_user)
             else:
@@ -145,7 +148,7 @@ async def get_users(
                     )
                     cached_users.append(user_resp)
                     # Async cache, don't block response
-                    background_task.add_task(cache_service.cache_user, user_resp)
+                    background_task.add_task(cache_service.cache_user, user_resp, compact=True)
 
         response = {"users": cached_users}
         return response
@@ -163,7 +166,7 @@ async def get_users(
             )
             users.append(user_resp)
             # Async cache
-            background_task.add_task(cache_service.cache_user, user_resp)
+            background_task.add_task(cache_service.cache_user, user_resp, compact=True)
 
         response = {"users": users}
         return response
