@@ -144,7 +144,7 @@ async def get_user_best(
                     ~User.is_restricted_query(col(Score.user_id)),
                 )
                 .order_by(col(Score.pp).desc())
-                .options(joinedload(Score.beatmap))
+                .options(joinedload(Score.beatmap), joinedload(Score.user))
                 .limit(limit)
             )
         ).all()
@@ -196,7 +196,7 @@ async def get_user_recent(
                     ~User.is_restricted_query(col(Score.user_id)),
                 )
                 .order_by(col(Score.pp).desc())
-                .options(joinedload(Score.beatmap))
+                .options(joinedload(Score.beatmap), joinedload(Score.user))
                 .limit(limit)
             )
         ).all()
@@ -252,7 +252,7 @@ async def get_scores(
                         Score.user_id == user if type == "id" or user.isdigit() else col(Score.user).has(username=user),
                         ~User.is_restricted_query(col(Score.user_id)),
                     )
-                    .options(joinedload(Score.beatmap))
+                    .options(joinedload(Score.beatmap), joinedload(Score.user))
                     .order_by(col(Score.classic_total_score).desc())
                 )
             ).all()

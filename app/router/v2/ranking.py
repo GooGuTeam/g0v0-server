@@ -330,46 +330,40 @@ async def get_country_ranking(
 
     # Cache miss, query from database
     response = CountryResponse(ranking=[])
-    countries = (await session.exec(select(User.country_code).distinct())).all()
-
-    for country in countries:
-        if not country:  # Skip empty country codes
-            continue
-
-        statistics = (
-            await session.exec(
-                select(UserStatistics).where(
-                    UserStatistics.mode == ruleset,
-                    UserStatistics.pp > 0,
-                    col(UserStatistics.user).has(country_code=country),
-                    col(UserStatistics.user).has(is_active=True),
-                    ~User.is_restricted_query(col(UserStatistics.user_id)),
-                )
+    agg_rows = (
+        await session.exec(
+            select(
+                User.country_code,
+                func.count(),
+                func.sum(UserStatistics.play_count),
+                func.sum(UserStatistics.ranked_score),
+                func.sum(UserStatistics.pp),
             )
-        ).all()
-
-        if not statistics:  # Skip countries with no data
-            continue
-
-        pp = 0
-        active_users = 0
-        total_play_count = 0
-        total_ranked_score = 0
-
-        for stat in statistics:
-            active_users += 1
-            total_play_count += stat.play_count
-            total_ranked_score += stat.ranked_score
-            pp += stat.pp
-
-        country_stats = CountryStatistics(
-            code=country,
-            active_users=active_users,
-            play_count=total_play_count,
-            ranked_score=total_ranked_score,
-            performance=round(pp),
+            .join(User, col(User.id) == col(UserStatistics.user_id))
+            .where(
+                UserStatistics.mode == ruleset,
+                UserStatistics.pp > 0,
+                col(User.country_code).is_not(None),
+                User.country_code != "",
+                col(User.is_active).is_(True),
+                ~User.is_restricted_query(col(UserStatistics.user_id)),
+            )
+            .group_by(User.country_code)
         )
-        response.ranking.append(country_stats)
+    ).all()
+
+    for country, active_users, total_play_count, total_ranked_score, pp in agg_rows:
+        if not country:
+            continue
+        response.ranking.append(
+            CountryStatistics(
+                code=country,
+                active_users=int(active_users or 0),
+                play_count=int(total_play_count or 0),
+                ranked_score=int(total_ranked_score or 0),
+                performance=round(float(pp or 0)),
+            )
+        )
 
     if sort == "performance":
         response.ranking.sort(key=lambda x: x.performance, reverse=True)

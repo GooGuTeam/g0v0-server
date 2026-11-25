@@ -33,6 +33,9 @@ class BeatmapCacheService:
         self._preloading = False
         self._background_tasks: set = set()
 
+    async def _scan_keys(self, pattern: str) -> list:
+        return [key async for key in self.redis.scan_iter(match=pattern, count=500)]
+
     async def preload_popular_beatmaps(self, session: AsyncSession, limit: int = 100):
         """Preload popular beatmaps into Redis cache.
 
@@ -121,7 +124,7 @@ class BeatmapCacheService:
             Dictionary containing cache statistics.
         """
         try:
-            keys = await self.redis.keys("beatmap:*:raw")
+            keys = await self._scan_keys("beatmap:*:raw")
             total_size = 0
 
             for key in keys[:100]:  # Limit check count to avoid performance issues
@@ -151,7 +154,7 @@ class BeatmapCacheService:
         try:
             logger.info(f"Cleaning up beatmap cache older than {max_age_hours} hours")
             # Redis auto-cleans expired keys, this is mainly for logging
-            keys = await self.redis.keys("beatmap:*:raw")
+            keys = await self._scan_keys("beatmap:*:raw")
             logger.info(f"Current cache contains {len(keys)} beatmaps")
         except Exception as e:
             logger.error(f"Error during cache cleanup: {e}")

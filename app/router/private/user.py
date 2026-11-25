@@ -1,3 +1,4 @@
+import asyncio
 """User profile and preferences management endpoints.
 
 Provides APIs for renaming, updating user pages, and managing user preferences.
@@ -108,13 +109,13 @@ async def update_userpage(
         raise RequestError(ErrorType.ACCOUNT_RESTRICTED)
 
     try:
-        errors = bbcode_service.validate_bbcode(request.body)
+        errors = await asyncio.to_thread(bbcode_service.validate_bbcode, request.body)
         if errors:
             msg = "Invalid BBCode content: " + "; ".join(errors)
             raise UserpageError(msg)
 
         # 处理BBCode内容
-        processed_page = bbcode_service.process_userpage_content(request.body)
+        processed_page = await asyncio.to_thread(bbcode_service.process_userpage_content, request.body)
 
         # 更新数据库 - 直接更新用户对象
         current_user.page = Page(html=processed_page["html"], raw=processed_page["raw"])
@@ -152,11 +153,11 @@ async def validate_bbcode(
 ):
     try:
         # 验证BBCode语法
-        errors = bbcode_service.validate_bbcode(request.content)
+        errors = await asyncio.to_thread(bbcode_service.validate_bbcode, request.content)
 
         # 生成预览（如果没有严重错误）
         if len(errors) == 0:
-            preview = bbcode_service.process_userpage_content(request.content)
+            preview = await asyncio.to_thread(bbcode_service.process_userpage_content, request.content)
         else:
             preview = {"raw": request.content, "html": ""}
 
