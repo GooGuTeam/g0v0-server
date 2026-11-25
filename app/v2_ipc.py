@@ -23,6 +23,7 @@ import uuid
 
 from app.database import ChannelType, ChatChannel, Room, User
 from app.dependencies.database import get_redis_pubsub, with_db
+from app.helpers import utcnow
 from app.helpers.background_task import bg_tasks
 from app.log import log
 from app.models.score import RULESETS_VERSION_HASH
@@ -269,6 +270,36 @@ async def init_ipc(redis_client: Redis):
         if user_id is None:
             logger.warning("Received user_online_status_changed notice without user_id")
             return
+        try:
+            user_id = int(user_id)
+        except (TypeError, ValueError):
+            logger.warning("Received user_online_status_changed notice with invalid user_id: {}", user_id)
+            return
+
+        is_online_raw = message.data.get("is_online")
+        if is_online_raw is None:
+            # Older realtime builds only sent user_id; do not guess the new state.
+            logger.warning("Received user_online_status_changed notice without is_online for user_id: {}", user_id)
+        else:
+            is_online = bool(is_online_raw)
+            async with with_db() as db:
+                user = await db.get(User, user_id)
+                if user is None:
+                    logger.warning("Received user_online_status_changed notice for unknown user_id: {}", user_id)
+                else:
+                    # last_visit is last-seen, updated on both connect and disconnect.
+                    user.last_visit = utcnow()
+                    if user.is_online != is_online:
+                        user.is_online = is_online
+                    db.add(user)
+                    await db.commit()
+                    logger.info(
+                        "Updated user {} presence: is_online={}, last_visit={}",
+                        user_id,
+                        is_online,
+                        user.last_visit,
+                    )
+
         logger.info(f"Received user online status update for user_id: {user_id}")
         await get_user_cache_service(redis_client).invalidate_user_cache(user_id)
 
