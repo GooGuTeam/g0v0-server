@@ -1,8 +1,8 @@
 """Tests for same-user presence mailbox ordering."""
 
 import asyncio
-import unittest
 from datetime import UTC, datetime
+import unittest
 
 from app.service import user_presence_mailbox as presence_mailbox
 from app.service.user_presence_mailbox import (
