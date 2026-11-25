@@ -32,6 +32,7 @@ from app.service.user_cache_service import get_user_cache_service
 
 from pydantic import BaseModel, Field
 from redis.asyncio import Redis
+from sqlmodel import select
 
 CHANNEL_NAME = "g0v0:ipc:{server}"
 SERVER_IDENTIFIER = "lazer"
@@ -282,22 +283,31 @@ async def init_ipc(redis_client: Redis):
             logger.warning("Received user_online_status_changed notice without is_online for user_id: {}", user_id)
         else:
             is_online = bool(is_online_raw)
+            last_visit = utcnow()
             async with with_db() as db:
-                user = await db.get(User, user_id)
+                user = (
+                    await db.exec(
+                        select(User)
+                        .where(User.id == user_id)
+                        .with_for_update()
+                        .execution_options(populate_existing=True)
+                    )
+                ).first()
                 if user is None:
                     logger.warning("Received user_online_status_changed notice for unknown user_id: {}", user_id)
                 else:
                     # last_visit is last-seen, updated on both connect and disconnect.
-                    user.last_visit = utcnow()
-                    if user.is_online != is_online:
-                        user.is_online = is_online
+                    # Always write is_online against the locked row so concurrent
+                    # notices cannot skip a needed update from a stale read.
+                    user.last_visit = last_visit
+                    user.is_online = is_online
                     db.add(user)
                     await db.commit()
                     logger.info(
                         "Updated user {} presence: is_online={}, last_visit={}",
                         user_id,
                         is_online,
-                        user.last_visit,
+                        last_visit,
                     )
 
         logger.info(f"Received user online status update for user_id: {user_id}")

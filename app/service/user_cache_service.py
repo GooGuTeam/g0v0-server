@@ -274,7 +274,7 @@ class UserCacheService:
             pattern = f"user:{user_id}:ruleset:*"
             keys = await self.redis.keys(pattern)
             if keys:
-                keys_to_delete.extend(keys)
+                keys_to_delete.extend(key.decode() if isinstance(key, bytes) else key for key in keys)
             deleted = await self.redis.delete(*keys_to_delete)
             logger.info(f"Invalidated {deleted} cache entries for user {user_id}")
         except Exception as e:
