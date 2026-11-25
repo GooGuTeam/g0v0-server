@@ -1,4 +1,5 @@
 import asyncio
+
 """User profile and preferences management endpoints.
 
 Provides APIs for renaming, updating user pages, and managing user preferences.
