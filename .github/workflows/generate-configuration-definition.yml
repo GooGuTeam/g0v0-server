@@ -45,11 +45,11 @@ jobs:
       - name: Generate Markdown
         run: |
           cd project
-          python ./scripts/generate_config_definition.py ${{ github.sha }} > ../wiki/data/configuration/definition.json
+          python ./scripts/generate_config_definition.py ${{ github.sha }} > ../wiki/src/data/configuration/definition.json
 
       - name: Run Prettier
         run: |
-          cd wiki
+          cd wiki/src
           npm install --save-dev prettier
           npx prettier --write data/configuration/definition.json
 
