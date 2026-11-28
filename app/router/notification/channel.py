@@ -204,6 +204,8 @@ async def get_channel_list(
         channels,
         user=current_user,
         server=server,
+        # includes those fields for frontend's proper updating chat states
+        includes=ChatChannel.LISTING_INCLUDES,
     )
 
     return results
