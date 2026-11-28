@@ -137,6 +137,10 @@ async def join_channel(
 
     if db_channel is None:
         raise RequestError(ErrorType.CHANNEL_NOT_FOUND)
+    # PM channels are joined when they are created; nobody may add themselves to
+    # somebody else's conversation by guessing its ID.
+    if db_channel.type == ChannelType.PM and not db_channel.is_pm_participant(current_user.id):
+        raise RequestError(ErrorType.FORBIDDEN)
     return await server.join_channel(current_user, db_channel)
 
 
@@ -181,7 +185,7 @@ async def leave_channel(
 
 @router.get(
     "/chat/channels",
-    responses={200: api_doc("Joined channels", list[ChatChannelModel])},
+    responses={200: api_doc("Joined channels", list[ChatChannelModel], ChatChannel.LISTING_INCLUDES)},
     name="Get Channel List",
     description="Get all public channels.",
     tags=["Chat"],
@@ -204,6 +208,8 @@ async def get_channel_list(
         channels,
         user=current_user,
         server=server,
+        # includes those fields for frontend's proper updating chat states
+        includes=ChatChannel.LISTING_INCLUDES,
     )
 
     return results

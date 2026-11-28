@@ -48,14 +48,15 @@ class ChatServer:
     and user presence tracking.
 
     Attributes:
-        connect_client: Dict mapping user IDs to their WebSocket connections.
+        connect_client: Dict mapping user IDs to the set of their WebSocket connections.
+            A single user may be online on several clients at once.
         channels: Dict mapping channel IDs to lists of user IDs.
         redis: Redis client for message persistence.
     """
 
     def __init__(self):
         """Initialize the chat server."""
-        self.connect_client: dict[int, WebSocket] = {}
+        self.connect_client: dict[int, set[WebSocket]] = {}
         self.channels: dict[int, list[int]] = {}
         self.redis: Redis = redis_message_client
 
@@ -71,7 +72,28 @@ class ChatServer:
             user_id: The user's ID.
             client: The WebSocket connection.
         """
-        self.connect_client[user_id] = client
+        self.connect_client.setdefault(user_id, set()).add(client)
+
+    def disconnect_client(self, user_id: int, client: WebSocket) -> bool:
+        """Remove a single connection and report whether any other is still alive.
+
+        Args:
+            user_id: The user's ID.
+            client: The disconnecting WebSocket connection.
+
+        Returns:
+            True if the user has no remaining connections.
+        """
+        sockets = self.connect_client.get(user_id)
+        if sockets is None:
+            return True
+
+        sockets.discard(client)
+        if sockets:
+            return False
+
+        del self.connect_client[user_id]
+        return True
 
     def get_user_joined_channel(self, user_id: int) -> list[int]:
         """Get list of channel IDs a user has joined.
@@ -84,15 +106,20 @@ class ChatServer:
         """
         return [channel_id for channel_id, users in self.channels.items() if user_id in users]
 
-    async def disconnect(self, user: User, session: AsyncSession):
+    async def disconnect(self, user: User, session: AsyncSession, client: WebSocket | None = None):
         """Handle user disconnection and cleanup.
 
         Args:
             user: The disconnecting user.
             session: Database session.
+            client: The specific WebSocket that closed.
         """
         user_id = user.id
-        if user_id in self.connect_client:
+        if client is not None:
+            if not self.disconnect_client(user_id, client):
+                logger.info(f"User {user_id} still has other connections, skip channel cleanup")
+                return
+        elif user_id in self.connect_client:
             del self.connect_client[user_id]
 
         # Create a copy of channel ID list to avoid modifying dict during iteration
@@ -110,7 +137,10 @@ class ChatServer:
                 db_channel = (
                     await session.exec(select(ChatChannel).where(ChatChannel.channel_id == channel_id))
                 ).first()
-                if db_channel:
+                # A replacement socket may have registered (and rejoined) while the
+                # query above was awaited; leaving now would drop the live client
+                # from a channel it just joined.
+                if db_channel and user_id not in self.connect_client:
                     await self.leave_channel(user, db_channel)
 
     @overload
@@ -127,10 +157,27 @@ class ChatServer:
             event: Chat event to send.
         """
         if isinstance(client, int):
-            client_ = self.connect_client.get(client)
-            if client_ is None:
+            user_id = client
+            sockets = list(self.connect_client.get(user_id, ()))
+            if not sockets:
                 return
-            client = client_
+
+            payload = safe_json_dumps(event)
+            dead: list[WebSocket] = []
+            for socket in sockets:
+                if socket.client_state != WebSocketState.CONNECTED:
+                    dead.append(socket)
+                    continue
+                try:
+                    await socket.send_text(payload)
+                except Exception as e:
+                    logger.warning(f"Failed to send event to user {user_id}, dropping stale connection: {e}")
+                    dead.append(socket)
+
+            for socket in dead:
+                self.disconnect_client(user_id, socket)
+            return
+
         if client.client_state == WebSocketState.CONNECTED:
             await client.send_text(safe_json_dumps(event))
 
@@ -402,23 +449,22 @@ server = ChatServer()
 chat_router = APIRouter(include_in_schema=False)
 
 
-async def _listen_stop(ws: WebSocket, user_id: int, factory: DBFactory):
-    """Listen for WebSocket disconnect or stop events.
+async def _listen_stop(ws: WebSocket, user_id: int):
+    """Listen for WebSocket control frames until the client stops.
+
+    Only the protocol commands are handled: clients join and leave channels
+    through ``PUT``/``DELETE /chat/channels/{channel}/users/{user}``, exactly
+    like the official API, and this socket only carries ``chat.start`` and
+    ``chat.end``.
 
     Args:
         ws: The WebSocket connection.
         user_id: The connected user's ID.
-        factory: Database session factory.
     """
     try:
         while True:
             packets = await ws.receive_json()
             if packets.get("event") == "chat.end":
-                async for session in factory():
-                    user = await session.get(User, user_id)
-                    if user is None:
-                        break
-                    await server.disconnect(user, session)
                 await ws.close(code=1000)
                 break
     except WebSocketDisconnect as e:
@@ -428,8 +474,8 @@ async def _listen_stop(ws: WebSocket, user_id: int, factory: DBFactory):
             logger.info(f"Client {user_id} closed the connection.")
         else:
             logger.exception(f"RuntimeError in client {user_id}: {e}")
-    except Exception:
-        logger.exception(f"Error in client {user_id}")
+    except Exception as e:
+        logger.exception(f"Error in client {user_id}: {e}")
 
 
 @chat_router.websocket("/notification-server")
@@ -488,4 +534,16 @@ async def chat_websocket(
         if db_channel is not None:
             await server.join_channel(user, db_channel)
 
-        await _listen_stop(websocket, user_id, factory)
+        try:
+            await _listen_stop(websocket, user_id)
+        finally:
+            # Handle scenes where clients disconnect without sending `chat.end`.
+            # This leaves zombie connections in the server.
+            # Specify `client` to avoid removing other connections for the same user.
+            try:
+                async with with_db() as cleanup_session:
+                    cleanup_user = await cleanup_session.get(User, user_id)
+                    if cleanup_user is not None:
+                        await server.disconnect(cleanup_user, cleanup_session, client=websocket)
+            except Exception as e:
+                logger.exception(f"Failed to clean up connections for user {user_id}: {e}")

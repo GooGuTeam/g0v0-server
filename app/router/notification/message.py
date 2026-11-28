@@ -33,6 +33,7 @@ from .server import server
 from fastapi import Depends, Path, Query, Security
 from pydantic import BaseModel, Field
 from sqlmodel import col, select
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 
 class KeepAliveResp(BaseModel):
@@ -46,6 +47,61 @@ class KeepAliveResp(BaseModel):
 
 
 logger = log("Chat")
+
+
+async def _can_access_channel(db_channel: ChatChannel, user_id: int) -> bool:
+    """Check whether a user may read from / write to a channel.
+
+    In-memory membership (``server.channels``) is authoritative while the process
+    is alive, but it is rebuilt from joins and therefore empty right after a
+    restart. PM channels encode their two members in the channel name, so that
+    is used as a fallback to keep private messages readable across restarts.
+
+    Args:
+        db_channel: The channel being accessed.
+        user_id: The accessing user's ID.
+
+    Returns:
+        True if the user is allowed to access the channel.
+    """
+    if await server.is_user_in_channel(db_channel.channel_id, user_id):
+        return True
+
+    if db_channel.type == ChannelType.PM:
+        return db_channel.is_pm_participant(user_id)
+
+    return False
+
+
+async def _check_pm_policy(db_channel: ChatChannel, sender: User, session: AsyncSession) -> str | None:
+    """Check whether a sender may still start or continue a PM conversation.
+
+    Channel membership says nothing about this: it is rebuilt from joins, so a
+    sender blocked by the recipient could otherwise keep writing after a restart
+    (and would already be able to while the membership is still in memory).
+
+    Args:
+        db_channel: The PM channel being written to.
+        sender: The user sending the message.
+        session: Database session.
+
+    Returns:
+        The block reason if the recipient does not accept messages, otherwise None.
+    """
+    for participant_id in db_channel.pm_participant_ids():
+        if participant_id == sender.id:
+            continue
+
+        target = await session.get(User, participant_id)
+        if target is None:
+            logger.warning(f"PM channel {db_channel.channel_id} refers to missing user {participant_id}")
+            continue
+
+        is_can_pm, block = await target.is_user_can_pm(sender, session)
+        if not is_can_pm:
+            return block
+
+    return None
 
 
 @router.post(
@@ -137,8 +193,14 @@ async def send_message(
 
     if db_channel is None:
         raise RequestError(ErrorType.CHANNEL_NOT_FOUND)
-    if server.is_user_in_channel(db_channel.channel_id, current_user.id) is False:
+    if not await _can_access_channel(db_channel, current_user.id):
         raise RequestError(ErrorType.YOU_ARE_NOT_IN_CHANNEL)
+    # Only new messages are subject to the recipient's PM policy; reading the
+    # history and marking it as read stay available to both participants.
+    if db_channel.type == ChannelType.PM:
+        block = await _check_pm_policy(db_channel, current_user, session)
+        if block is not None:
+            raise RequestError(ErrorType.MESSAGING_RESTRICTED, {"reason": block})
 
     # Extract all needed attributes immediately to avoid lazy loading later
     channel_id = db_channel.channel_id
@@ -237,7 +299,7 @@ async def get_message(
 
     if db_channel is None:
         raise RequestError(ErrorType.CHANNEL_NOT_FOUND)
-    if server.is_user_in_channel(db_channel.channel_id, current_user.id) is False:
+    if not await _can_access_channel(db_channel, current_user.id):
         raise RequestError(ErrorType.YOU_ARE_NOT_IN_CHANNEL)
 
     channel_id = db_channel.channel_id
@@ -312,7 +374,7 @@ async def mark_as_read(
 
     if db_channel is None:
         raise RequestError(ErrorType.CHANNEL_NOT_FOUND)
-    if server.is_user_in_channel(db_channel.channel_id, current_user.id) is False:
+    if not await _can_access_channel(db_channel, current_user.id):
         raise RequestError(ErrorType.YOU_ARE_NOT_IN_CHANNEL)
 
     # Extract needed attribute immediately
