@@ -5,7 +5,7 @@ real-time chat messaging, channel management, and user presence.
 """
 
 import asyncio
-from typing import Annotated, Any, overload
+from typing import Annotated, overload
 
 from app.const import BANCHOBOT_ID
 from app.database import ChatMessageDict
@@ -137,7 +137,10 @@ class ChatServer:
                 db_channel = (
                     await session.exec(select(ChatChannel).where(ChatChannel.channel_id == channel_id))
                 ).first()
-                if db_channel:
+                # A replacement socket may have registered (and rejoined) while the
+                # query above was awaited; leaving now would drop the live client
+                # from a channel it just joined.
+                if db_channel and user_id not in self.connect_client:
                     await self.leave_channel(user, db_channel)
 
     @overload
@@ -446,70 +449,24 @@ server = ChatServer()
 chat_router = APIRouter(include_in_schema=False)
 
 
-async def _handle_channel_frame(event: str, data: Any, user_id: int, factory: DBFactory) -> None:
-    """Handle a chat.join / chat.part control frame.
-
-    Clients normally join through ``PUT /chat/channels/{channel}/users/{user}``,
-    but older clients send the channel over the WebSocket instead. Supporting
-    both keeps the Python implementation compatible.
-
-    Args:
-        event: Either ``chat.join`` or ``chat.part``.
-        data: Frame payload, either ``{"channel": ...}`` or a bare channel id/name.
-        user_id: The connected user's ID.
-        factory: Database session factory.
-    """
-    if isinstance(data, dict):
-        target = data.get("channel") or data.get("channel_id") or data.get("channel_name")
-    else:
-        target = data
-
-    if target is None:
-        logger.warning(f"User {user_id} sent {event} without a channel target: {data!r}")
-        return
-
-    target_str = str(target).lstrip("#")
-
-    async for session in factory():
-        user = await session.get(User, user_id)
-        if user is None:
-            return
-
-        if target_str.isdigit():
-            db_channel = (
-                await session.exec(select(ChatChannel).where(ChatChannel.channel_id == int(target_str)))
-            ).first()
-        else:
-            db_channel = (await session.exec(select(ChatChannel).where(ChatChannel.channel_name == target_str))).first()
-
-        if db_channel is None:
-            logger.warning(f"User {user_id} tried to {event} unknown channel {target!r}")
-            return
-
-        if event == "chat.join":
-            await server.join_channel(user, db_channel)
-        else:
-            await server.leave_channel(user, db_channel)
-        return
-
-
-async def _listen_stop(ws: WebSocket, user_id: int, factory: DBFactory):
+async def _listen_stop(ws: WebSocket, user_id: int):
     """Listen for WebSocket control frames until the client stops.
+
+    Only the protocol commands are handled: clients join and leave channels
+    through ``PUT``/``DELETE /chat/channels/{channel}/users/{user}``, exactly
+    like the official API, and this socket only carries ``chat.start`` and
+    ``chat.end``.
 
     Args:
         ws: The WebSocket connection.
         user_id: The connected user's ID.
-        factory: Database session factory.
     """
     try:
         while True:
             packets = await ws.receive_json()
-            event = packets.get("event")
-            if event == "chat.end":
+            if packets.get("event") == "chat.end":
                 await ws.close(code=1000)
                 break
-            if event in ("chat.join", "chat.part"):
-                await _handle_channel_frame(event, packets.get("data"), user_id, factory)
     except WebSocketDisconnect as e:
         logger.info(f"Client {user_id} disconnected: {e.code}, {e.reason}")
     except RuntimeError as e:
@@ -578,7 +535,7 @@ async def chat_websocket(
             await server.join_channel(user, db_channel)
 
         try:
-            await _listen_stop(websocket, user_id, factory)
+            await _listen_stop(websocket, user_id)
         finally:
             # Handle scenes where clients disconnect without sending `chat.end`.
             # This leaves zombie connections in the server.

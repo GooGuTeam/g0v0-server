@@ -240,6 +240,30 @@ class ChatChannel(ChatChannelModel, table=True):
             channel = await cls.get(f"pm_{user2}_{user1}", session)
         return channel
 
+    def pm_participant_ids(self) -> list[int]:
+        """Return the participant IDs encoded in a PM channel name (``pm_<id>_<id>``).
+
+        The name is the only place a PM conversation records its members, so this
+        stays usable when the in-memory membership was lost across a restart.
+
+        Returns:
+            The participant IDs, or an empty list for channels of another type.
+        """
+        if self.type != ChannelType.PM:
+            return []
+        return [int(part) for part in self.channel_name.split("_")[1:] if part.isdigit()]
+
+    def is_pm_participant(self, user_id: int) -> bool:
+        """Check whether a user participates in this PM conversation.
+
+        Args:
+            user_id: The user ID to check.
+
+        Returns:
+            True if the user is one of the encoded participants.
+        """
+        return user_id in self.pm_participant_ids()
+
 
 # ChatMessage
 class ChatMessageDict(TypedDict):
