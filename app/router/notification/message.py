@@ -48,6 +48,30 @@ class KeepAliveResp(BaseModel):
 logger = log("Chat")
 
 
+async def _can_access_channel(db_channel: ChatChannel, user_id: int) -> bool:
+    """Check whether a user may read from / write to a channel.
+
+    In-memory membership (``server.channels``) is authoritative while the process
+    is alive, but it is rebuilt from joins and therefore empty right after a
+    restart. PM channels encode their two members in the channel name, so that
+    is used as a fallback to keep private messages readable across restarts.
+
+    Args:
+        db_channel: The channel being accessed.
+        user_id: The accessing user's ID.
+
+    Returns:
+        True if the user is allowed to access the channel.
+    """
+    if await server.is_user_in_channel(db_channel.channel_id, user_id):
+        return True
+
+    if db_channel.type == ChannelType.PM:
+        return str(user_id) in db_channel.channel_name.split("_")[1:]
+
+    return False
+
+
 @router.post(
     "/chat/ack",
     name="Keep Alive",
@@ -137,7 +161,7 @@ async def send_message(
 
     if db_channel is None:
         raise RequestError(ErrorType.CHANNEL_NOT_FOUND)
-    if server.is_user_in_channel(db_channel.channel_id, current_user.id) is False:
+    if not await _can_access_channel(db_channel, current_user.id):
         raise RequestError(ErrorType.YOU_ARE_NOT_IN_CHANNEL)
 
     # Extract all needed attributes immediately to avoid lazy loading later
@@ -237,7 +261,7 @@ async def get_message(
 
     if db_channel is None:
         raise RequestError(ErrorType.CHANNEL_NOT_FOUND)
-    if server.is_user_in_channel(db_channel.channel_id, current_user.id) is False:
+    if not await _can_access_channel(db_channel, current_user.id):
         raise RequestError(ErrorType.YOU_ARE_NOT_IN_CHANNEL)
 
     channel_id = db_channel.channel_id
@@ -312,7 +336,7 @@ async def mark_as_read(
 
     if db_channel is None:
         raise RequestError(ErrorType.CHANNEL_NOT_FOUND)
-    if server.is_user_in_channel(db_channel.channel_id, current_user.id) is False:
+    if not await _can_access_channel(db_channel, current_user.id):
         raise RequestError(ErrorType.YOU_ARE_NOT_IN_CHANNEL)
 
     # Extract needed attribute immediately
