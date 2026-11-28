@@ -72,6 +72,9 @@ class RankingCacheService:
         """Generate team ranking statistics cache key."""
         return f"team_ranking:stats:{ruleset}"
 
+    async def _scan_keys(self, pattern: str) -> list:
+        return [key async for key in self.redis.scan_iter(match=pattern, count=500)]
+
     async def get_cached_ranking(
         self,
         ruleset: GameMode,
@@ -630,9 +633,9 @@ class RankingCacheService:
                 # Delete specific user ranking cache
                 country_part = f":{country.upper()}" if country else ""
                 pattern = f"ranking:{ruleset}:{type}{country_part}:page:*"
-                keys = await self.redis.keys(pattern)
+                keys = await self._scan_keys(pattern)
                 if keys:
-                    await self.redis.delete(*keys)
+                    await self.redis.unlink(*keys)
                     deleted_keys += len(keys)
                     logger.info(f"Invalidated {len(keys)} cache keys for {ruleset}:{type}")
             elif ruleset:
@@ -643,9 +646,9 @@ class RankingCacheService:
                 ]
                 for pattern in patterns:
                     if pattern:
-                        keys = await self.redis.keys(pattern)
+                        keys = await self._scan_keys(pattern)
                         if keys:
-                            await self.redis.delete(*keys)
+                            await self.redis.unlink(*keys)
                             deleted_keys += len(keys)
             else:
                 # Delete all ranking caches
@@ -654,9 +657,9 @@ class RankingCacheService:
                     patterns.append("country_ranking:*")
 
                 for pattern in patterns:
-                    keys = await self.redis.keys(pattern)
+                    keys = await self._scan_keys(pattern)
                     if keys:
-                        await self.redis.delete(*keys)
+                        await self.redis.unlink(*keys)
                         deleted_keys += len(keys)
 
                 logger.info(f"Invalidated all {deleted_keys} ranking cache keys")
@@ -669,9 +672,9 @@ class RankingCacheService:
         try:
             pattern = f"country_ranking:{ruleset}:*" if ruleset else "country_ranking:*"
 
-            keys = await self.redis.keys(pattern)
+            keys = await self._scan_keys(pattern)
             if keys:
-                await self.redis.delete(*keys)
+                await self.redis.unlink(*keys)
                 logger.info(f"Invalidated {len(keys)} country ranking cache keys")
         except Exception as e:
             logger.error(f"Error invalidating country cache: {e}")
@@ -681,9 +684,9 @@ class RankingCacheService:
         try:
             pattern = f"team_ranking:{ruleset}:*" if ruleset else "team_ranking:*"
 
-            keys = await self.redis.keys(pattern)
+            keys = await self._scan_keys(pattern)
             if keys:
-                await self.redis.delete(*keys)
+                await self.redis.unlink(*keys)
                 logger.info(f"Invalidated {len(keys)} team ranking cache keys")
         except Exception as e:
             logger.error(f"Error invalidating team cache: {e}")
@@ -692,9 +695,9 @@ class RankingCacheService:
         """Get cache statistics."""
         try:
             # Get user ranking cache keys
-            ranking_keys = await self.redis.keys("ranking:*")
+            ranking_keys = await self._scan_keys("ranking:*")
             # Get country ranking cache keys
-            country_keys = await self.redis.keys("country_ranking:*")
+            country_keys = await self._scan_keys("country_ranking:*")
 
             total_keys = ranking_keys + country_keys
             total_size = 0

@@ -32,6 +32,9 @@ class RedisMessageSystem:
         self.batch_interval = 5.0  # Batch storage every 5 seconds
         self.max_batch_size = 100  # Max 100 messages per batch
 
+    async def _scan_keys(self, pattern: str) -> list:
+        return [key async for key in self.redis.scan_iter(match=pattern, count=500)]
+
     async def send_message(
         self,
         channel_id: int,
@@ -414,7 +417,7 @@ class RedisMessageSystem:
         try:
             # Scan all channel:*:messages keys and check types
             keys_pattern = "channel:*:messages"
-            keys = await self.redis.keys(keys_pattern)
+            keys = await self._scan_keys(keys_pattern)
 
             fixed_count = 0
             for key in keys:

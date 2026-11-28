@@ -42,6 +42,9 @@ class UserCacheService:
             return f"v1_user:{user_id}:ruleset:{ruleset}"
         return f"v1_user:{user_id}"
 
+    async def _scan_keys(self, pattern: str) -> list:
+        return [key async for key in self.redis.scan_iter(match=pattern, count=500)]
+
     async def get_v1_user_from_cache(self, user_id: int, ruleset: GameMode | None = None) -> dict | None:
         """Get V1 user info from cache."""
         try:
@@ -78,9 +81,9 @@ class UserCacheService:
         try:
             # Delete V1 user info cache
             pattern = f"v1_user:{user_id}*"
-            keys = await self.redis.keys(pattern)
+            keys = await self._scan_keys(pattern)
             if keys:
-                await self.redis.delete(*keys)
+                await self.redis.unlink(*keys)
                 logger.info(f"Invalidated {len(keys)} V1 cache entries for user {user_id}")
         except Exception as e:
             logger.error(f"Error invalidating V1 user cache: {e}")
@@ -248,9 +251,9 @@ class UserCacheService:
         try:
             # Delete user info cache
             pattern = f"user:{user_id}:ruleset:*"
-            keys = await self.redis.keys(pattern)
+            keys = await self._scan_keys(pattern)
             if keys:
-                await self.redis.delete(*keys)
+                await self.redis.unlink(*keys)
                 logger.info(f"Invalidated {len(keys)} cache entries for user {user_id}")
         except Exception as e:
             logger.error(f"Error invalidating user cache: {e}")
@@ -260,9 +263,9 @@ class UserCacheService:
         try:
             # Delete user info cache
             pattern = f"user:{user_id}*"
-            keys = await self.redis.keys(pattern)
+            keys = await self._scan_keys(pattern)
             if keys:
-                await self.redis.delete(*keys)
+                await self.redis.unlink(*keys)
                 logger.info(f"Invalidated {len(keys)} all cache entries for user {user_id}")
         except Exception as e:
             logger.error(f"Error invalidating user all cache: {e}")
@@ -273,9 +276,9 @@ class UserCacheService:
             # Delete user scores related cache
             mode_pattern = f":{mode}" if mode else "*"
             pattern = f"user:{user_id}:scores:*{mode_pattern}*"
-            keys = await self.redis.keys(pattern)
+            keys = await self._scan_keys(pattern)
             if keys:
-                await self.redis.delete(*keys)
+                await self.redis.unlink(*keys)
                 logger.info(f"Invalidated {len(keys)} score cache entries for user {user_id}")
         except Exception as e:
             logger.error(f"Error invalidating user scores cache: {e}")
@@ -285,9 +288,9 @@ class UserCacheService:
         try:
             # Delete user beatmapsets related cache
             pattern = f"user:{user_id}:beatmapsets:*"
-            keys = await self.redis.keys(pattern)
+            keys = await self._scan_keys(pattern)
             if keys:
-                await self.redis.delete(*keys)
+                await self.redis.unlink(*keys)
                 logger.info(f"Invalidated {len(keys)} beatmapset cache entries for user {user_id}")
         except Exception as e:
             logger.error(f"Error invalidating user beatmapsets cache: {e}")
@@ -356,8 +359,8 @@ class UserCacheService:
     async def get_cache_stats(self) -> dict:
         """Get cache statistics."""
         try:
-            user_keys = await self.redis.keys("user:*")
-            v1_user_keys = await self.redis.keys("v1_user:*")
+            user_keys = await self._scan_keys("user:*")
+            v1_user_keys = await self._scan_keys("v1_user:*")
             decoded_user_keys = [key.decode("utf-8") if isinstance(key, bytes) else key for key in user_keys]
             decoded_v1_user_keys = [key.decode("utf-8") if isinstance(key, bytes) else key for key in v1_user_keys]
             all_keys = decoded_user_keys + decoded_v1_user_keys

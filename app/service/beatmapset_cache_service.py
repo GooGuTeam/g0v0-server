@@ -54,6 +54,9 @@ class BeatmapsetCacheService:
         """Generate search result cache key."""
         return f"beatmapset_search:{query_hash}:{cursor_hash}"
 
+    async def _scan_keys(self, pattern: str) -> list:
+        return [key async for key in self.redis.scan_iter(match=pattern, count=500)]
+
     async def get_beatmapset_from_cache(self, beatmapset_id: int) -> BeatmapsetDict | None:
         """Get beatmapset info from cache.
 
@@ -218,9 +221,9 @@ class BeatmapsetCacheService:
             Dictionary containing cache statistics.
         """
         try:
-            beatmapset_keys = await self.redis.keys("beatmapset:*")
-            lookup_keys = await self.redis.keys("beatmap_lookup:*")
-            search_keys = await self.redis.keys("beatmapset_search:*")
+            beatmapset_keys = await self._scan_keys("beatmapset:*")
+            lookup_keys = await self._scan_keys("beatmap_lookup:*")
+            search_keys = await self._scan_keys("beatmapset_search:*")
 
             return {
                 "cached_beatmapsets": len(beatmapset_keys),
